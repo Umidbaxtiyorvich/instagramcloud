@@ -1,0 +1,43 @@
+export type Locale = "uz" | "ru" | "en";
+
+export const dict = {
+  uz: {
+    brand: "Instagram Cloud",
+    tagline: "O'zi javob beradigan Instagram",
+    hero: "Odam kommentga kalit so'z yozadi — Direct'da javob keladi. Sizning AI'ingiz — Claude, ChatGPT yoki Gemini — MCP manzili orqali akkauntni boshqaradi.",
+    ctaStart: "Boshlash",
+    ctaLogin: "Kirish",
+    connectIg: "Instagramni ulash",
+    navRules: "Qoidalar",
+    navLog: "Jurnal",
+    navMcp: "AI-konnektor",
+    navApprovals: "Tasdiqlar",
+    navAnalytics: "Tahlil",
+  },
+  ru: {
+    brand: "Instagram Cloud",
+    tagline: "Instagram, который отвечает сам",
+    hero: "Человек пишет ключевое слово в комментарии — и сразу получает Direct. Ваш ИИ — Claude, ChatGPT или Gemini — управляет аккаунтом через MCP.",
+    ctaStart: "Начать",
+    ctaLogin: "Войти",
+    connectIg: "Подключить Instagram",
+    navRules: "Правила",
+    navLog: "Журнал",
+    navMcp: "AI-коннектор",
+    navApprovals: "Подтверждения",
+    navAnalytics: "Аналитика",
+  },
+  en: {
+    brand: "Instagram Cloud",
+    tagline: "Instagram that replies on its own",
+    hero: "Someone comments a keyword — they get a Direct in a second. Your AI — Claude, ChatGPT or Gemini — manages the account through an MCP URL.",
+    ctaStart: "Get started",
+    ctaLogin: "Log in",
+    connectIg: "Connect Instagram",
+    navRules: "Rules",
+    navLog: "Log",
+    navMcp: "AI connector",
+    navApprovals: "Approvals",
+    navAnalytics: "Analytics",
+  },
+} as const;

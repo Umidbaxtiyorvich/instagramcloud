@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  locale       String   @default("uz")
+  mcpToken     String   @unique
+  createdAt    DateTime @default(now())
+
+  accounts  InstagramAccount[]
+  approvals Approval[]
+}
+
+model InstagramAccount {
+  id                  String    @id @default(cuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  igUserId            String
+  username            String
+  name                String?
+  profilePic          String?
+  followersCount      Int       @default(0)
+  accessTokenEnc      String
+  tokenExpiresAt      DateTime?
+  isDemo              Boolean   @default(false)
+  dmAutoReplyEnabled  Boolean   @default(true)
+  defaultDmReply      String    @default("")
+  defaultDmMode       String    @default("first")
+  commentRepliesOn    Boolean   @default(true)
+  connectedAt         DateTime  @default(now())
+
+  rules         AutoRule[]
+  logs          ActivityLog[]
+  media         MediaItem[]
+  conversations Conversation[]
+  optOuts       OptOut[]
+  approvals     Approval[]
+
+  @@unique([userId, igUserId])
+}
+
+model AutoRule {
+  id            String            @id @default(cuid())
+  accountId     String
+  account       InstagramAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  type          String
+  keywords      String
+  matchMode     String            @default("contains")
+  scope         String            @default("all")
+  mediaIds      String            @default("[]")
+  dmMessage     String
+  publicReplies String            @default("[]")
+  enabled       Boolean           @default(true)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+}
+
+model OptOut {
+  id             String           @id @default(cuid())
+  accountId      String
+  account        InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  igScopedUserId String
+  createdAt      DateTime         @default(now())
+
+  @@unique([accountId, igScopedUserId])
+}
+
+model ActivityLog {
+  id         String           @id @default(cuid())
+  accountId  String
+  account    InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  kind       String
+  direction  String
+  username   String?
+  igUserId   String?
+  text       String
+  replyText  String?
+  mediaId    String?
+  commentId  String?
+  messageId  String?
+  createdAt  DateTime         @default(now())
+}
+
+model MediaItem {
+  id          String           @id @default(cuid())
+  accountId   String
+  account     InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  igMediaId   String
+  mediaType   String
+  caption     String           @default("")
+  permalink   String           @default("")
+  thumbnail   String           @default("")
+  timestamp   DateTime?
+  views       Int              @default(0)
+  reach       Int              @default(0)
+  shares      Int              @default(0)
+  saves       Int              @default(0)
+  likes       Int              @default(0)
+  comments    Int              @default(0)
+  avgWatchSec Int              @default(0)
+
+  @@unique([accountId, igMediaId])
+}
+
+model Conversation {
+  id             String           @id @default(cuid())
+  accountId      String
+  account        InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  igScopedUserId String
+  username       String
+  lastMessage    String
+  lastAt         DateTime         @default(now())
+  firstContactAt DateTime         @default(now())
+  lastAutoReply  DateTime?
+
+  @@unique([accountId, igScopedUserId])
+}
+
+model Approval {
+  id        String            @id @default(cuid())
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId String?
+  account   InstagramAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  toolName  String
+  summary   String
+  payload   String
+  status    String            @default("pending")
+  result    String?
+  createdAt DateTime          @default(now())
+  decidedAt DateTime?
+}

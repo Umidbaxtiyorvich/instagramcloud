@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Instagram Cloud
 
-## Getting Started
+[ai-xodim.uz](https://ai-xodim.uz/uz) kabi Instagram avto-javoblar va Claude / ChatGPT / Gemini uchun MCP konnektor.
 
-First, run the development server:
+## Nima qiladi
+
+- Kalit so‘z: komment → Direct + ochiq javob
+- Direct savollariga avto-javob, `stop` bilan o‘chirish
+- Rasmiy Instagram Login (Business / Creator)
+- MCP URL: tahlil, qoidalar, komment/DM, Reels joylash
+- Yozish harakatlari kabinetda **tasdiqlanmaguncha** yuborilmaydi
+
+## Ishga tushirish
 
 ```bash
+npm install
+npx prisma migrate dev --name init
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Brauzer: http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Ro‘yxatdan o‘ting
+2. **Instagramni ulash** — Instagram ochiladi, u yerda kirasiz
+3. Qaytib **Ha, ulash** ni bosing
+4. **AI-konnektor** dan MCP URL va tokenni oling
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Sozlamalar: `AUTH_SECRET` va `TOKEN_ENCRYPTION_KEY` ni tasodifiy uzun qator qiling.
 
-## Learn More
+## Claude / ChatGPT / Cursor
 
-To learn more about Next.js, take a look at the following resources:
+MCP manzil: `https://sizning-domen/mcp`  
+Authorization: `Bearer <kabinetdagi token>`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Cursor `mcp.json` misoli:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```json
+{
+  "mcpServers": {
+    "instagram-cloud": {
+      "url": "https://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer ic_..."
+      }
+    }
+  }
+}
+```
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+AI video joylash, Direct yuborish yoki qoida o‘zgartirishni so‘rasa, kabinetdagi **Tasdiqlar** da «Ha» bosing.
