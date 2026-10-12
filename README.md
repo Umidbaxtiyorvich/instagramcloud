@@ -1,50 +1,68 @@
 # Instagram Cloud
 
-[ai-xodim.uz](https://ai-xodim.uz/uz) kabi Instagram avto-javoblar va Claude / ChatGPT / Gemini uchun MCP konnektor.
+[ai-xodim.uz](https://ai-xodim.uz/uz) kabi: Instagram avto-javoblar + Claude / ChatGPT uchun MCP konnektor.
 
 ## Nima qiladi
 
 - Kalit so‘z: komment → Direct + ochiq javob
 - Direct savollariga avto-javob, `stop` bilan o‘chirish
-- Rasmiy Instagram Login (Business / Creator)
-- MCP URL: tahlil, qoidalar, komment/DM, Reels joylash
-- Yozish harakatlari kabinetda **tasdiqlanmaguncha** yuborilmaydi
+- Rasmiy Instagram Login (Business / Creator), parol so‘ralmaydi
+- **Claude konnektori**: bitta URL, OAuth bilan kirish — token nusxalash shart emas
+- AI vositalari: statistika, Reels hisoboti, kommentlar (javobsizlari ham), Direct, avto-javob qoidalari, Reels joylash
+- Yozish harakatlari: AI chatda so‘raydi yoki (sozlamada) kabinetda «Ha» kutadi
 
 ## Ishga tushirish
 
 ```bash
 npm install
-npx prisma migrate dev --name init
-npm run dev
+cp .env.example .env      # AUTH_SECRET va TOKEN_ENCRYPTION_KEY ni tasodifiy uzun qator qiling
+npx prisma migrate deploy
+npm run dev               # http://localhost:3001
 ```
 
-Brauzer: http://localhost:3000
+claude.ai `localhost` ga ulana olmaydi — saytni internetga chiqaring:
 
-1. Ro‘yxatdan o‘ting
-2. **Instagramni ulash** — Instagram ochiladi, u yerda kirasiz
-3. Qaytib **Ha, ulash** ni bosing
-4. **AI-konnektor** dan MCP URL va tokenni oling
+```bash
+cloudflared tunnel --url http://localhost:3001
+```
 
-Sozlamalar: `AUTH_SECRET` va `TOKEN_ENCRYPTION_KEY` ni tasodifiy uzun qator qiling.
+va saytni tunnel bergan `https://….trycloudflare.com` manzil orqali oching (yoki uni `APP_URL` ga yozing).
 
-## Claude / ChatGPT / Cursor
+## 1. Instagramni ulash
 
-MCP manzil: `https://sizning-domen/mcp`  
-Authorization: `Bearer <kabinetdagi token>`
+1. Ro‘yxatdan o‘ting → **Instagramni ulash**
+2. Meta ilovasi hali bo‘lmasa — **Demo akkaunt ulash** (namuna ma’lumotlar, Instagramga hech narsa ketmaydi)
 
-Cursor `mcp.json` misoli:
+Haqiqiy akkaunt uchun [developers.facebook.com](https://developers.facebook.com) da ilova yarating:
+
+- Use case: **Instagram API with Instagram Login**
+- Ruxsatlar: `instagram_business_basic`, `instagram_business_manage_messages`, `instagram_business_manage_comments`, `instagram_business_content_publish`, `instagram_business_manage_insights`
+- OAuth redirect: `https://SIZNING-DOMEN/api/instagram/callback`
+- Webhook: `https://SIZNING-DOMEN/api/webhooks/instagram`, verify token = `INSTAGRAM_WEBHOOK_VERIFY_TOKEN`, maydonlar: `comments`, `messages`
+- `.env`: `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `INSTAGRAM_OAUTH_MODE="instagram"`
+
+Ilova «Development» rejimida bo‘lsa, Instagram akkauntingizni ilovaga **Instagram Tester** sifatida qo‘shing.
+
+## 2. Claude’ga ulash
+
+1. claude.ai → **Settings → Connectors → Add custom connector**
+2. Name: `Instagram Cloud`, URL: `https://SIZNING-DOMEN/mcp`
+3. **Connect** → sayt ochiladi → kirasiz → **Ruxsat berish**
+4. Chatda: «Instagramimda bu oy qaysi Reels yaxshi ishladi?», «Javobsiz kommentlarni ko‘rsat va javob yozib ber»
+
+Claude Code: `claude mcp add --transport http instagram-cloud https://SIZNING-DOMEN/mcp`
+
+OAuth qo‘llamaydigan mijozlar (Cursor va h.k.) uchun kabinetdagi shaxsiy token:
 
 ```json
 {
   "mcpServers": {
     "instagram-cloud": {
-      "url": "https://localhost:3000/mcp",
-      "headers": {
-        "Authorization": "Bearer ic_..."
-      }
+      "url": "https://SIZNING-DOMEN/mcp",
+      "headers": { "Authorization": "Bearer ic_..." }
     }
   }
 }
 ```
 
-AI video joylash, Direct yuborish yoki qoida o‘zgartirishni so‘rasa, kabinetdagi **Tasdiqlar** da «Ha» bosing.
+Ulangan AI ilovalarni kabinetdagi **AI-konnektor** bo‘limida ko‘rish va uzish mumkin.

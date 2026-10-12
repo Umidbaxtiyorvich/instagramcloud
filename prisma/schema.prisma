@@ -14,10 +14,14 @@ model User {
   name         String?
   locale       String   @default("uz")
   mcpToken     String   @unique
+  // "chat": the AI asks in the chat and acts; "dashboard": every write waits for «Ha» in Tasdiqlar
+  aiApproval   String   @default("chat")
   createdAt    DateTime @default(now())
 
-  accounts  InstagramAccount[]
-  approvals Approval[]
+  accounts    InstagramAccount[]
+  approvals   Approval[]
+  oauthCodes  OAuthCode[]
+  oauthTokens OAuthToken[]
 }
 
 model InstagramAccount {
@@ -37,6 +41,7 @@ model InstagramAccount {
   defaultDmMode       String    @default("first")
   commentRepliesOn    Boolean   @default(true)
   connectedAt         DateTime  @default(now())
+  mediaSyncedAt       DateTime?
 
   rules         AutoRule[]
   logs          ActivityLog[]
@@ -138,4 +143,47 @@ model Approval {
   result    String?
   createdAt DateTime          @default(now())
   decidedAt DateTime?
+}
+
+// OAuth 2.1 for the MCP connector (Claude, ChatGPT): clients register themselves (RFC 7591),
+// the user signs in on this site and approves, the client gets a token for /mcp.
+model OAuthClient {
+  id           String   @id @default(cuid())
+  clientId     String   @unique
+  name         String   @default("AI")
+  redirectUris String
+  createdAt    DateTime @default(now())
+
+  codes  OAuthCode[]
+  tokens OAuthToken[]
+}
+
+model OAuthCode {
+  id            String      @id @default(cuid())
+  codeHash      String      @unique
+  clientId      String
+  client        OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redirectUri   String
+  codeChallenge String
+  scope         String      @default("instagram")
+  expiresAt     DateTime
+  usedAt        DateTime?
+}
+
+model OAuthToken {
+  id               String      @id @default(cuid())
+  accessHash       String      @unique
+  refreshHash      String      @unique
+  clientId         String
+  client           OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  userId           String
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scope            String      @default("instagram")
+  expiresAt        DateTime
+  refreshExpiresAt DateTime
+  revokedAt        DateTime?
+  lastUsedAt       DateTime?
+  createdAt        DateTime    @default(now())
 }

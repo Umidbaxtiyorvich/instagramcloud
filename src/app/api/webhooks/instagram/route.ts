@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { handleComment, handleDm } from "@/lib/auto-reply";
+import { webhookSignatureValid } from "@/lib/instagram";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -14,8 +15,16 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => null);
-  if (!body) return NextResponse.json({ ok: true });
+  const raw = await req.text();
+  if (!webhookSignatureValid(raw, req.headers.get("x-hub-signature-256"))) {
+    return NextResponse.json({ error: "bad signature" }, { status: 401 });
+  }
+  let body;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return NextResponse.json({ ok: true });
+  }
 
   const entries = Array.isArray(body.entry) ? body.entry : [];
   for (const entry of entries) {

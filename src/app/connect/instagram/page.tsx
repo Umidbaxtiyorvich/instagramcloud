@@ -7,18 +7,23 @@ export default function ConnectInstagramPage() {
   const [ready, setReady] = useState(false);
   const [configured, setConfigured] = useState(false);
   const [error, setError] = useState("");
+  const [origin, setOrigin] = useState("");
+  const [demoName, setDemoName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function connectDemo() {
+    setBusy(true);
+    const res = await fetch("/api/instagram/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision: "approve", username: demoName || "demo.shop" }),
+    });
+    setBusy(false);
+    if (res.ok) window.location.href = "/dashboard?ig=demo";
+    else setError("Demo akkaunt yaratilmadi.");
+  }
 
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
-    if (q.get("ig") === "denied") setError("Instagramda ruxsat berilmadi.");
-    if (q.get("ig") === "error") setError("Instagram bilan ulanishda xato. Qayta urinib ko'ring.");
-    if (q.get("ig") === "state") setError("Sessiya eskirgan. Qayta urinib ko'ring.");
-    if (q.get("ig") === "return") {
-      setError(
-        "Hozir Instagram login ochilsa, u yerda qolib ketasiz. Tasdiq oynasi va saytga qaytish faqat ruxsat havolasi tayyor bo'lganda ishlaydi."
-      );
-    }
-
     fetch("/api/me")
       .then((r) => r.json())
       .then((j) => {
@@ -30,6 +35,15 @@ export default function ConnectInstagramPage() {
       })
       .then((r) => r?.json())
       .then((j) => {
+        const errors: Record<string, string> = {
+          denied: "Instagramda ruxsat berilmadi.",
+          error: "Instagram bilan ulanishda xato. Qayta urinib ko'ring.",
+          state: "Sessiya eskirgan. Qayta urinib ko'ring.",
+          return: "Meta ilovasi sozlanmaguncha haqiqiy Instagramni ulab bo'lmaydi. Pastdagi demo bilan sinab ko'ring.",
+        };
+        const ig = new URLSearchParams(window.location.search).get("ig") || "";
+        if (errors[ig]) setError(errors[ig]);
+        setOrigin(window.location.origin);
         if (j) setConfigured(Boolean(j.configured));
         setReady(true);
       });
@@ -54,13 +68,17 @@ export default function ConnectInstagramPage() {
       </ol>
       {!configured && (
         <div className="glass mt-6 rounded-2xl p-5 text-sm text-[var(--muted)]">
-          <p className="text-[var(--fg)]">Tasdiq + qaytish hali yoqilmagan.</p>
+          <p className="text-[var(--fg)]">Meta ilovasi hali sozlanmagan.</p>
           <p className="mt-2">
-            Instagram oddiy loginni ochsa, tasdiq so&apos;ramaydi va saytga qaytarmaydi. `.env` da
-            `INSTAGRAM_APP_ID` va `INSTAGRAM_APP_SECRET` bo&apos;lishi kerak, redirect esa:
+            Haqiqiy Instagramni ulash uchun developers.facebook.com da ilova yarating (Instagram API with
+            Instagram Login), `.env` ga `INSTAGRAM_APP_ID` va `INSTAGRAM_APP_SECRET` ni yozing. Redirect URL:
           </p>
           <code className="mt-2 block break-all rounded-xl bg-black/30 p-3 text-xs">
-            http://localhost:3000/api/instagram/callback
+            {origin}/api/instagram/callback
+          </code>
+          <p className="mt-3">Webhook URL (komment va Direct avto-javoblari uchun):</p>
+          <code className="mt-2 block break-all rounded-xl bg-black/30 p-3 text-xs">
+            {origin}/api/webhooks/instagram
           </code>
         </div>
       )}
@@ -73,6 +91,24 @@ export default function ConnectInstagramPage() {
         <button className="btn btn-primary mt-8 w-full opacity-40" disabled>
           Instagramni ulash
         </button>
+      )}
+      {!configured && (
+        <div className="glass mt-6 rounded-2xl p-5">
+          <p className="text-sm text-[var(--fg)]">Hozircha demo bilan sinab ko&apos;ring</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            Namuna Reels va qoidalar bilan soxta akkaunt. Claude&apos;ni ulab, hammasini sinash mumkin —
+            Instagramga hech narsa yuborilmaydi.
+          </p>
+          <input
+            className="mt-3"
+            value={demoName}
+            onChange={(e) => setDemoName(e.target.value)}
+            placeholder="demo.shop"
+          />
+          <button onClick={connectDemo} disabled={busy} className="btn btn-ghost mt-3 w-full">
+            {busy ? "Yaratilmoqda…" : "Demo akkaunt ulash"}
+          </button>
+        </div>
       )}
       <Link href="/dashboard" className="mt-4 text-center text-sm text-[var(--muted)]">
         Kabinetga qaytish

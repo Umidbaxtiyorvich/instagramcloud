@@ -2,6 +2,12 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { safeNext } from "@/lib/url";
+
+// where to go after signing in, e.g. back to the Claude consent screen
+function readNext() {
+  return safeNext(new URLSearchParams(window.location.search).get("next"));
+}
 
 export default function LoginPage() {
   const [error, setError] = useState("");
@@ -23,7 +29,7 @@ export default function LoginPage() {
       setError(json.error || "Xato");
       return;
     }
-    window.location.href = "/dashboard";
+    window.location.href = readNext();
   }
 
   return (
@@ -41,7 +47,15 @@ export default function LoginPage() {
         </button>
       </form>
       <p className="mt-4 text-sm text-[var(--muted)]">
-        Akkaunt yo&apos;qmi? <Link href="/register">Ro&apos;yxatdan o&apos;tish</Link>
+        Akkaunt yo&apos;qmi? <Link
+          href="/register"
+          onClick={(e) => {
+            const next = readNext();
+            if (next === "/dashboard") return;
+            e.preventDefault();
+            window.location.href = `/register?next=${encodeURIComponent(next)}`;
+          }}
+        >Ro&apos;yxatdan o&apos;tish</Link>
       </p>
     </main>
   );

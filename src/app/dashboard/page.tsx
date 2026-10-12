@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Account = {
@@ -18,8 +19,13 @@ type User = {
   email: string;
   name: string | null;
   mcpToken: string;
+  aiApproval: "chat" | "dashboard";
+  mcpUrl: string;
+  igConfigured: boolean;
   accounts: Account[];
 };
+
+type Connection = { clientId: string; name: string; since: string; lastUsedAt: string | null };
 
 type Rule = {
   id: string;
@@ -52,6 +58,9 @@ type Approval = {
 type Media = {
   id: string;
   caption: string;
+  permalink: string;
+  likes: number;
+  comments: number;
   mediaType: string;
   views: number;
   reach: number;
@@ -66,7 +75,7 @@ const tabs = [
   ["log", "Jurnal"],
   ["analytics", "Tahlil"],
   ["mcp", "AI-konnektor"],
-  ["approvals", "Tasdiqlar"],
+  ["approvals", "AI harakatlari"],
 ] as const;
 
 function parseJson(s: string) {
@@ -86,6 +95,9 @@ export default function Dashboard() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [media, setMedia] = useState<Media[]>([]);
   const [msg, setMsg] = useState("");
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [syncing, setSyncing] = useState(false);
+  const [copied, setCopied] = useState("");
 
   const account = user?.accounts.find((a) => a.id === accountId) || user?.accounts[0];
 
@@ -101,9 +113,11 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    load();
-    const q = new URLSearchParams(window.location.search);
-    if (q.get("ig") === "ok") setMsg("Instagram akkaunti ulandi.");
+    load().then(() => {
+      const ig = new URLSearchParams(window.location.search).get("ig");
+      if (ig === "ok") setMsg("Instagram akkaunti ulandi.");
+      if (ig === "demo") setMsg("Demo akkaunt ulandi. Endi «AI-konnektor» bo'limidan Claude'ni ulang.");
+    });
   }, [load]);
 
   useEffect(() => {
@@ -120,16 +134,35 @@ export default function Dashboard() {
   }, [accountId, tab]);
 
   useEffect(() => {
+    if (tab !== "mcp") return;
+    fetch("/api/connections")
+      .then((r) => r.json())
+      .then((j) => setConnections(j.connections || []));
+  }, [tab]);
+
+  useEffect(() => {
     fetch("/api/approvals")
       .then((r) => r.json())
       .then((j) => setApprovals(j.approvals || []));
   }, [tab]);
 
-  const mcpUrl = useMemo(() => {
-    if (typeof window === "undefined" || !user) return "";
-    // Use Cloudflare tunnel URL for production/external access
-    return "https://paintings-brandon-pumps-way.trycloudflare.com/mcp";
-  }, [user]);
+  const mcpUrl = user?.mcpUrl || "";
+  const localOnly = useMemo(() => /^http:\/\/(localhost|127\.|\[::1\])/.test(mcpUrl), [mcpUrl]);
+
+  async function copy(text: string, key: string) {
+    await navigator.clipboard.writeText(text).catch(() => {});
+    setCopied(key);
+    setTimeout(() => setCopied(""), 1500);
+  }
+
+  async function refreshMedia() {
+    if (!account) return;
+    setSyncing(true);
+    const j = await (await fetch(`/api/analytics?accountId=${account.id}&refresh=1`)).json();
+    setMedia(j.media || []);
+    setSyncing(false);
+    if (j.syncError) setMsg(`Instagram: ${j.syncError}`);
+  }
 
   async function addRule(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -175,9 +208,9 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen md:grid md:grid-cols-[240px_1fr]">
       <aside className="border-b border-[var(--line)] p-5 md:border-b-0 md:border-r">
-        <a href="/" className="display text-xl">
+        <Link href="/" className="display text-xl">
           instagram<span className="text-[var(--pink)]">cloud</span>
-        </a>
+        </Link>
         <p className="mt-2 text-xs text-[var(--muted)]">{user.email}</p>
         <nav className="mt-6 grid gap-1">
           {tabs.map(([id, label]) => (
@@ -216,7 +249,7 @@ export default function Dashboard() {
               Instagramga o&apos;tasiz, u yerda kirasiz va ruxsatni tasdiqlaysiz. Boshqa usul yo&apos;q.
             </p>
             <div className="mt-6">
-              <a href="/api/instagram/connect" className="btn btn-primary">
+              <a href={user.igConfigured ? "/api/instagram/connect" : "/connect/instagram"} className="btn btn-primary">
                 Instagramni ulash
               </a>
             </div>
@@ -230,6 +263,7 @@ export default function Dashboard() {
                 <h1 className="display text-4xl">@{account.username}</h1>
                 <p className="mt-2 text-[var(--muted)]">
                   {account.followersCount.toLocaleString()} obunachi
+                  {account.isDemo && <span className="ml-2 rounded-full bg-[var(--amber)]/15 px-2 py-0.5 text-xs text-[var(--amber)]">demo</span>}
                 </p>
                 <a href="/connect/instagram" className="mt-2 inline-block text-sm text-[var(--amber)]">
                   Boshqa Instagram ulash
@@ -387,13 +421,23 @@ export default function Dashboard() {
 
         {account && tab === "analytics" && (
           <section>
-            <h1 className="display text-4xl">Reels hisoboti</h1>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <h1 className="display text-4xl">Postlar va Reels</h1>
+              {!account.isDemo && (
+                <button className="btn btn-ghost !py-2 text-sm" onClick={refreshMedia} disabled={syncing}>
+                  {syncing ? "Yangilanmoqda…" : "Instagram'dan yangilash"}
+                </button>
+              )}
+            </div>
             <div className="glass mt-6 overflow-x-auto rounded-2xl p-4">
               <table>
                 <thead>
                   <tr>
-                    <th>Video</th>
+                    <th>Post</th>
+                    <th>Tur</th>
                     <th>Ko&apos;rish</th>
+                    <th>Qamrov</th>
+                    <th>Like</th>
                     <th>Ulashish/qamrov</th>
                     <th>O&apos;rt. s</th>
                     <th>Saqlash</th>
@@ -402,8 +446,13 @@ export default function Dashboard() {
                 <tbody>
                   {media.map((m) => (
                     <tr key={m.id}>
-                      <td>{m.caption}</td>
+                      <td className="max-w-[280px] truncate">
+                        {m.permalink ? <a href={m.permalink} target="_blank" rel="noreferrer">{m.caption || "—"}</a> : m.caption || "—"}
+                      </td>
+                      <td className="text-xs text-[var(--muted)]">{m.mediaType}</td>
                       <td>{m.views.toLocaleString()}</td>
+                      <td>{m.reach.toLocaleString()}</td>
+                      <td>{m.likes.toLocaleString()}</td>
                       <td>{m.reach ? `${((m.shares / m.reach) * 100).toFixed(1)}%` : "—"}</td>
                       <td>{m.avgWatchSec}</td>
                       <td>{m.saves.toLocaleString()}</td>
@@ -418,50 +467,145 @@ export default function Dashboard() {
 
         {tab === "mcp" && (
           <section>
-            <h1 className="display text-4xl">Claude, ChatGPT, Gemini</h1>
+            <h1 className="display text-4xl">Claude&apos;ga ulash</h1>
             <p className="mt-3 max-w-2xl text-[var(--muted)]">
-              Shu manzilni MCP server sifatida qo&apos;ying. Token — shaxsiy kalitingiz. Yozish
-              harakatlari kabinetdagi Tasdiqlar sahifasida «Ha» kutadi.
+              Bitta manzil — Claude Instagramingizni ko&apos;radi va boshqaradi: statistika, kommentlar,
+              Direct, avto-javoblar, Reels. Token yoki parol kiritish shart emas — Claude sizni shu saytga
+              yuboradi, siz «Ruxsat berish» ni bosasiz.
             </p>
+
             <div className="glass mt-6 space-y-3 rounded-2xl p-5">
-              <p className="text-xs uppercase text-[var(--muted)]">MCP URL</p>
-              <code className="block break-all rounded-xl bg-black/30 p-3">{mcpUrl}</code>
-              <p className="text-xs uppercase text-[var(--muted)]">Bearer token</p>
-              <code className="block break-all rounded-xl bg-black/30 p-3">{user.mcpToken}</code>
+              <p className="text-xs uppercase text-[var(--muted)]">Konnektor manzili (MCP URL)</p>
+              <div className="flex gap-2">
+                <code className="block flex-1 break-all rounded-xl bg-black/30 p-3">{mcpUrl}</code>
+                <button className="btn btn-primary !px-4 !py-2 text-sm" onClick={() => copy(mcpUrl, "url")}>
+                  {copied === "url" ? "Nusxalandi" : "Nusxa"}
+                </button>
+              </div>
+              {localOnly && (
+                <p className="rounded-xl bg-[var(--amber)]/10 px-4 py-3 text-sm text-[var(--amber)]">
+                  Bu manzil faqat shu kompyuterda ochiladi — claude.ai unga yetib bora olmaydi. Saytni
+                  internetga chiqaring (masalan <code>cloudflared tunnel --url http://localhost:3001</code>) va
+                  saytni o&apos;sha https manzil orqali oching — bu yerda https manzil chiqadi.
+                </p>
+              )}
             </div>
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
               <article className="glass rounded-2xl p-5 text-sm">
-                <h3 className="display text-xl">Claude</h3>
-                <p className="mt-2 text-[var(--muted)]">
-                  Settings → Connectors → Add custom connector → URL va token.
+                <h3 className="display text-2xl">Claude (claude.ai, ilova)</h3>
+                <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-[var(--muted)]">
+                  <li>claude.ai → <b className="text-[var(--fg)]">Settings → Connectors</b></li>
+                  <li><b className="text-[var(--fg)]">Add custom connector</b></li>
+                  <li>Name: <b className="text-[var(--fg)]">Instagram Cloud</b>, URL: yuqoridagi manzil → <b className="text-[var(--fg)]">Add</b></li>
+                  <li><b className="text-[var(--fg)]">Connect</b> → shu sayt ochiladi → <b className="text-[var(--fg)]">Ruxsat berish</b></li>
+                  <li>Chatda: «Instagramimda bu oy qaysi Reels yaxshi ishladi?»</li>
+                </ol>
+              </article>
+              <article className="glass rounded-2xl p-5 text-sm">
+                <h3 className="display text-2xl">Claude Code, Cursor, ChatGPT</h3>
+                <p className="mt-3 text-[var(--muted)]">Claude Code (brauzerda ruxsat so&apos;raydi):</p>
+                <pre className="mt-1 overflow-x-auto rounded-xl bg-black/30 p-3 text-xs">{`claude mcp add --transport http instagram-cloud ${mcpUrl}`}</pre>
+                <p className="mt-3 text-[var(--muted)]">
+                  ChatGPT: Settings → Apps &amp; Connectors → Developer mode → Create → shu URL, OAuth.
                 </p>
+                <p className="mt-3 text-[var(--muted)]">OAuth bo&apos;lmagan mijozlar uchun shaxsiy token:</p>
+                <div className="mt-1 flex gap-2">
+                  <code className="block flex-1 break-all rounded-xl bg-black/30 p-3 text-xs">{user.mcpToken}</code>
+                  <button className="btn btn-ghost !px-3 !py-1 text-xs" onClick={() => copy(user.mcpToken, "token")}>
+                    {copied === "token" ? "✓" : "Nusxa"}
+                  </button>
+                </div>
+                <button
+                  className="mt-2 text-xs text-[var(--pink)]"
+                  onClick={async () => {
+                    if (!confirm("Eski token ishlamay qoladi. Davom etasizmi?")) return;
+                    await fetch("/api/settings", { method: "POST" });
+                    await load();
+                  }}
+                >
+                  Tokenni yangilash
+                </button>
               </article>
-              <article className="glass rounded-2xl p-5 text-sm">
-                <h3 className="display text-xl">ChatGPT</h3>
-                <p className="mt-2 text-[var(--muted)]">
-                  Developer mode → MCP servers → URL: {mcpUrl || "/mcp"}
-                </p>
-              </article>
-              <article className="glass rounded-2xl p-5 text-sm">
-                <h3 className="display text-xl">Cursor / Gemini CLI</h3>
-                <pre className="mt-2 overflow-x-auto text-xs text-[var(--muted)]">{`{
-  "mcpServers": {
-    "instagram-cloud": {
-      "url": "${mcpUrl}",
-      "headers": { "Authorization": "Bearer ${user.mcpToken}" }
-    }
-  }
-}`}</pre>
-              </article>
+            </div>
+
+            <div className="glass mt-6 rounded-2xl p-5">
+              <h3 className="display text-2xl">AI yozish harakatlari</h3>
+              <p className="mt-2 text-sm text-[var(--muted)]">
+                Kommentga javob, Direct, qoida o&apos;zgartirish, Reels joylash — qanday tasdiqlanadi?
+              </p>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {(
+                  [
+                    ["chat", "Chatda so'raydi", "AI matnni ko'rsatadi, «ha» desangiz bajaradi. Claude ham har bir harakatdan oldin ruxsat so'raydi."],
+                    ["dashboard", "Faqat kabinetda «Ha»", "AI faqat navbatga qo'yadi. «AI harakatlari» bo'limida «Ha» bosmaguningizcha hech narsa ketmaydi."],
+                  ] as const
+                ).map(([value, title, desc]) => (
+                  <label
+                    key={value}
+                    className={`cursor-pointer rounded-2xl border p-4 text-sm ${
+                      user.aiApproval === value ? "border-[var(--pink)] bg-[var(--pink)]/5" : "border-[var(--line)]"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="aiApproval"
+                      className="mr-2"
+                      checked={user.aiApproval === value}
+                      onChange={async () => {
+                        await fetch("/api/settings", {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ aiApproval: value }),
+                        });
+                        await load();
+                      }}
+                    />
+                    <b>{title}</b>
+                    <p className="mt-1 text-[var(--muted)]">{desc}</p>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="glass mt-6 rounded-2xl p-5">
+              <h3 className="display text-2xl">Ulangan AI ilovalar</h3>
+              <div className="mt-3 space-y-2">
+                {connections.map((c) => (
+                  <div key={c.clientId} className="flex items-center justify-between gap-3 rounded-xl bg-white/5 px-4 py-3 text-sm">
+                    <div>
+                      <p>{c.name}</p>
+                      <p className="text-xs text-[var(--muted)]">
+                        {new Date(c.since).toLocaleDateString()} dan
+                        {c.lastUsedAt ? ` · oxirgi marta ${new Date(c.lastUsedAt).toLocaleString()}` : ""}
+                      </p>
+                    </div>
+                    <button
+                      className="text-sm text-[var(--pink)]"
+                      onClick={async () => {
+                        await fetch(`/api/connections?clientId=${encodeURIComponent(c.clientId)}`, { method: "DELETE" });
+                        setConnections((prev) => prev.filter((x) => x.clientId !== c.clientId));
+                      }}
+                    >
+                      Uzish
+                    </button>
+                  </div>
+                ))}
+                {!connections.length && (
+                  <p className="text-sm text-[var(--muted)]">Hali hech qaysi AI ulanmagan.</p>
+                )}
+              </div>
             </div>
           </section>
         )}
 
         {tab === "approvals" && (
           <section>
-            <h1 className="display text-4xl">AI tasdiqlari</h1>
+            <h1 className="display text-4xl">AI harakatlari</h1>
             <p className="mt-2 text-[var(--muted)]">
-              Claude/ChatGPT/Gemini hech narsani o&apos;zi yubormaydi — avval shu yerda «Ha».
+              {user.aiApproval === "dashboard"
+                ? "AI hech narsani o'zi yubormaydi — avval shu yerda «Ha»."
+                : "AI chatda tasdiqlab bajargan harakatlar. Kabinetda tasdiqlashni «AI-konnektor» bo'limida yoqish mumkin."}
             </p>
             <div className="mt-6 space-y-3">
               {approvals.map((a) => (

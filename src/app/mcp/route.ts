@@ -1,63 +1,69 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
 import { handleJsonRpc } from "@/lib/mcp";
+import { userIdFromBearer } from "@/lib/oauth";
+import { baseUrl } from "@/lib/url";
 
 export const runtime = "nodejs";
 
 function cors(res: NextResponse) {
   res.headers.set("Access-Control-Allow-Origin", "*");
-  res.headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, Mcp-Session-Id");
+  res.headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, Mcp-Session-Id, Mcp-Protocol-Version");
   res.headers.set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  res.headers.set("Access-Control-Expose-Headers", "WWW-Authenticate, Mcp-Session-Id");
   return res;
 }
 
-async function userFromAuth(req: Request) {
+// Without a valid token the client is pointed at the OAuth metadata; Claude and ChatGPT
+// then register, send the user to /oauth/authorize, and come back with a token.
+function unauthorized(req: Request, error?: string) {
+  const meta = `${baseUrl(req)}/.well-known/oauth-protected-resource`;
+  const res = NextResponse.json(
+    { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Kirish talab qilinadi" } },
+    { status: 401 }
+  );
+  res.headers.set(
+    "WWW-Authenticate",
+    `Bearer resource_metadata="${meta}"${error ? `, error="${error}"` : ""}, scope="instagram"`
+  );
+  return cors(res);
+}
+
+async function authUserId(req: Request) {
   const header = req.headers.get("authorization") || "";
   const token = header.replace(/^Bearer\s+/i, "").trim();
-  const urlToken = new URL(req.url).searchParams.get("token");
-  const mcpToken = token || urlToken;
-  if (!mcpToken) return null;
-  return prisma.user.findUnique({ where: { mcpToken } });
+  return userIdFromBearer(token);
 }
 
 export async function OPTIONS() {
   return cors(new NextResponse(null, { status: 204 }));
 }
 
+// No server-initiated SSE stream: Streamable HTTP clients fall back to plain POST.
 export async function GET(req: Request) {
-  // Return basic info without auth for Claude connector
-  return cors(
-    NextResponse.json({
-      name: "instagram-cloud",
-      version: "1.0.0",
-      protocol: "mcp",
-      tools: true,
-    })
-  );
+  if (!(await authUserId(req))) return unauthorized(req);
+  const res = new NextResponse(null, { status: 405 });
+  res.headers.set("Allow", "POST, OPTIONS");
+  return cors(res);
 }
 
 export async function POST(req: Request) {
-  const user = await userFromAuth(req);
-  const body = await req.json();
-  
-  // For Claude connector, use first user if no auth
-  let userId = user?.id;
-  if (!userId) {
-    const firstUser = await prisma.user.findFirst();
-    if (firstUser) {
-      userId = firstUser.id;
-    } else {
-      return cors(NextResponse.json({ error: "No users found" }, { status: 401 }));
-    }
+  const hadToken = Boolean(req.headers.get("authorization"));
+  const userId = await authUserId(req);
+  if (!userId) return unauthorized(req, hadToken ? "invalid_token" : undefined);
+
+  const body = await req.json().catch(() => null);
+  if (!body) {
+    return cors(NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, { status: 400 }));
   }
-  
+
   if (Array.isArray(body)) {
     const results = [];
     for (const item of body) {
       const r = await handleJsonRpc(userId, item);
       if (r) results.push(r);
     }
-    return cors(NextResponse.json(results.length === 1 ? results[0] : results));
+    if (!results.length) return cors(new NextResponse(null, { status: 202 }));
+    return cors(NextResponse.json(results));
   }
   const result = await handleJsonRpc(userId, body);
   if (!result) return cors(new NextResponse(null, { status: 202 }));

@@ -1,331 +1,646 @@
+import type { InstagramAccount } from "@prisma/client";
 import { prisma } from "./db";
 import { executeApprovedAction } from "./actions";
+import { freshToken, mediaWithInsights, safeInsights, syncIfStale } from "./ig-data";
+import { accountTotals, followerDemographics, listComments, listMedia, profile, type IgComment } from "./instagram";
 
 type Json = Record<string, unknown>;
+type Schema = { type: "object"; properties: Record<string, unknown>; required?: string[] };
+type Tool = {
+  name: string;
+  title: string;
+  description: string;
+  inputSchema: Schema;
+  annotations: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean };
+};
 
-const WRITE_TOOLS = new Set([
-  "instagram_reply_comment",
-  "instagram_send_dm",
-  "instagram_hide_comment",
-  "instagram_publish_reel",
-  "instagram_create_rule",
-  "instagram_update_rule",
-  "instagram_delete_rule",
-]);
+const SUPPORTED_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
-export const MCP_TOOLS = [
-  {
-    name: "instagram_accounts",
-    description: "Foydalanuvchining ulangan Instagram akkauntlarini ko'rsatadi.",
-    inputSchema: { type: "object", properties: {}, additionalProperties: false },
-  },
-  {
-    name: "instagram_reels_report",
-    description: "Reels va postlar bo'yicha ko'rish, ulashish, saqlash va o'rtacha tomosha vaqti hisoboti.",
-    inputSchema: {
-      type: "object",
-      properties: { accountId: { type: "string" } },
-      additionalProperties: false,
+const account = { type: "string", description: "Instagram username yoki id. Bitta akkaunt bo'lsa, shart emas." };
+const READ = { readOnlyHint: true, openWorldHint: true };
+const WRITE = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
+
+function tool(name: string, title: string, description: string, properties: Record<string, unknown>, required: string[] = [], annotations: Tool["annotations"] = READ): Tool {
+  return {
+    name,
+    title,
+    description,
+    inputSchema: { type: "object", properties, ...(required.length ? { required } : {}) },
+    annotations,
+  };
+}
+
+export const MCP_TOOLS: Tool[] = [
+  tool("list_instagram_accounts", "Instagram akkauntlar", "Ulangan Instagram akkauntlari. Shundan boshlang.", {}),
+  tool(
+    "instagram_analytics",
+    "Akkaunt statistikasi",
+    "Obunachilar, 30 kunlik qamrov/ko'rishlar/interaksiyalar, obunachi o'sishi va demografiya (yosh, jins, davlat, shahar). Avval `definitions` ni o'qing: reach — noyob akkauntlar, kunlik qiymatlarni qo'shib bo'lmaydi.",
+    { account }
+  ),
+  tool(
+    "instagram_reels_report",
+    "Reels hisoboti",
+    "Oxirgi Reels'larning barcha ko'rsatkichlari bitta chaqiriqda: ko'rishlar, qamrov, ulashish, saqlash, o'rtacha tomosha vaqti, qamrovga nisbatan foizlar va medianaga solishtirish. «Qaysi Reels ishladi va nega» uchun.",
+    { account, limit: { type: "number", description: "Nechta Reels (standart 20, ko'pi 50)" } }
+  ),
+  tool(
+    "instagram_list_media",
+    "Postlar",
+    "Postlar sahifama-sahifa (`after`), har birining qamrovi, interaksiyasi va engagement rate bilan.",
+    { account, limit: { type: "number" }, after: { type: "string", description: "Oldingi javobdagi `next_after`" } }
+  ),
+  tool("instagram_media_insights", "Post statistikasi", "Bitta post yoki Reels'ning to'liq ko'rsatkichlari.", { account, media_id: { type: "string" } }, ["media_id"]),
+  tool(
+    "instagram_list_comments",
+    "Kommentlar",
+    "Post ostidagi kommentlar va javoblar, sahifama-sahifa (`after`). media_id berilmasa — avto-javob jurnalidagi oxirgi kommentlar.",
+    { account, media_id: { type: "string" }, after: { type: "string" } }
+  ),
+  tool(
+    "instagram_unanswered_comments",
+    "Javobsiz kommentlar",
+    "Oxirgi postlardagi akkaunt hali javob bermagan kommentlar.",
+    { account, posts: { type: "number", description: "Nechta oxirgi post ko'riladi (standart 5, ko'pi 15)" } }
+  ),
+  tool(
+    "instagram_list_direct_messages",
+    "Direct xabarlar",
+    "Kelgan Direct xabarlar va avto-javob nima qilgani. `only_unanswered` — odam javob berishi kerak bo'lganlar.",
+    { account, only_unanswered: { type: "boolean" }, limit: { type: "number" } }
+  ),
+  tool("instagram_list_automations", "Avto-javoblar", "Barcha komment qoidalari, Direct qoidalari, Direct avto-javob holati va standart javob.", { account }),
+  tool(
+    "instagram_automation_report",
+    "Avto-javob hisoboti",
+    "Avto-javoblar davr ichida nima qilgani: nechta komment/Direct keldi, nechtasiga javob ketdi, qaysi qoidalar ishladi.",
+    { account, since: { type: "string", description: "ISO-8601, standart: 7 kun oldin" }, until: { type: "string" } }
+  ),
+  tool("list_pending_approvals", "Kutilayotgan tasdiqlar", "Kabinetda hali tasdiqlanmagan AI harakatlari.", {}),
+
+  tool("instagram_reply_comment", "Kommentga javob", "Kommentga ochiq javob yozadi.", { account, comment_id: { type: "string" }, text: { type: "string" } }, ["comment_id", "text"], WRITE),
+  tool(
+    "instagram_private_reply",
+    "Kommentchiga Direct",
+    "Komment yozgan odamga Direct'da javob yozadi (komment 7 kundan eski bo'lmasin).",
+    { account, comment_id: { type: "string" }, text: { type: "string" } },
+    ["comment_id", "text"],
+    WRITE
+  ),
+  tool(
+    "instagram_hide_comment",
+    "Kommentni yashirish",
+    "Kommentni yashiradi (hide=false — qaytaradi). O'chirishdan ko'ra shuni afzal ko'ring.",
+    { account, comment_id: { type: "string" }, hide: { type: "boolean" } },
+    ["comment_id"],
+    { ...WRITE, idempotentHint: true }
+  ),
+  tool("instagram_delete_comment", "Kommentni o'chirish", "Kommentni butunlay o'chiradi. Qaytarib bo'lmaydi.", { account, comment_id: { type: "string" } }, ["comment_id"], { ...WRITE, destructiveHint: true }),
+  tool(
+    "instagram_send_dm",
+    "Direct yuborish",
+    "Akkauntga yozgan odamga Direct yuboradi (faqat uning oxirgi xabaridan 24 soat ichida). recipient_id — instagram_list_direct_messages dagi `from_id`.",
+    { account, recipient_id: { type: "string" }, text: { type: "string" } },
+    ["recipient_id", "text"],
+    WRITE
+  ),
+  tool(
+    "instagram_publish_reel",
+    "Reels joylash",
+    "Ommaviy URL'dagi videoni (MP4, 9:16, 3–90 s) Reels sifatida joylaydi.",
+    { account, video_url: { type: "string" }, caption: { type: "string" } },
+    ["video_url", "caption"],
+    WRITE
+  ),
+  tool(
+    "instagram_save_comment_rule",
+    "Komment qoidasi",
+    "Kalit so'zli (yoki istalgan) komment → kommentchiga Direct + ixtiyoriy ochiq javob. rule_id berilsa — o'sha qoida yangilanadi. Kalit so'zlar vergul bilan, katta-kichik harf farqsiz, «contains» — qism mos kelishi.",
+    {
+      account,
+      rule_id: { type: "string" },
+      keywords: { type: "string", description: "narx, necha pul, price — bo'sh bo'lsa istalgan komment" },
+      match: { type: "string", enum: ["contains", "any"] },
+      media_id: { type: "string", description: "Faqat shu post ostida" },
+      dm_message: { type: "string" },
+      public_replies: { type: "array", items: { type: "string" }, description: "Navbat bilan ishlatiladigan ochiq javoblar" },
+      is_active: { type: "boolean" },
     },
-  },
-  {
-    name: "instagram_insights",
-    description: "Akkaunt qamrovi va asosiy ko'rsatkichlar.",
-    inputSchema: {
-      type: "object",
-      properties: { accountId: { type: "string" } },
-      additionalProperties: false,
+    ["dm_message"],
+    WRITE
+  ),
+  tool(
+    "instagram_save_dm_rule",
+    "Direct qoidasi",
+    "Kalit so'zli Direct xabar → avtomatik javob. rule_id berilsa — yangilanadi.",
+    { account, rule_id: { type: "string" }, keywords: { type: "string" }, reply: { type: "string" }, is_active: { type: "boolean" } },
+    ["keywords", "reply"],
+    WRITE
+  ),
+  tool("instagram_delete_automation_rule", "Qoidani o'chirish", "Avto-javob qoidasini o'chiradi (to'xtatish uchun is_active=false bilan saqlang).", { account, rule_id: { type: "string" } }, ["rule_id"], { ...WRITE, destructiveHint: true }),
+  tool(
+    "instagram_configure_direct",
+    "Direct sozlamalari",
+    "Direct avto-javob yoqish/o'chirish, standart javob va u qanchalik tez-tez ketishi (first — faqat birinchi xabarga, daily — kuniga bir marta, always — har doim, off — yo'q). comment_replies — komment avto-javoblari.",
+    {
+      account,
+      enabled: { type: "boolean" },
+      default_reply: { type: "string" },
+      mode: { type: "string", enum: ["first", "daily", "always", "off"] },
+      comment_replies: { type: "boolean" },
     },
-  },
-  {
-    name: "instagram_list_comments",
-    description: "Oxirgi kommentlar va ularga berilgan avto-javoblar.",
-    inputSchema: {
-      type: "object",
-      properties: { accountId: { type: "string" }, limit: { type: "number" } },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "instagram_list_dms",
-    description: "Direct xabarlar jurnali.",
-    inputSchema: {
-      type: "object",
-      properties: { accountId: { type: "string" }, limit: { type: "number" } },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "instagram_list_rules",
-    description: "Kalit so'z avto-javob qoidalarini ro'yxatlaydi.",
-    inputSchema: {
-      type: "object",
-      properties: { accountId: { type: "string" } },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "instagram_inbox_topics",
-    description: "Direct'da nimalar so'ralayotganini guruhlab aytadi.",
-    inputSchema: {
-      type: "object",
-      properties: { accountId: { type: "string" } },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "instagram_reply_comment",
-    description:
-      "Kommentga ochiq javob yozadi. Avval tasdiq navbatiga tushadi — foydalanuvchi kabinetda 'ha' demaguncha yuborilmaydi.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        accountId: { type: "string" },
-        commentId: { type: "string" },
-        text: { type: "string" },
-      },
-      required: ["commentId", "text"],
-    },
-  },
-  {
-    name: "instagram_send_dm",
-    description:
-      "Direct xabar yuboradi. Faqat avval yozgan odamga. Kabinetda tasdiqlash talab qilinadi.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        accountId: { type: "string" },
-        recipientId: { type: "string" },
-        text: { type: "string" },
-      },
-      required: ["recipientId", "text"],
-    },
-  },
-  {
-    name: "instagram_hide_comment",
-    description: "Spam kommentni yashiradi. Tasdiq talab qilinadi.",
-    inputSchema: {
-      type: "object",
-      properties: { accountId: { type: "string" }, commentId: { type: "string" } },
-      required: ["commentId"],
-    },
-  },
-  {
-    name: "instagram_publish_reel",
-    description:
-      "Ommaviy URL'dagi videoni Reels sifatida joylaydi. Tasdiq talab qilinadi. Instagram parolini so'ramaydi.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        accountId: { type: "string" },
-        videoUrl: { type: "string" },
-        caption: { type: "string" },
-      },
-      required: ["videoUrl", "caption"],
-    },
-  },
-  {
-    name: "instagram_create_rule",
-    description: "Kalit so'z avto-javob qoidasini yaratadi. Tasdiq talab qilinadi.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        accountId: { type: "string" },
-        type: { type: "string", enum: ["comment", "dm"] },
-        keywords: { type: "array", items: { type: "string" } },
-        dmMessage: { type: "string" },
-        publicReplies: { type: "array", items: { type: "string" } },
-        matchMode: { type: "string", enum: ["contains", "any"] },
-      },
-      required: ["type", "keywords", "dmMessage"],
-    },
-  },
-  {
-    name: "instagram_update_rule",
-    description: "Mavjud qoidani o'zgartiradi. Tasdiq talab qilinadi.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        ruleId: { type: "string" },
-        keywords: { type: "array", items: { type: "string" } },
-        dmMessage: { type: "string" },
-        enabled: { type: "boolean" },
-      },
-      required: ["ruleId"],
-    },
-  },
-  {
-    name: "instagram_delete_rule",
-    description: "Qoidani o'chiradi. Tasdiq talab qilinadi.",
-    inputSchema: {
-      type: "object",
-      properties: { ruleId: { type: "string" } },
-      required: ["ruleId"],
-    },
-  },
-  {
-    name: "list_pending_approvals",
-    description: "Hali tasdiqlanmagan AI harakatlarini ko'rsatadi.",
-    inputSchema: { type: "object", properties: {}, additionalProperties: false },
-  },
+    [],
+    { ...WRITE, idempotentHint: true }
+  ),
 ];
 
-function textResult(text: string) {
-  return { content: [{ type: "text", text }] };
+// MCP tool name → action in actions.ts, with the arguments renamed
+const WRITE_ACTIONS: Record<string, { action: string; payload: (a: Json) => Json; summary: (a: Json) => string }> = {
+  instagram_reply_comment: {
+    action: "reply_comment",
+    payload: (a) => ({ commentId: a.comment_id, text: a.text }),
+    summary: (a) => `Komment ${a.comment_id} ga ochiq javob: «${a.text}»`,
+  },
+  instagram_private_reply: {
+    action: "private_reply",
+    payload: (a) => ({ commentId: a.comment_id, text: a.text }),
+    summary: (a) => `Komment ${a.comment_id} egasiga Direct: «${a.text}»`,
+  },
+  instagram_hide_comment: {
+    action: "hide_comment",
+    payload: (a) => ({ commentId: a.comment_id, hide: a.hide !== false }),
+    summary: (a) => `Komment ${a.comment_id} ni ${a.hide === false ? "qaytarish" : "yashirish"}`,
+  },
+  instagram_delete_comment: {
+    action: "delete_comment",
+    payload: (a) => ({ commentId: a.comment_id }),
+    summary: (a) => `Komment ${a.comment_id} ni o'chirish`,
+  },
+  instagram_send_dm: {
+    action: "send_dm",
+    payload: (a) => ({ recipientId: a.recipient_id, text: a.text }),
+    summary: (a) => `Direct ${a.recipient_id} ga: «${a.text}»`,
+  },
+  instagram_publish_reel: {
+    action: "publish_reel",
+    payload: (a) => ({ videoUrl: a.video_url, caption: a.caption }),
+    summary: (a) => `Reels joylash: «${a.caption}» (${a.video_url})`,
+  },
+  instagram_save_comment_rule: {
+    action: "save_comment_rule",
+    payload: (a) => ({
+      ruleId: a.rule_id,
+      keywords: a.keywords,
+      matchMode: a.match,
+      mediaId: a.media_id,
+      dmMessage: a.dm_message,
+      publicReplies: a.public_replies,
+      enabled: a.is_active,
+    }),
+    summary: (a) => `${a.rule_id ? "Komment qoidasini yangilash" : "Yangi komment qoidasi"}: «${a.keywords || "istalgan komment"}» → «${a.dm_message}»`,
+  },
+  instagram_save_dm_rule: {
+    action: "save_dm_rule",
+    payload: (a) => ({ ruleId: a.rule_id, keywords: a.keywords, dmMessage: a.reply, enabled: a.is_active }),
+    summary: (a) => `${a.rule_id ? "Direct qoidasini yangilash" : "Yangi Direct qoidasi"}: «${a.keywords}» → «${a.reply}»`,
+  },
+  instagram_delete_automation_rule: {
+    action: "delete_rule",
+    payload: (a) => ({ ruleId: a.rule_id }),
+    summary: (a) => `Qoida ${a.rule_id} ni o'chirish`,
+  },
+  instagram_configure_direct: {
+    action: "configure_direct",
+    payload: (a) => ({ enabled: a.enabled, defaultReply: a.default_reply, mode: a.mode, commentRepliesOn: a.comment_replies }),
+    summary: (a) => `Direct sozlamalari: ${JSON.stringify(a)}`,
+  },
+};
+
+function result(data: unknown) {
+  return { content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data, null, 2) }] };
 }
 
-async function defaultAccount(userId: string, accountId?: string) {
-  if (accountId) {
-    const a = await prisma.instagramAccount.findFirst({ where: { id: accountId, userId } });
-    if (!a) throw new Error("Akkaunt topilmadi");
+class ToolError extends Error {}
+
+async function pickAccount(userId: string, ref?: unknown) {
+  const accounts = await prisma.instagramAccount.findMany({ where: { userId }, orderBy: { connectedAt: "desc" } });
+  if (!accounts.length) throw new ToolError("Instagram hali ulanmagan. Saytdagi kabinetda «Instagramni ulash» ni bosing.");
+  if (ref) {
+    const r = String(ref).replace(/^@/, "").toLowerCase();
+    const a = accounts.find((x) => x.id === ref || x.igUserId === ref || x.username.toLowerCase() === r);
+    if (!a) throw new ToolError(`Akkaunt topilmadi: ${ref}. Bor akkauntlar: ${accounts.map((x) => "@" + x.username).join(", ")}`);
     return a;
   }
-  const a = await prisma.instagramAccount.findFirst({ where: { userId }, orderBy: { connectedAt: "desc" } });
-  if (!a) throw new Error("Instagram hali ulanmagan");
-  return a;
+  if (accounts.length > 1) {
+    throw new ToolError(`Bir nechta akkaunt bor — \`account\` ni ko'rsating: ${accounts.map((x) => "@" + x.username).join(", ")}`);
+  }
+  return accounts[0];
 }
 
-async function queue(userId: string, tool: string, summary: string, payload: Json) {
-  const accountId = typeof payload.accountId === "string" ? payload.accountId : null;
-  const row = await prisma.approval.create({
-    data: {
-      userId,
-      accountId,
-      toolName: tool.replace("instagram_", ""),
-      summary,
-      payload: JSON.stringify(payload),
-    },
+function median(xs: number[]) {
+  if (!xs.length) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+const pct = (a: number, b: number) => (b ? `${((a / b) * 100).toFixed(2)}%` : null);
+
+function parseList(raw: string): string[] {
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function analytics(a: InstagramAccount) {
+  const definitions = {
+    reach: "Noyob akkauntlar soni davr bo'yicha. Kunlik reach'larni qo'shib bo'lmaydi.",
+    views: "Ko'rishlar soni (takroriy ko'rishlar ham).",
+    total_interactions: "Like + komment + saqlash + ulashish (+ javoblar).",
+    engagement_rate: "Oxirgi postlardagi interaksiyalar / obunachilar.",
+  };
+  if (a.isDemo) {
+    await syncIfStale(a);
+    const media = await prisma.mediaItem.findMany({ where: { accountId: a.id } });
+    const sum = (k: "views" | "reach" | "likes" | "comments" | "saves" | "shares") => media.reduce((s, m) => s + m[k], 0);
+    return {
+      demo: true,
+      username: a.username,
+      followers: a.followersCount,
+      period: "demo ma'lumotlar",
+      totals: { views: sum("views"), likes: sum("likes"), comments: sum("comments"), saves: sum("saves"), shares: sum("shares") },
+      definitions,
+    };
+  }
+  const token = await freshToken(a);
+  const until = new Date();
+  const since = new Date(until.getTime() - 29 * 24 * 60 * 60 * 1000);
+  const p = await profile(a.igUserId, token);
+  await prisma.instagramAccount.update({
+    where: { id: a.id },
+    data: { followersCount: p.followers_count ?? a.followersCount, profilePic: p.profile_picture_url || a.profilePic },
   });
-  return textResult(
-    `Harakat navbatga qo'yildi va foydalanuvchi tasdig'ini kutmoqda.\n` +
-      `ID: ${row.id}\n` +
-      `Nima qilinadi: ${summary}\n` +
-      `Kabinetdagi «Tasdiqlar» sahifasida «Ha» bosilmaguncha Instagramga hech narsa yuborilmaydi.`
+  const out: Json = {
+    username: p.username,
+    name: p.name,
+    followers: p.followers_count,
+    following: p.follows_count,
+    posts: p.media_count,
+    definitions,
+  };
+  try {
+    out.last_30_days = { period: { since: since.toISOString(), until: until.toISOString() }, ...(await accountTotals(a.igUserId, token, since, until)) };
+  } catch (e) {
+    out.last_30_days = { error: (e as Error).message };
+  }
+  const demographics: Json = { period: "this_month", note: "100+ obunachisi bor akkauntlar uchun" };
+  for (const b of ["age", "gender", "country", "city"] as const) {
+    try {
+      demographics[b] = await followerDemographics(a.igUserId, token, b);
+    } catch (e) {
+      demographics[b] = { error: (e as Error).message };
+    }
+  }
+  out.follower_demographics = demographics;
+  try {
+    const recent = await listMedia(a.igUserId, token, 12);
+    const inter = (recent.data || []).map((m) => (m.like_count || 0) + (m.comments_count || 0));
+    out.recent_posts_engagement = {
+      posts: inter.length,
+      avg_likes_plus_comments: inter.length ? Math.round(inter.reduce((x, y) => x + y, 0) / inter.length) : 0,
+      engagement_rate: pct(inter.length ? inter.reduce((x, y) => x + y, 0) / inter.length : 0, p.followers_count || 0),
+    };
+  } catch {}
+  return out;
+}
+
+async function reelsReport(a: InstagramAccount, limit: number) {
+  if (!a.isDemo) {
+    const token = await freshToken(a);
+    const page = await listMedia(a.igUserId, token, 50);
+    const reels = (page.data || []).filter((m) => m.media_product_type === "REELS").slice(0, limit);
+    const rows = [];
+    for (const m of reels) {
+      const i = await safeInsights(m, token);
+      rows.push({
+        id: m.id,
+        caption: (m.caption || "").slice(0, 120),
+        date: m.timestamp,
+        permalink: m.permalink,
+        views: i.views || 0,
+        reach: i.reach || 0,
+        likes: i.likes ?? m.like_count ?? 0,
+        comments: i.comments ?? m.comments_count ?? 0,
+        shares: i.shares || 0,
+        saves: i.saved || 0,
+        avg_watch_sec: +((i.ig_reels_avg_watch_time || 0) / 1000).toFixed(1),
+        total_watch_hours: +((i.ig_reels_video_view_total_time || 0) / 3_600_000).toFixed(1),
+      });
+    }
+    return withMedians(a.username, rows);
+  }
+  const media = await prisma.mediaItem.findMany({ where: { accountId: a.id, mediaType: "REELS" }, orderBy: { timestamp: "desc" }, take: limit });
+  return withMedians(
+    a.username,
+    media.map((m) => ({
+      id: m.igMediaId,
+      caption: m.caption,
+      date: m.timestamp?.toISOString(),
+      permalink: m.permalink,
+      views: m.views,
+      reach: m.reach,
+      likes: m.likes,
+      comments: m.comments,
+      shares: m.shares,
+      saves: m.saves,
+      avg_watch_sec: m.avgWatchSec,
+      total_watch_hours: 0,
+    }))
   );
 }
 
-export async function callTool(userId: string, name: string, args: Json) {
-  if (WRITE_TOOLS.has(name)) {
-    const account = await defaultAccount(userId, args.accountId as string | undefined);
-    args.accountId = account.id;
-    const summaries: Record<string, string> = {
-      instagram_reply_comment: `Komment ${args.commentId} ga javob: «${args.text}»`,
-      instagram_send_dm: `Direct ${args.recipientId} ga: «${args.text}»`,
-      instagram_hide_comment: `Komment ${args.commentId} ni yashirish`,
-      instagram_publish_reel: `Reels joylash: «${args.caption}» (${args.videoUrl})`,
-      instagram_create_rule: `Yangi ${args.type} qoidasi, kalit so'zlar: ${JSON.stringify(args.keywords)}`,
-      instagram_update_rule: `Qoida ${args.ruleId} ni yangilash`,
-      instagram_delete_rule: `Qoida ${args.ruleId} ni o'chirish`,
-    };
-    return queue(userId, name, summaries[name] || name, args);
-  }
+type ReelRow = { views: number; reach: number; shares: number; saves: number; avg_watch_sec: number; [k: string]: unknown };
 
-  switch (name) {
-    case "instagram_accounts": {
-      const accounts = await prisma.instagramAccount.findMany({ where: { userId } });
-      return textResult(JSON.stringify(accounts.map((a) => ({
-        id: a.id,
-        username: a.username,
-        name: a.name,
-        followers: a.followersCount,
-        demo: a.isDemo,
-        dmAutoReply: a.dmAutoReplyEnabled,
-      })), null, 2));
-    }
-    case "instagram_reels_report": {
-      const account = await defaultAccount(userId, args.accountId as string | undefined);
-      const media = await prisma.mediaItem.findMany({
-        where: { accountId: account.id },
-        orderBy: { shares: "desc" },
-      });
-      const lines = media.map((m) => ({
-        caption: m.caption,
-        type: m.mediaType,
-        views: m.views,
-        reach: m.reach,
-        shareRate: m.reach ? `${((m.shares / m.reach) * 100).toFixed(1)}%` : "n/a",
-        avgWatchSec: m.avgWatchSec,
-        saves: m.saves,
-      }));
-      return textResult(JSON.stringify({ username: account.username, items: lines }, null, 2));
-    }
-    case "instagram_insights": {
-      const account = await defaultAccount(userId, args.accountId as string | undefined);
-      const media = await prisma.mediaItem.findMany({ where: { accountId: account.id } });
-      const sum = media.reduce(
-        (acc, m) => {
-          acc.views += m.views;
-          acc.reach += m.reach;
-          acc.shares += m.shares;
-          acc.saves += m.saves;
-          return acc;
-        },
-        { views: 0, reach: 0, shares: 0, saves: 0 }
-      );
-      return textResult(JSON.stringify({ username: account.username, followers: account.followersCount, ...sum }, null, 2));
-    }
-    case "instagram_list_comments": {
-      const account = await defaultAccount(userId, args.accountId as string | undefined);
-      const logs = await prisma.activityLog.findMany({
-        where: { accountId: account.id, kind: { in: ["comment", "comment_reply"] } },
-        orderBy: { createdAt: "desc" },
-        take: Number(args.limit || 30),
-      });
-      return textResult(JSON.stringify(logs, null, 2));
-    }
-    case "instagram_list_dms": {
-      const account = await defaultAccount(userId, args.accountId as string | undefined);
-      const logs = await prisma.activityLog.findMany({
-        where: { accountId: account.id, kind: { in: ["dm", "dm_reply"] } },
-        orderBy: { createdAt: "desc" },
-        take: Number(args.limit || 30),
-      });
-      return textResult(JSON.stringify(logs, null, 2));
-    }
-    case "instagram_list_rules": {
-      const account = await defaultAccount(userId, args.accountId as string | undefined);
-      const rules = await prisma.autoRule.findMany({ where: { accountId: account.id } });
-      return textResult(JSON.stringify(rules, null, 2));
-    }
-    case "instagram_inbox_topics": {
-      const account = await defaultAccount(userId, args.accountId as string | undefined);
-      const logs = await prisma.activityLog.findMany({
-        where: { accountId: account.id, kind: "dm", direction: "in" },
-        take: 200,
-      });
-      const buckets: Record<string, number> = {};
-      for (const l of logs) {
-        const t = l.text.toLowerCase();
-        const key = t.includes("narx") || t.includes("price")
-          ? "narx"
-          : t.includes("yetkaz") || t.includes("dostav")
-            ? "yetkazib berish"
-            : t.includes("olcham") || t.includes("size")
-              ? "o'lcham"
-              : "boshqa";
-        buckets[key] = (buckets[key] || 0) + 1;
-      }
-      return textResult(JSON.stringify(buckets, null, 2));
-    }
-    case "list_pending_approvals": {
-      const rows = await prisma.approval.findMany({
-        where: { userId, status: "pending" },
-        orderBy: { createdAt: "desc" },
-      });
-      return textResult(JSON.stringify(rows.map((r) => ({ id: r.id, summary: r.summary, status: r.status })), null, 2));
-    }
-    default:
-      throw new Error(`Noma'lum vosita: ${name}`);
-  }
+function withMedians(username: string, rows: ReelRow[]) {
+  const med = {
+    views: median(rows.map((r) => r.views)),
+    reach: median(rows.map((r) => r.reach)),
+    shares: median(rows.map((r) => r.shares)),
+    saves: median(rows.map((r) => r.saves)),
+    avg_watch_sec: median(rows.map((r) => r.avg_watch_sec)),
+  };
+  return {
+    username,
+    reels: rows.length,
+    median: med,
+    items: rows.map((r) => ({
+      ...r,
+      share_rate: pct(r.shares, r.reach),
+      save_rate: pct(r.saves, r.reach),
+      views_vs_median: med.views ? `${(r.views / med.views).toFixed(2)}x` : null,
+    })),
+  };
 }
 
-export function mcpInitialize() {
+function shapeComment(c: IgComment, own: string) {
   return {
-    protocolVersion: "2025-03-26",
-    capabilities: { tools: {} },
-    serverInfo: { name: "instagram-cloud", version: "1.0.0" },
-    instructions:
-      "Bu Instagram Cloud MCP serveri. O'qish vositalari darhol ishlaydi. Yozish (javob, Direct, Reels, qoida) foydalanuvchi kabinetida tasdiqlanmaguncha bajarilmaydi.",
+    id: c.id,
+    username: c.username || c.from?.username,
+    from_id: c.from?.id,
+    text: c.text,
+    timestamp: c.timestamp,
+    likes: c.like_count,
+    hidden: c.hidden,
+    replies: (c.replies?.data || []).map((r) => ({ id: r.id, username: r.username, text: r.text, timestamp: r.timestamp, by_account: r.username === own })),
+  };
+}
+
+async function unansweredComments(a: InstagramAccount, posts: number) {
+  if (a.isDemo) {
+    const logs = await prisma.activityLog.findMany({ where: { accountId: a.id, kind: { in: ["comment", "comment_reply"] } }, orderBy: { createdAt: "desc" }, take: 200 });
+    const answered = new Set(logs.filter((l) => l.kind === "comment_reply" && l.text).map((l) => l.commentId));
+    return {
+      demo: true,
+      comments: logs.filter((l) => l.kind === "comment" && !answered.has(l.commentId)).map((l) => ({ id: l.commentId, username: l.username, text: l.text, media_id: l.mediaId, timestamp: l.createdAt })),
+    };
+  }
+  const token = await freshToken(a);
+  const media = await listMedia(a.igUserId, token, posts);
+  const out = [];
+  for (const m of media.data || []) {
+    if (!m.comments_count) continue;
+    const page = await listComments(m.id, token, 50);
+    for (const c of page.data || []) {
+      const by = c.username || c.from?.username;
+      if (by === a.username) continue;
+      if ((c.replies?.data || []).some((r) => r.username === a.username)) continue;
+      out.push({ id: c.id, username: by, from_id: c.from?.id, text: c.text, timestamp: c.timestamp, hidden: c.hidden, media_id: m.id, media_caption: (m.caption || "").slice(0, 80), permalink: m.permalink });
+    }
+  }
+  return { username: a.username, posts_checked: media.data?.length || 0, unanswered: out.length, comments: out };
+}
+
+async function directMessages(a: InstagramAccount, onlyUnanswered: boolean, limit: number) {
+  const logs = await prisma.activityLog.findMany({
+    where: { accountId: a.id, kind: { in: ["dm", "dm_reply", "dm_auto_reply"] } },
+    orderBy: { createdAt: "desc" },
+    take: 500,
+  });
+  // last_out counts only replies by a person or the AI; auto-replies don't settle a conversation
+  const convos = new Map<string, { from_id: string; username: string | null; last_in?: Date; last_out?: Date; auto_replied?: boolean; messages: Json[] }>();
+  for (const l of logs) {
+    const key = l.igUserId || "?";
+    const c = convos.get(key) || { from_id: key, username: null, messages: [] };
+    if (l.direction === "in") {
+      c.username = c.username || l.username;
+      c.last_in = c.last_in || l.createdAt;
+    } else if (l.kind === "dm_auto_reply") {
+      c.auto_replied = true;
+    } else {
+      c.last_out = c.last_out || l.createdAt;
+    }
+    const direction = l.direction === "in" ? "kelgan" : l.kind === "dm_auto_reply" ? "avto-javob" : "javob";
+    if (c.messages.length < 6) c.messages.push({ direction, text: l.text, at: l.createdAt });
+    convos.set(key, c);
+  }
+  let rows = [...convos.values()].filter((c) => c.last_in);
+  if (onlyUnanswered) rows = rows.filter((c) => !c.last_out || c.last_out < c.last_in!);
+  return {
+    username: a.username,
+    note: "Xabarlar akkaunt ulangandan keyin keladi (webhook). Javob faqat oxirgi xabardan 24 soat ichida yuboriladi.",
+    conversations: rows.slice(0, limit).map((c) => ({
+      from_id: c.from_id,
+      username: c.username,
+      last_message_at: c.last_in,
+      answered: Boolean(c.last_out && c.last_out >= c.last_in!),
+      auto_replied: Boolean(c.auto_replied),
+      can_reply_until: new Date(c.last_in!.getTime() + 24 * 60 * 60 * 1000),
+      messages: c.messages.reverse(),
+    })),
+  };
+}
+
+async function automations(a: InstagramAccount) {
+  const rules = await prisma.autoRule.findMany({ where: { accountId: a.id }, orderBy: { createdAt: "asc" } });
+  const shape = (r: (typeof rules)[number]) => ({
+    rule_id: r.id,
+    keywords: parseList(r.keywords).join(", "),
+    match: r.matchMode,
+    media_ids: parseList(r.mediaIds),
+    reply: r.dmMessage,
+    public_replies: r.type === "comment" ? parseList(r.publicReplies) : undefined,
+    is_active: r.enabled,
+  });
+  return {
+    username: a.username,
+    comment_auto_replies: a.commentRepliesOn,
+    direct_auto_replies: a.dmAutoReplyEnabled,
+    default_reply: a.defaultDmReply,
+    default_reply_mode: a.defaultDmMode,
+    comment_rules: rules.filter((r) => r.type === "comment").map(shape),
+    dm_rules: rules.filter((r) => r.type === "dm").map(shape),
+  };
+}
+
+async function automationReport(userId: string, ref: unknown, sinceRaw: unknown, untilRaw: unknown) {
+  const until = untilRaw ? new Date(String(untilRaw)) : new Date();
+  const since = sinceRaw ? new Date(String(sinceRaw)) : new Date(until.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const accounts = ref ? [await pickAccount(userId, ref)] : await prisma.instagramAccount.findMany({ where: { userId } });
+  const out = [];
+  for (const a of accounts) {
+    const logs = await prisma.activityLog.findMany({ where: { accountId: a.id, createdAt: { gte: since, lte: until } } });
+    const n = (kind: string, dir: string) => logs.filter((l) => l.kind === kind && l.direction === dir).length;
+    const topWords: Record<string, number> = {};
+    for (const l of logs.filter((x) => x.direction === "in")) {
+      for (const w of l.text.toLowerCase().split(/[^\p{L}\p{N}']+/u).filter((x) => x.length > 2)) topWords[w] = (topWords[w] || 0) + 1;
+    }
+    out.push({
+      username: a.username,
+      comments_in: n("comment", "in"),
+      comment_auto_replies: n("comment_reply", "out"),
+      dms_in: n("dm", "in"),
+      dm_auto_replies: n("dm_auto_reply", "out"),
+      dm_manual_replies: n("dm_reply", "out"),
+      published: n("publish", "out"),
+      frequent_words: Object.entries(topWords).sort((x, y) => y[1] - x[1]).slice(0, 15).map(([w, c]) => `${w} (${c})`),
+    });
+  }
+  return { period: { since: since.toISOString(), until: until.toISOString() }, accounts: out };
+}
+
+async function readTool(userId: string, name: string, args: Json) {
+  switch (name) {
+    case "list_instagram_accounts": {
+      const accounts = await prisma.instagramAccount.findMany({ where: { userId } });
+      if (!accounts.length) return "Instagram hali ulanmagan. Saytdagi kabinetda «Instagramni ulash» ni bosing.";
+      return accounts.map((a) => ({ id: a.id, username: a.username, name: a.name, followers: a.followersCount, demo: a.isDemo, connected_at: a.connectedAt }));
+    }
+    case "instagram_analytics":
+      return analytics(await pickAccount(userId, args.account));
+    case "instagram_reels_report":
+      return reelsReport(await pickAccount(userId, args.account), Math.min(Number(args.limit) || 20, 50));
+    case "instagram_list_media": {
+      const a = await pickAccount(userId, args.account);
+      const limit = Math.min(Number(args.limit) || 12, 25);
+      if (a.isDemo) {
+        const media = await prisma.mediaItem.findMany({ where: { accountId: a.id }, orderBy: { timestamp: "desc" }, take: limit });
+        return { demo: true, items: media.map((m) => ({ id: m.igMediaId, type: m.mediaType, caption: m.caption, reach: m.reach, views: m.views, interactions: m.likes + m.comments + m.saves + m.shares })) };
+      }
+      const token = await freshToken(a);
+      const page = await listMedia(a.igUserId, token, limit, args.after ? String(args.after) : undefined);
+      const items = [];
+      for (const m of page.data || []) {
+        const i = await safeInsights(m, token);
+        items.push({
+          id: m.id,
+          type: m.media_product_type || m.media_type,
+          caption: (m.caption || "").slice(0, 160),
+          date: m.timestamp,
+          permalink: m.permalink,
+          reach: i.reach,
+          views: i.views,
+          interactions: i.total_interactions,
+          engagement_rate_by_reach: pct(i.total_interactions || 0, i.reach || 0),
+        });
+      }
+      return { items, next_after: page.paging?.next ? page.paging.cursors?.after : null };
+    }
+    case "instagram_media_insights": {
+      const a = await pickAccount(userId, args.account);
+      if (a.isDemo) {
+        const m = await prisma.mediaItem.findFirst({ where: { accountId: a.id, igMediaId: String(args.media_id) } });
+        if (!m) throw new ToolError("Post topilmadi");
+        return { demo: true, ...m };
+      }
+      return mediaWithInsights(a, String(args.media_id));
+    }
+    case "instagram_list_comments": {
+      const a = await pickAccount(userId, args.account);
+      if (a.isDemo || !args.media_id) {
+        const logs = await prisma.activityLog.findMany({
+          where: { accountId: a.id, kind: { in: ["comment", "comment_reply"] }, ...(args.media_id ? { mediaId: String(args.media_id) } : {}) },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+        });
+        return { source: "avto-javob jurnali", items: logs.map((l) => ({ comment_id: l.commentId, kind: l.kind, username: l.username, text: l.text, dm_sent: l.replyText, media_id: l.mediaId, at: l.createdAt })) };
+      }
+      const token = await freshToken(a);
+      const page = await listComments(String(args.media_id), token, 50, args.after ? String(args.after) : undefined);
+      return { items: (page.data || []).map((c) => shapeComment(c, a.username)), next_after: page.paging?.cursors?.after || null };
+    }
+    case "instagram_unanswered_comments":
+      return unansweredComments(await pickAccount(userId, args.account), Math.min(Number(args.posts) || 5, 15));
+    case "instagram_list_direct_messages":
+      return directMessages(await pickAccount(userId, args.account), Boolean(args.only_unanswered), Math.min(Number(args.limit) || 30, 100));
+    case "instagram_list_automations":
+      return automations(await pickAccount(userId, args.account));
+    case "instagram_automation_report":
+      return automationReport(userId, args.account, args.since, args.until);
+    case "list_pending_approvals": {
+      const rows = await prisma.approval.findMany({ where: { userId, status: "pending" }, orderBy: { createdAt: "desc" } });
+      return rows.map((r) => ({ id: r.id, summary: r.summary, created_at: r.createdAt }));
+    }
+  }
+  throw new ToolError(`Noma'lum vosita: ${name}`);
+}
+
+export async function callTool(userId: string, name: string, args: Json) {
+  const write = WRITE_ACTIONS[name];
+  if (!write) return result(await readTool(userId, name, args));
+
+  const a = await pickAccount(userId, args.account);
+  const payload = { ...write.payload(args), accountId: a.id };
+  const summary = `@${a.username}: ${write.summary(args)}`;
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { aiApproval: true } });
+
+  if (user?.aiApproval === "dashboard") {
+    const row = await prisma.approval.create({
+      data: { userId, accountId: a.id, toolName: write.action, summary, payload: JSON.stringify(payload) },
+    });
+    return result(
+      `Navbatga qo'yildi (ID: ${row.id}). Nima qilinadi: ${summary}\n` +
+        `Foydalanuvchi saytdagi kabinetda «AI harakatlari» bo'limida «Ha» bosmaguncha hech narsa yuborilmaydi. Foydalanuvchiga shuni ayting.`
+    );
+  }
+
+  const res = await executeApprovedAction(write.action, payload);
+  await prisma.approval.create({
+    data: {
+      userId,
+      accountId: a.id,
+      toolName: write.action,
+      summary,
+      payload: JSON.stringify(payload),
+      status: "executed",
+      result: JSON.stringify(res),
+      decidedAt: new Date(),
+    },
+  });
+  return result(res);
+}
+
+const INSTRUCTIONS = `Bu server foydalanuvchining Instagram business akkauntlarini Instagram Cloud orqali boshqaradi: statistika, postlar, kommentlar, Direct va avto-javoblar. Sanalar ISO-8601.
+
+list_instagram_accounts dan boshlang. Har bir instagram_* vosita \`account\` (username yoki id) oladi; bitta akkaunt bo'lsa, shart emas.
+
+STATISTIKA: instagram_analytics (obunachilar, 30 kun, demografiya — avval definitions ni o'qing), instagram_reels_report (Reels'lar medianaga solishtirib), instagram_list_media, instagram_media_insights.
+KOMMENTLAR: instagram_list_comments, instagram_unanswered_comments, instagram_reply_comment (ochiq), instagram_private_reply (Direct'ga), instagram_hide_comment / instagram_delete_comment (yashirishni afzal ko'ring).
+DIRECT: instagram_list_direct_messages (only_unanswered — odam javobi kerak bo'lganlar), instagram_send_dm (faqat 24 soat ichida).
+AVTO-JAVOBLAR: instagram_list_automations, instagram_save_comment_rule, instagram_save_dm_rule, instagram_configure_direct, instagram_delete_automation_rule, instagram_automation_report.
+Kalit so'zlar vergul bilan, harf katta-kichikligi farqsiz; "contains" qism mos kelishi, shuning uchun o'zak ("narx") barcha shakllarini ushlaydi. Javoblarni auditoriya tilida yozing (odatda o'zbekcha).
+
+Nashr qiladigan yoki yuboradigan har qanday harakatdan oldin — ochiq javob, Direct, yangi yoki o'zgargan qoida, o'chirish, Reels — foydalanuvchiga aniq matnni ko'rsating va «ha» olganingizdan keyingina vositani chaqiring. Vosita xato qaytarsa, ko'r-ko'rona qayta urinmang — xatoni foydalanuvchiga ayting.`;
+
+export function mcpInitialize(requested?: unknown) {
+  const v = typeof requested === "string" && SUPPORTED_VERSIONS.includes(requested) ? requested : SUPPORTED_VERSIONS[0];
+  return {
+    protocolVersion: v,
+    capabilities: { tools: { listChanged: false } },
+    serverInfo: { name: "instagram-cloud", title: "Instagram Cloud", version: "2.0.0" },
+    instructions: INSTRUCTIONS,
   };
 }
 
@@ -333,44 +648,28 @@ export async function handleJsonRpc(userId: string, body: Json) {
   const id = body.id;
   const method = String(body.method || "");
   const params = (body.params || {}) as Json;
+  // notifications have no id and get no response
+  if (id === undefined || method.startsWith("notifications/")) return null;
 
   try {
-    if (method === "initialize") {
-      return { jsonrpc: "2.0", id, result: mcpInitialize() };
-    }
-    if (method === "notifications/initialized" || method === "notifications/cancelled") {
-      return null;
-    }
-    if (method === "ping") {
-      return { jsonrpc: "2.0", id, result: {} };
-    }
-    if (method === "tools/list") {
-      return { jsonrpc: "2.0", id, result: { tools: MCP_TOOLS } };
-    }
+    if (method === "initialize") return { jsonrpc: "2.0", id, result: mcpInitialize(params.protocolVersion) };
+    if (method === "ping") return { jsonrpc: "2.0", id, result: {} };
+    if (method === "tools/list") return { jsonrpc: "2.0", id, result: { tools: MCP_TOOLS } };
     if (method === "tools/call") {
       const name = String(params.name || "");
       const args = (params.arguments || {}) as Json;
-      const result = await callTool(userId, name, args);
-      return { jsonrpc: "2.0", id, result };
+      try {
+        return { jsonrpc: "2.0", id, result: await callTool(userId, name, args) };
+      } catch (e) {
+        // tool failures go back to the model as a result it can read and explain
+        return { jsonrpc: "2.0", id, result: { ...result({ ok: false, error: e instanceof Error ? e.message : "Xato" }), isError: true } };
+      }
     }
-    if (method === "resources/list") {
-      return { jsonrpc: "2.0", id, result: { resources: [] } };
-    }
-    if (method === "prompts/list") {
-      return { jsonrpc: "2.0", id, result: { prompts: [] } };
-    }
-    return {
-      jsonrpc: "2.0",
-      id,
-      error: { code: -32601, message: `Method not found: ${method}` },
-    };
+    if (method === "resources/list") return { jsonrpc: "2.0", id, result: { resources: [] } };
+    if (method === "resources/templates/list") return { jsonrpc: "2.0", id, result: { resourceTemplates: [] } };
+    if (method === "prompts/list") return { jsonrpc: "2.0", id, result: { prompts: [] } };
+    return { jsonrpc: "2.0", id, error: { code: -32601, message: `Method not found: ${method}` } };
   } catch (e) {
-    return {
-      jsonrpc: "2.0",
-      id,
-      error: { code: -32000, message: e instanceof Error ? e.message : "Xato" },
-    };
+    return { jsonrpc: "2.0", id, error: { code: -32000, message: e instanceof Error ? e.message : "Xato" } };
   }
 }
-
-export { executeApprovedAction };
