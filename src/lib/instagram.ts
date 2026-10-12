@@ -21,12 +21,17 @@ const FB_SCOPES = [
   "business_management",
 ].join(",");
 
+// "instagram" mode (instagram.com/oauth) needs the Instagram App ID/secret from
+// "Instagram API with Instagram Login" — the Meta (Facebook) App ID there fails
+// with "Invalid platform app". "facebook" mode uses the Meta App ID/secret.
 function igAppId() {
-  return process.env.INSTAGRAM_APP_ID || process.env.META_APP_ID || "";
+  if (oauthMode() === "instagram") return process.env.INSTAGRAM_APP_ID || "";
+  return process.env.META_APP_ID || process.env.INSTAGRAM_APP_ID || "";
 }
 
 function igAppSecret() {
-  return process.env.INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET || "";
+  if (oauthMode() === "instagram") return process.env.INSTAGRAM_APP_SECRET || "";
+  return process.env.META_APP_SECRET || process.env.INSTAGRAM_APP_SECRET || "";
 }
 
 function oauthMode(): "facebook" | "instagram" {
