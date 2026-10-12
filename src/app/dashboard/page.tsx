@@ -167,14 +167,16 @@ export default function Dashboard() {
   async function addRule(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!account) return;
-    const fd = new FormData(e.currentTarget);
-    await fetch("/api/rules", {
+    // currentTarget is null once we await, so keep the form for reset().
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const res = await fetch("/api/rules", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         accountId: account.id,
         type: fd.get("type"),
-        keywords: String(fd.get("keywords"))
+        keywords: String(fd.get("keywords") || "")
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean),
@@ -186,7 +188,13 @@ export default function Dashboard() {
         matchMode: fd.get("matchMode"),
       }),
     });
-    e.currentTarget.reset();
+    const saved = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMsg(saved.error || "Qoida saqlanmadi");
+      return;
+    }
+    form.reset();
+    setMsg("Qoida qo'shildi.");
     const j = await (await fetch(`/api/rules?accountId=${account.id}`)).json();
     setRules(j.rules || []);
   }
@@ -370,7 +378,7 @@ export default function Dashboard() {
                 <option value="contains">Kalit so&apos;z bor bo&apos;lsa</option>
                 <option value="any">Istalgan komment</option>
               </select>
-              <input name="keywords" required placeholder="narx, necha pul, qancha" className="md:col-span-2" />
+              <input name="keywords" placeholder="narx, necha pul, qancha (istalgan komment uchun bo'sh qoldiring)" className="md:col-span-2" />
               <textarea name="dmMessage" required placeholder="Direct'ga yuboriladigan matn" rows={3} className="md:col-span-2" />
               <input name="publicReplies" placeholder="Ochiq javoblar | navbat bilan" className="md:col-span-2" />
               <button className="btn btn-primary md:col-span-2">Qoida qo&apos;shish</button>

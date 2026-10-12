@@ -74,12 +74,17 @@ export function oauthModeIsInstagram() {
 
 // Meta signs webhook bodies with the app secret (X-Hub-Signature-256: sha256=<hex>)
 export function webhookSignatureValid(rawBody: string, header: string | null) {
-  const secret = igAppSecret();
-  if (!secret) return true;
+  // Instagram-login webhooks may be signed with the Instagram app secret or the Meta app secret.
+  const secrets = [process.env.INSTAGRAM_APP_SECRET, process.env.META_APP_SECRET].filter(
+    (s): s is string => Boolean(s)
+  );
+  if (!secrets.length) return true;
   if (!header?.startsWith("sha256=")) return false;
-  const expected = createHmac("sha256", secret).update(rawBody).digest();
   const got = Buffer.from(header.slice(7), "hex");
-  return got.length === expected.length && timingSafeEqual(got, expected);
+  return secrets.some((secret) => {
+    const expected = createHmac("sha256", secret).update(rawBody).digest();
+    return got.length === expected.length && timingSafeEqual(got, expected);
+  });
 }
 
 export function metaConfigured() {

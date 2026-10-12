@@ -17,6 +17,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const raw = await req.text();
   if (!webhookSignatureValid(raw, req.headers.get("x-hub-signature-256"))) {
+    console.error("instagram webhook: bad signature — check INSTAGRAM_APP_SECRET");
     return NextResponse.json({ error: "bad signature" }, { status: 401 });
   }
   let body;
@@ -27,10 +28,14 @@ export async function POST(req: Request) {
   }
 
   const entries = Array.isArray(body.entry) ? body.entry : [];
+  console.log(`instagram webhook: object=${body.object} entries=${entries.length}`);
   for (const entry of entries) {
     const igId = String(entry.id || "");
     const account = await prisma.instagramAccount.findFirst({ where: { igUserId: igId } });
-    if (!account) continue;
+    if (!account) {
+      console.warn(`instagram webhook: no account for entry.id=${igId}`);
+      continue;
+    }
 
     const changes = Array.isArray(entry.changes) ? entry.changes : [];
     for (const ch of changes) {

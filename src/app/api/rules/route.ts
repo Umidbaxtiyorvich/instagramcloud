@@ -6,7 +6,7 @@ import { z } from "zod";
 const schema = z.object({
   accountId: z.string(),
   type: z.enum(["comment", "dm"]),
-  keywords: z.array(z.string()).min(1),
+  keywords: z.array(z.string()),
   matchMode: z.enum(["contains", "any"]).optional(),
   scope: z.enum(["all", "selected"]).optional(),
   mediaIds: z.array(z.string()).optional(),
@@ -33,6 +33,9 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: "Kirish kerak" }, { status: 401 });
   const parsed = schema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: "Ma'lumot to'liq emas" }, { status: 400 });
+  if (parsed.data.matchMode !== "any" && !parsed.data.keywords.length) {
+    return NextResponse.json({ error: "Kalit so'z kiriting yoki «Istalgan komment» ni tanlang" }, { status: 400 });
+  }
   if (!(await owns(user.id, parsed.data.accountId))) return NextResponse.json({ error: "Yo'q" }, { status: 403 });
   const rule = await prisma.autoRule.create({
     data: {

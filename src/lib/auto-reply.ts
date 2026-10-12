@@ -59,6 +59,8 @@ async function optedOut(accountId: string, igUserId: string) {
 export async function handleComment(evt: IncomingComment) {
   const account = await prisma.instagramAccount.findUnique({ where: { id: evt.accountId } });
   if (!account || !account.commentRepliesOn) return;
+  // Our own public replies come back as comment webhooks; answering them would loop forever.
+  if (evt.fromId === account.igUserId || evt.username.toLowerCase() === account.username.toLowerCase()) return;
   if (await optedOut(account.id, evt.fromId)) return;
 
   const rules = await prisma.autoRule.findMany({
