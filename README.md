@@ -48,3 +48,17 @@ Cursor `mcp.json` misoli:
 ```
 
 AI video joylash, Direct yuborish yoki qoida o‘zgartirishni so‘rasa, kabinetdagi **Tasdiqlar** da «Ha» bosing.
+
+## «Invalid platform app» xatosi
+
+Instagram login sahifasida `Invalid platform app` chiqsa — `.env` dagi `INSTAGRAM_APP_ID` noto‘g‘ri:
+u yerga Meta (Facebook) App ID yozilgan. To‘g‘risi:
+
+1. developers.facebook.com → ilovangiz → **Instagram** → **API setup with Instagram login**
+2. **Instagram app ID** va **Instagram app secret** ni oling (bu raqam Meta App ID dan farq qiladi)
+3. `.env`: `INSTAGRAM_OAUTH_MODE="instagram"`, `INSTAGRAM_APP_ID=<Instagram app ID>`, `INSTAGRAM_APP_SECRET=<Instagram app secret>`
+4. Shu sahifadagi **Set up Instagram business login → Business login settings → OAuth redirect URIs** ga
+   `INSTAGRAM_REDIRECT_URI` ni aynan bir xil qilib qo‘shing
+5. Ilova Development rejimida bo‘lsa, Instagram akkauntingizni **App roles → Roles → Instagram Tester** qilib qo‘shing va
+   Instagramda (Settings → Apps and websites → Tester invites) taklifni qabul qiling
+6. `npm run dev` ni qayta ishga tushiring
