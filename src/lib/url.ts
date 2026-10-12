@@ -1,7 +1,13 @@
 // Public origin of the site. APP_URL wins; otherwise it is read from the request,
 // so a Cloudflare tunnel or a reverse proxy works without extra settings.
+export function configuredUrl() {
+  // RENDER_EXTERNAL_URL is set by Render for every web service
+  const url = process.env.APP_URL?.trim() || process.env.RENDER_EXTERNAL_URL || "";
+  return url.replace(/\/+$/, "");
+}
+
 export function baseUrl(req?: Request) {
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/+$/, "");
+  if (configuredUrl()) return configuredUrl();
   if (req) {
     const h = req.headers;
     const host = h.get("x-forwarded-host") || h.get("host");

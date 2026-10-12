@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { decryptSecret } from "./crypto";
+import { configuredUrl } from "./url";
 
 const VERSION = process.env.GRAPH_API_VERSION || "v23.0";
 
@@ -35,7 +36,7 @@ function oauthMode(): "facebook" | "instagram" {
 }
 
 function redirectUri() {
-  return process.env.INSTAGRAM_REDIRECT_URI?.trim() || `${process.env.APP_URL || "http://localhost:3000"}/api/instagram/callback`;
+  return process.env.INSTAGRAM_REDIRECT_URI?.trim() || `${configuredUrl() || "http://localhost:3000"}/api/instagram/callback`;
 }
 
 export function instagramAuthUrl(state: string) {

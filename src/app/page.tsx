@@ -184,6 +184,7 @@ export default function Home() {
         <div className="mx-auto flex max-w-6xl flex-wrap justify-between gap-4">
           <p>© {new Date().getFullYear()} Instagram Cloud.</p>
           <p>Faqat rasmiy API. Sovuq xabar yo&apos;q. «stop» bilan obunadan chiqish.</p>
+          <Link href="/privacy">Maxfiylik siyosati</Link>
         </div>
       </footer>
     </div>

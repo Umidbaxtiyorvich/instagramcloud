@@ -11,11 +11,22 @@
 - AI vositalari: statistika, Reels hisoboti, kommentlar (javobsizlari ham), Direct, avto-javob qoidalari, Reels joylash
 - Yozish harakatlari: AI chatda so‘raydi yoki (sozlamada) kabinetda «Ha» kutadi
 
-## Ishga tushirish
+## Internetga chiqarish (Render)
+
+1. [render.com](https://render.com) da GitHub bilan kiring.
+2. **New → Blueprint** → `instagramcloud` repo → branch → **Apply**. `render.yaml` sayt va PostgreSQL bazani o‘zi yaratadi, maxfiy kalitlarni o‘zi generatsiya qiladi.
+3. `INSTAGRAM_APP_ID` va `INSTAGRAM_APP_SECRET` so‘ralganda hozircha bo‘sh qoldirsangiz bo‘ladi — demo bilan ishlaydi.
+4. Deploy tugagach sayt `https://instagramcloud.onrender.com` (yoki shunga o‘xshash) manzilda ochiladi. Claude konnektori: shu manzil + `/mcp`.
+
+Bepul tarifda: sayt 15 daqiqa ishlatilmasa uxlaydi (birinchi ochilish ~1 daqiqa), bepul baza 30 kundan keyin o‘chadi. Doimiy ishlashi uchun web service’ni **Starter**, bazani **Basic** tarifga o‘tkazing.
+
+O‘z domeningiz bo‘lsa: Render → Settings → Custom Domains, keyin `APP_URL=https://domeningiz.uz` qo‘ying.
+
+## Lokal ishga tushirish
 
 ```bash
 npm install
-cp .env.example .env      # AUTH_SECRET va TOKEN_ENCRYPTION_KEY ni tasodifiy uzun qator qiling
+cp .env.example .env      # DATABASE_URL (PostgreSQL), AUTH_SECRET, TOKEN_ENCRYPTION_KEY
 npx prisma migrate deploy
 npm run dev               # http://localhost:3001
 ```
@@ -38,6 +49,7 @@ Haqiqiy akkaunt uchun [developers.facebook.com](https://developers.facebook.com)
 - Use case: **Instagram API with Instagram Login**
 - Ruxsatlar: `instagram_business_basic`, `instagram_business_manage_messages`, `instagram_business_manage_comments`, `instagram_business_content_publish`, `instagram_business_manage_insights`
 - OAuth redirect: `https://SIZNING-DOMEN/api/instagram/callback`
+- Privacy Policy URL: `https://SIZNING-DOMEN/privacy`, Data deletion: `https://SIZNING-DOMEN/privacy#delete`
 - Webhook: `https://SIZNING-DOMEN/api/webhooks/instagram`, verify token = `INSTAGRAM_WEBHOOK_VERIFY_TOKEN`, maydonlar: `comments`, `messages`
 - `.env`: `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `INSTAGRAM_OAUTH_MODE="instagram"`
 
