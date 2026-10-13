@@ -2,6 +2,7 @@ import type { InstagramAccount } from "@prisma/client";
 import { prisma } from "./db";
 import { executeApprovedAction } from "./actions";
 import { freshToken, mediaWithInsights, safeInsights, syncIfStale } from "./ig-data";
+import { listUploads } from "./uploads";
 import { accountTotals, followerDemographics, listComments, listMedia, profile, type IgComment } from "./instagram";
 
 type Json = Record<string, unknown>;
@@ -105,11 +106,31 @@ export const MCP_TOOLS: Tool[] = [
     WRITE
   ),
   tool(
+    "instagram_upload_link",
+    "Fayl yuklash havolasi",
+    "Chatdagi video yoki rasmni Instagramga joylash uchun: bu vosita fayl yuklanadigan sahifa havolasini beradi. Foydalanuvchiga havolani bering, u faylni o'sha yerga yuklaydi, keyin instagram_list_uploads dan upload_id ni olib joylang. Chatga biriktirilgan faylni to'g'ridan-to'g'ri uzatib bo'lmaydi.",
+    {}
+  ),
+  tool(
+    "instagram_list_uploads",
+    "Yuklangan fayllar",
+    "Saytga yuklangan video va rasmlar (upload_id, nomi, turi, joylanganmi). `available: false` — muddati o'tgan yoki joylangan, qayta yuklash kerak.",
+    {}
+  ),
+  tool(
     "instagram_publish_reel",
     "Reels joylash",
-    "Ommaviy URL'dagi videoni (MP4, 9:16, 3–90 s) Reels sifatida joylaydi.",
-    { account, video_url: { type: "string" }, caption: { type: "string" } },
-    ["video_url", "caption"],
+    "Videoni (MP4/MOV, 9:16, 3–90 s) Reels sifatida joylaydi. upload_id (saytga yuklangan fayl) yoki ochiq video_url bering. Video Instagramda qayta ishlanguncha 1–2 daqiqa kutiladi.",
+    { account, upload_id: { type: "string" }, video_url: { type: "string" }, caption: { type: "string" } },
+    ["caption"],
+    WRITE
+  ),
+  tool(
+    "instagram_publish_photo",
+    "Rasm joylash",
+    "JPEG rasmni post sifatida joylaydi. upload_id (saytga yuklangan rasm) yoki ochiq image_url bering.",
+    { account, upload_id: { type: "string" }, image_url: { type: "string" }, caption: { type: "string" } },
+    ["caption"],
     WRITE
   ),
   tool(
@@ -183,8 +204,13 @@ const WRITE_ACTIONS: Record<string, { action: string; payload: (a: Json) => Json
   },
   instagram_publish_reel: {
     action: "publish_reel",
-    payload: (a) => ({ videoUrl: a.video_url, caption: a.caption }),
-    summary: (a) => `Reels joylash: «${a.caption}» (${a.video_url})`,
+    payload: (a) => ({ uploadId: a.upload_id, videoUrl: a.video_url, caption: a.caption }),
+    summary: (a) => `Reels joylash: «${a.caption}» (${a.upload_id ? `fayl ${a.upload_id}` : a.video_url})`,
+  },
+  instagram_publish_photo: {
+    action: "publish_photo",
+    payload: (a) => ({ uploadId: a.upload_id, imageUrl: a.image_url, caption: a.caption }),
+    summary: (a) => `Rasm joylash: «${a.caption}» (${a.upload_id ? `fayl ${a.upload_id}` : a.image_url})`,
   },
   instagram_save_comment_rule: {
     action: "save_comment_rule",
@@ -478,6 +504,10 @@ async function automations(a: InstagramAccount) {
     username: a.username,
     comment_auto_replies: a.commentRepliesOn,
     direct_auto_replies: a.dmAutoReplyEnabled,
+    webhooks_last_received: a.lastWebhookAt,
+    webhooks_note: a.isDemo || a.lastWebhookAt
+      ? undefined
+      : "Instagram'dan hali bitta ham webhook kelmagan — qoidalar saqlangan, lekin komment/Direct kelmaguncha ishlamaydi. Meta ilovasida Webhooks (comments, messages) obunasi va ilova rejimini tekshirish kerak; kabinetdagi «Boshqaruv» sahifasida ko'rsatma bor.",
     default_reply: a.defaultDmReply,
     default_reply_mode: a.defaultDmMode,
     comment_rules: rules.filter((r) => r.type === "comment").map(shape),
@@ -511,7 +541,7 @@ async function automationReport(userId: string, ref: unknown, sinceRaw: unknown,
   return { period: { since: since.toISOString(), until: until.toISOString() }, accounts: out };
 }
 
-async function readTool(userId: string, name: string, args: Json) {
+async function readTool(userId: string, name: string, args: Json, base: string) {
   switch (name) {
     case "list_instagram_accounts": {
       const accounts = await prisma.instagramAccount.findMany({ where: { userId } });
@@ -579,6 +609,21 @@ async function readTool(userId: string, name: string, args: Json) {
       return automations(await pickAccount(userId, args.account));
     case "instagram_automation_report":
       return automationReport(userId, args.account, args.since, args.until);
+    case "instagram_upload_link":
+      return {
+        url: `${base}/dashboard?tab=publish`,
+        say: "Shu havolani oching, video (MP4/MOV, 100 MB gacha) yoki JPEG rasmni yuklang va menga «yukladim» deb yozing.",
+      };
+    case "instagram_list_uploads":
+      return (await listUploads(userId)).map((u) => ({
+        upload_id: u.id,
+        filename: u.filename,
+        kind: u.kind,
+        size_mb: +(u.size / 1024 / 1024).toFixed(1),
+        uploaded_at: u.createdAt,
+        available: u.available,
+        published_id: u.publishedId,
+      }));
     case "list_pending_approvals": {
       const rows = await prisma.approval.findMany({ where: { userId, status: "pending" }, orderBy: { createdAt: "desc" } });
       return rows.map((r) => ({ id: r.id, summary: r.summary, created_at: r.createdAt }));
@@ -587,12 +632,12 @@ async function readTool(userId: string, name: string, args: Json) {
   throw new ToolError(`Noma'lum vosita: ${name}`);
 }
 
-export async function callTool(userId: string, name: string, args: Json) {
+export async function callTool(userId: string, name: string, args: Json, base = "") {
   const write = WRITE_ACTIONS[name];
-  if (!write) return result(await readTool(userId, name, args));
+  if (!write) return result(await readTool(userId, name, args, base));
 
   const a = await pickAccount(userId, args.account);
-  const payload = { ...write.payload(args), accountId: a.id };
+  const payload = { ...write.payload(args), accountId: a.id, baseUrl: base };
   const summary = `@${a.username}: ${write.summary(args)}`;
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { aiApproval: true } });
 
@@ -629,6 +674,7 @@ list_instagram_accounts dan boshlang. Har bir instagram_* vosita \`account\` (us
 STATISTIKA: instagram_analytics (obunachilar, 30 kun, demografiya — avval definitions ni o'qing), instagram_reels_report (Reels'lar medianaga solishtirib), instagram_list_media, instagram_media_insights.
 KOMMENTLAR: instagram_list_comments, instagram_unanswered_comments, instagram_reply_comment (ochiq), instagram_private_reply (Direct'ga), instagram_hide_comment / instagram_delete_comment (yashirishni afzal ko'ring).
 DIRECT: instagram_list_direct_messages (only_unanswered — odam javobi kerak bo'lganlar), instagram_send_dm (faqat 24 soat ichida).
+JOYLASH: chatga biriktirilgan faylni uzatib bo'lmaydi — instagram_upload_link havolasini foydalanuvchiga bering, u saytga yuklaydi; keyin instagram_list_uploads dan upload_id olib instagram_publish_reel (video) yoki instagram_publish_photo (JPEG) ni chaqiring. Ochiq URL bo'lsa, to'g'ridan-to'g'ri video_url / image_url ham bo'ladi.
 AVTO-JAVOBLAR: instagram_list_automations, instagram_save_comment_rule, instagram_save_dm_rule, instagram_configure_direct, instagram_delete_automation_rule, instagram_automation_report.
 Kalit so'zlar vergul bilan, harf katta-kichikligi farqsiz; "contains" qism mos kelishi, shuning uchun o'zak ("narx") barcha shakllarini ushlaydi. Javoblarni auditoriya tilida yozing (odatda o'zbekcha).
 
@@ -644,7 +690,7 @@ export function mcpInitialize(requested?: unknown) {
   };
 }
 
-export async function handleJsonRpc(userId: string, body: Json) {
+export async function handleJsonRpc(userId: string, body: Json, base = "") {
   const id = body.id;
   const method = String(body.method || "");
   const params = (body.params || {}) as Json;
@@ -659,7 +705,7 @@ export async function handleJsonRpc(userId: string, body: Json) {
       const name = String(params.name || "");
       const args = (params.arguments || {}) as Json;
       try {
-        return { jsonrpc: "2.0", id, result: await callTool(userId, name, args) };
+        return { jsonrpc: "2.0", id, result: await callTool(userId, name, args, base) };
       } catch (e) {
         // tool failures go back to the model as a result it can read and explain
         return { jsonrpc: "2.0", id, result: { ...result({ ok: false, error: e instanceof Error ? e.message : "Xato" }), isError: true } };

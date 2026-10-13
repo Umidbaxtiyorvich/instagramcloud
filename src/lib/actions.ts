@@ -1,7 +1,9 @@
 import type { InstagramAccount } from "@prisma/client";
 import { prisma } from "./db";
 import { freshToken } from "./ig-data";
+import { markPublished, uploadForPublish } from "./uploads";
 import {
+  createImageContainer,
   createReelContainer,
   deleteComment,
   hideComment,
@@ -93,22 +95,32 @@ export async function executeApprovedAction(toolName: string, payload: ActionPay
       if (!demo) await deleteComment(commentId, token);
       return { ok: true, demo, commentId, deleted: true };
     }
-    case "publish_reel": {
-      const videoUrl = String(payload.videoUrl || "");
+    case "publish_reel":
+    case "publish_photo": {
       const caption = String(payload.caption || "");
+      const upload = payload.uploadId
+        ? await uploadForPublish(account.userId, String(payload.uploadId), payload.baseUrl ? String(payload.baseUrl) : undefined)
+        : null;
+      const isPhoto = upload ? upload.kind === "image" : toolName === "publish_photo";
+      const url = upload?.url || String((isPhoto ? payload.imageUrl : payload.videoUrl) || "");
+      if (!url) throw new Error("Fayl yo'q: avval saytda yuklang (upload_id) yoki ochiq URL bering");
       if (demo) {
         const igMediaId = `demo_pub_${Date.now()}`;
         await prisma.mediaItem.create({
-          data: { accountId: account.id, igMediaId, mediaType: "REELS", caption, permalink: videoUrl },
+          data: { accountId: account.id, igMediaId, mediaType: isPhoto ? "FEED" : "REELS", caption, permalink: url },
         });
         await log(account, { kind: "publish", text: caption, mediaId: igMediaId });
+        if (upload) await markPublished(upload.id, igMediaId);
         return { ok: true, demo, igMediaId };
       }
-      const created = await createReelContainer(account.igUserId, token, videoUrl, caption);
+      const created = isPhoto
+        ? await createImageContainer(account.igUserId, token, url, caption)
+        : await createReelContainer(account.igUserId, token, url, caption);
       await waitForContainer(created.id, token);
       const published = await publishMedia(account.igUserId, token, created.id);
       await log(account, { kind: "publish", text: caption, mediaId: published.id });
-      return { ok: true, id: published.id };
+      if (upload) await markPublished(upload.id, published.id);
+      return { ok: true, id: published.id, type: isPhoto ? "photo" : "reel" };
     }
     case "save_comment_rule":
       return saveRule(account, "comment", payload);

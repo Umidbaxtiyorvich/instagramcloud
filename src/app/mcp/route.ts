@@ -59,13 +59,13 @@ export async function POST(req: Request) {
   if (Array.isArray(body)) {
     const results = [];
     for (const item of body) {
-      const r = await handleJsonRpc(userId, item);
+      const r = await handleJsonRpc(userId, item, baseUrl(req));
       if (r) results.push(r);
     }
     if (!results.length) return cors(new NextResponse(null, { status: 202 }));
     return cors(NextResponse.json(results));
   }
-  const result = await handleJsonRpc(userId, body);
+  const result = await handleJsonRpc(userId, body, baseUrl(req));
   if (!result) return cors(new NextResponse(null, { status: 202 }));
   return cors(NextResponse.json(result));
 }

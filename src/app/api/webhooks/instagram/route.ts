@@ -36,6 +36,7 @@ export async function POST(req: Request) {
       console.warn(`instagram webhook: no account for entry.id=${igId}`);
       continue;
     }
+    await prisma.instagramAccount.updateMany({ where: { igUserId: igId }, data: { lastWebhookAt: new Date() } });
 
     const changes = Array.isArray(entry.changes) ? entry.changes : [];
     for (const ch of changes) {

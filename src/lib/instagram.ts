@@ -370,6 +370,11 @@ export async function createReelContainer(igId: string, token: string, videoUrl:
   return graph(`/${igId}/media?${params.toString()}`, token, { method: "POST" });
 }
 
+export async function createImageContainer(igId: string, token: string, imageUrl: string, caption: string) {
+  const params = new URLSearchParams({ image_url: imageUrl, caption, access_token: token });
+  return graph(`/${igId}/media?${params.toString()}`, token, { method: "POST" });
+}
+
 // Video containers are processed asynchronously; publishing before FINISHED fails.
 export async function waitForContainer(containerId: string, token: string, timeoutMs = 120_000) {
   const until = Date.now() + timeoutMs;

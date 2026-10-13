@@ -20,6 +20,7 @@ model User {
 
   accounts    InstagramAccount[]
   approvals   Approval[]
+  uploads     MediaUpload[]
   oauthCodes  OAuthCode[]
   oauthTokens OAuthToken[]
 }
@@ -42,6 +43,8 @@ model InstagramAccount {
   commentRepliesOn    Boolean   @default(true)
   connectedAt         DateTime  @default(now())
   mediaSyncedAt       DateTime?
+  // last time Meta delivered a webhook for this account; null = auto-replies can't fire yet
+  lastWebhookAt       DateTime?
 
   rules         AutoRule[]
   logs          ActivityLog[]
@@ -186,4 +189,20 @@ model OAuthToken {
   revokedAt        DateTime?
   lastUsedAt       DateTime?
   createdAt        DateTime    @default(now())
+}
+
+// Videos and photos uploaded on the site so Instagram can fetch them by URL when publishing.
+// The bytes are dropped after publishing; Render's free disk is not persistent, so they live here.
+model MediaUpload {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  publicToken String    @unique
+  filename    String
+  mimeType    String
+  size        Int
+  data        Bytes?
+  publishedId String?
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
 }

@@ -13,6 +13,17 @@ type Account = {
   defaultDmReply: string;
   defaultDmMode: string;
   followersCount: number;
+  lastWebhookAt: string | null;
+};
+
+type Upload = {
+  id: string;
+  filename: string;
+  kind: "video" | "image" | null;
+  size: number;
+  createdAt: string;
+  available: boolean;
+  publishedId: string | null;
 };
 
 type User = {
@@ -71,6 +82,7 @@ type Media = {
 
 const tabs = [
   ["home", "Boshqaruv"],
+  ["publish", "Joylash"],
   ["rules", "Qoidalar"],
   ["log", "Jurnal"],
   ["analytics", "Tahlil"],
@@ -98,6 +110,10 @@ export default function Dashboard() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [copied, setCopied] = useState("");
+  const [uploads, setUploads] = useState<Upload[]>([]);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [selected, setSelected] = useState("");
+  const [publishing, setPublishing] = useState(false);
 
   const account = user?.accounts.find((a) => a.id === accountId) || user?.accounts[0];
 
@@ -114,7 +130,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     load().then(() => {
-      const ig = new URLSearchParams(window.location.search).get("ig");
+      const q = new URLSearchParams(window.location.search);
+      const t = q.get("tab");
+      if (tabs.some(([id]) => id === t)) setTab(t as (typeof tabs)[number][0]);
+      const ig = q.get("ig");
       if (ig === "ok") setMsg("Instagram akkaunti ulandi.");
       if (ig === "demo") setMsg("Demo akkaunt ulandi. Endi «AI-konnektor» bo'limidan Claude'ni ulang.");
     });
@@ -132,6 +151,59 @@ export default function Dashboard() {
       .then((r) => r.json())
       .then((j) => setMedia(j.media || []));
   }, [accountId, tab]);
+
+  const loadUploads = useCallback(async () => {
+    const j = await (await fetch("/api/uploads")).json();
+    setUploads(j.uploads || []);
+    return (j.uploads || []) as Upload[];
+  }, []);
+
+  useEffect(() => {
+    if (tab !== "publish") return;
+    fetch("/api/uploads")
+      .then((r) => r.json())
+      .then((j) => setUploads(j.uploads || []));
+  }, [tab]);
+
+  // XHR rather than fetch: it reports upload progress, which matters for 100 MB videos
+  function uploadFile(file: File) {
+    setMsg("");
+    setProgress(0);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/uploads");
+    xhr.upload.onprogress = (e) => e.lengthComputable && setProgress(Math.round((e.loaded / e.total) * 100));
+    xhr.onload = async () => {
+      setProgress(null);
+      const j = JSON.parse(xhr.responseText || "{}");
+      if (xhr.status !== 200) return setMsg(j.error || "Yuklanmadi");
+      await loadUploads();
+      setSelected(j.upload.id);
+      setMsg("Fayl yuklandi. Endi matn yozib «Joylash» ni bosing yoki Claude'ga «yukladim» deb yozing.");
+    };
+    xhr.onerror = () => {
+      setProgress(null);
+      setMsg("Yuklashda tarmoq xatosi");
+    };
+    const fd = new FormData();
+    fd.append("file", file);
+    xhr.send(fd);
+  }
+
+  async function publish(caption: string) {
+    if (!account || !selected) return;
+    setPublishing(true);
+    setMsg("Instagram videoni qayta ishlamoqda — 1–2 daqiqa kuting…");
+    const res = await fetch("/api/publish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountId: account.id, uploadId: selected, caption }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setPublishing(false);
+    setMsg(res.ok ? "Instagramga joylandi ✅" : `Joylanmadi: ${j.error || "xato"}`);
+    if (res.ok) setSelected("");
+    await loadUploads();
+  }
 
   useEffect(() => {
     if (tab !== "mcp") return;
@@ -303,6 +375,45 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {!account.isDemo && (
+              <div
+                className={`mt-8 rounded-2xl p-5 text-sm ${
+                  account.lastWebhookAt ? "glass" : "bg-[var(--amber)]/10 text-[var(--amber)]"
+                }`}
+              >
+                {account.lastWebhookAt ? (
+                  <p>
+                    ✅ Instagram xabarlari kelyapti — oxirgisi {new Date(account.lastWebhookAt).toLocaleString()}. Avto-javoblar
+                    ishlayapti.
+                  </p>
+                ) : (
+                  <>
+                    <p className="font-semibold">⚠️ Instagram&apos;dan hali bitta ham komment yoki Direct xabari kelmadi</p>
+                    <p className="mt-2">
+                      Qoidalar saqlangan, lekin Meta webhook yubormaguncha ishlamaydi. developers.facebook.com → ilovangiz →
+                      Instagram → <b>API setup with Instagram login</b>:
+                    </p>
+                    <ol className="mt-2 list-decimal space-y-1 pl-5">
+                      <li>
+                        <b>Configure webhooks</b> → Callback URL: <code>{user.mcpUrl.replace(/\/mcp$/, "")}/api/webhooks/instagram</code>,
+                        Verify token: Render → Environment → <code>INSTAGRAM_WEBHOOK_VERIFY_TOKEN</code> → <b>Verify and save</b>.
+                      </li>
+                      <li><b>comments</b> va <b>messages</b> maydonlarini <b>Subscribe</b> qiling.</li>
+                      <li>
+                        Shu akkaunt uchun <b>Generate token</b> qatoridagi <b>Webhook subscription</b> ni yoqing.
+                      </li>
+                      <li>
+                        Ilova <b>Development</b> rejimida bo&apos;lsa, faqat ilovada roli bor (Tester) odamlarning
+                        komment/xabarlari keladi. Hamma uchun ishlashi uchun ilovani <b>Live</b> qiling (Privacy policy:{" "}
+                        <code>{user.mcpUrl.replace(/\/mcp$/, "")}/privacy</code>).
+                      </li>
+                    </ol>
+                    <p className="mt-2">Sinash: boshqa akkauntdan postga «narx» deb yozing — bu yozuv yashil bo&apos;lishi kerak.</p>
+                  </>
+                )}
+              </div>
+            )}
+
             <form
               className="glass mt-8 grid gap-3 rounded-2xl p-6 md:grid-cols-2"
               onSubmit={async (e) => {
@@ -363,6 +474,70 @@ export default function Dashboard() {
               </div>
             </form>
 
+          </section>
+        )}
+
+        {account && tab === "publish" && (
+          <section>
+            <h1 className="display text-4xl">Video va rasm joylash</h1>
+            <p className="mt-3 max-w-2xl text-[var(--muted)]">
+              Faylni shu yerga yuklang — keyin o&apos;zingiz joylaysiz yoki Claude&apos;ga «yukladim, joyla» deysiz. Video:
+              MP4/MOV, 9:16, 3–90 soniya, 100 MB gacha. Rasm: faqat JPEG.
+            </p>
+            <label className="glass mt-6 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--line)] p-8 text-center">
+              <input
+                type="file"
+                accept="video/mp4,video/quicktime,image/jpeg"
+                className="hidden"
+                disabled={progress !== null}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadFile(f);
+                  e.target.value = "";
+                }}
+              />
+              <span className="display text-2xl">{progress !== null ? `Yuklanmoqda… ${progress}%` : "Fayl tanlash"}</span>
+              <span className="mt-1 text-sm text-[var(--muted)]">telefon yoki kompyuterdan</span>
+            </label>
+
+            <div className="mt-6 space-y-2">
+              {uploads.map((u) => (
+                <label
+                  key={u.id}
+                  className={`glass flex items-center gap-3 rounded-xl px-4 py-3 text-sm ${u.available ? "cursor-pointer" : "opacity-50"} ${
+                    selected === u.id ? "border-[var(--pink)]" : ""
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="upload"
+                    disabled={!u.available}
+                    checked={selected === u.id}
+                    onChange={() => setSelected(u.id)}
+                  />
+                  <span>{u.kind === "image" ? "🖼" : "🎬"}</span>
+                  <span className="flex-1 truncate">{u.filename}</span>
+                  <span className="text-xs text-[var(--muted)]">
+                    {(u.size / 1024 / 1024).toFixed(1)} MB ·{" "}
+                    {u.publishedId ? "joylangan" : u.available ? new Date(u.createdAt).toLocaleString() : "muddati o'tgan"}
+                  </span>
+                </label>
+              ))}
+              {!uploads.length && <p className="text-sm text-[var(--muted)]">Hali fayl yuklanmagan.</p>}
+            </div>
+
+            <form
+              className="glass mt-6 grid gap-3 rounded-2xl p-5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                publish(String(new FormData(e.currentTarget).get("caption") || ""));
+              }}
+            >
+              <textarea name="caption" rows={4} placeholder="Post matni (caption), heshteglar" />
+              <button className="btn btn-primary" disabled={!selected || publishing}>
+                {publishing ? "Joylanmoqda…" : `@${account.username} ga joylash`}
+              </button>
+            </form>
           </section>
         )}
 
