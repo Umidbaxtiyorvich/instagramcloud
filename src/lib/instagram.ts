@@ -360,18 +360,40 @@ export async function subscribeWebhooks(igId: string, token: string) {
   );
 }
 
-export async function createReelContainer(igId: string, token: string, videoUrl: string, caption: string) {
-  const params = new URLSearchParams({
-    media_type: "REELS",
-    video_url: videoUrl,
-    caption,
-    access_token: token,
-  });
+// location_id is a Facebook place Page id; collaborators are up to 3 usernames who get an invite.
+export type PostExtras = { locationId?: string; collaborators?: string[]; shareToFeed?: boolean };
+
+function extraParams(params: URLSearchParams, extras: PostExtras = {}) {
+  if (extras.locationId) params.set("location_id", extras.locationId);
+  const collaborators = (extras.collaborators || []).map((c) => c.replace(/^@/, "").trim()).filter(Boolean);
+  if (collaborators.length > 3) throw new Error("Hamkorlar (collaborators) 3 tadan ko'p bo'lmasin");
+  if (collaborators.length) params.set("collaborators", JSON.stringify(collaborators));
+  return params;
+}
+
+export async function createReelContainer(igId: string, token: string, videoUrl: string, caption: string, extras: PostExtras = {}) {
+  const params = extraParams(
+    new URLSearchParams({
+      media_type: "REELS",
+      video_url: videoUrl,
+      caption,
+      share_to_feed: String(extras.shareToFeed !== false),
+      access_token: token,
+    }),
+    extras
+  );
   return graph(`/${igId}/media?${params.toString()}`, token, { method: "POST" });
 }
 
-export async function createImageContainer(igId: string, token: string, imageUrl: string, caption: string) {
-  const params = new URLSearchParams({ image_url: imageUrl, caption, access_token: token });
+export async function createImageContainer(igId: string, token: string, imageUrl: string, caption: string, extras: PostExtras = {}) {
+  const params = extraParams(new URLSearchParams({ image_url: imageUrl, caption, access_token: token }), extras);
+  return graph(`/${igId}/media?${params.toString()}`, token, { method: "POST" });
+}
+
+// Stories take no caption, location or collaborators through the API.
+export async function createStoryContainer(igId: string, token: string, url: string, isPhoto: boolean) {
+  const params = new URLSearchParams({ media_type: "STORIES", access_token: token });
+  params.set(isPhoto ? "image_url" : "video_url", url);
   return graph(`/${igId}/media?${params.toString()}`, token, { method: "POST" });
 }
 

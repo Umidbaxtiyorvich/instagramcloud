@@ -18,6 +18,15 @@ type Tool = {
 const SUPPORTED_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
 const account = { type: "string", description: "Instagram username yoki id. Bitta akkaunt bo'lsa, shart emas." };
+const locationId = {
+  type: "string",
+  description: "Lokatsiya: joyning Facebook sahifasi ID si (raqam). Foydalanuvchidan oling — Instagram Login API orqali joy qidirib bo'lmaydi.",
+};
+const collaborators = {
+  type: "array",
+  items: { type: "string" },
+  description: "Hamkorlar (collab): 3 tagacha Instagram username. Ularga taklif boradi, qabul qilsa post ikkala profilda ko'rinadi.",
+};
 const READ = { readOnlyHint: true, openWorldHint: true };
 const WRITE = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
 
@@ -120,17 +129,33 @@ export const MCP_TOOLS: Tool[] = [
   tool(
     "instagram_publish_reel",
     "Reels joylash",
-    "Videoni (MP4/MOV, 9:16, 3–90 s) Reels sifatida joylaydi. upload_id (saytga yuklangan fayl) yoki ochiq video_url bering. Video Instagramda qayta ishlanguncha 1–2 daqiqa kutiladi.",
-    { account, upload_id: { type: "string" }, video_url: { type: "string" }, caption: { type: "string" } },
+    "Videoni (MP4/MOV, 9:16, 3–90 s) Reels sifatida joylaydi; share_to_feed (standart true) — profil lentasida post bo'lib ham ko'rinadi. upload_id (saytga yuklangan fayl) yoki ochiq video_url bering. Video Instagramda qayta ishlanguncha 1–2 daqiqa kutiladi. Bitta fayldan story ham kerak bo'lsa, avval instagram_publish_story ni chaqiring — post joylangach fayl o'chiriladi.",
+    {
+      account,
+      upload_id: { type: "string" },
+      video_url: { type: "string" },
+      caption: { type: "string" },
+      location_id: locationId,
+      collaborators,
+      share_to_feed: { type: "boolean", description: "Lentada ham ko'rinsin (standart true)" },
+    },
     ["caption"],
     WRITE
   ),
   tool(
     "instagram_publish_photo",
     "Rasm joylash",
-    "JPEG rasmni post sifatida joylaydi. upload_id (saytga yuklangan rasm) yoki ochiq image_url bering.",
-    { account, upload_id: { type: "string" }, image_url: { type: "string" }, caption: { type: "string" } },
+    "JPEG rasmni post sifatida joylaydi. upload_id (saytga yuklangan rasm) yoki ochiq image_url bering. Bitta fayldan story ham kerak bo'lsa, avval instagram_publish_story ni chaqiring.",
+    { account, upload_id: { type: "string" }, image_url: { type: "string" }, caption: { type: "string" }, location_id: locationId, collaborators },
     ["caption"],
+    WRITE
+  ),
+  tool(
+    "instagram_publish_story",
+    "Story joylash",
+    "Video (MP4/MOV, 9:16, 60 s gacha) yoki JPEG rasmni Story qilib joylaydi, 24 soat turadi. Story'ga API orqali matn, lokatsiya va hamkor qo'shib bo'lmaydi. upload_id yoki ochiq video_url / image_url bering. Fayl o'chirilmaydi — keyin shu upload_id dan post ham joylash mumkin.",
+    { account, upload_id: { type: "string" }, video_url: { type: "string" }, image_url: { type: "string" } },
+    [],
     WRITE
   ),
   tool(
@@ -175,6 +200,13 @@ export const MCP_TOOLS: Tool[] = [
   ),
 ];
 
+function postExtrasSummary(a: Json) {
+  const parts = [];
+  if (a.location_id) parts.push(`lokatsiya ${a.location_id}`);
+  if (Array.isArray(a.collaborators) && a.collaborators.length) parts.push(`hamkorlar: ${a.collaborators.join(", ")}`);
+  return parts.length ? `, ${parts.join(", ")}` : "";
+}
+
 // MCP tool name → action in actions.ts, with the arguments renamed
 const WRITE_ACTIONS: Record<string, { action: string; payload: (a: Json) => Json; summary: (a: Json) => string }> = {
   instagram_reply_comment: {
@@ -204,13 +236,25 @@ const WRITE_ACTIONS: Record<string, { action: string; payload: (a: Json) => Json
   },
   instagram_publish_reel: {
     action: "publish_reel",
-    payload: (a) => ({ uploadId: a.upload_id, videoUrl: a.video_url, caption: a.caption }),
-    summary: (a) => `Reels joylash: «${a.caption}» (${a.upload_id ? `fayl ${a.upload_id}` : a.video_url})`,
+    payload: (a) => ({
+      uploadId: a.upload_id,
+      videoUrl: a.video_url,
+      caption: a.caption,
+      locationId: a.location_id,
+      collaborators: a.collaborators,
+      shareToFeed: a.share_to_feed,
+    }),
+    summary: (a) => `Reels joylash: «${a.caption}» (${a.upload_id ? `fayl ${a.upload_id}` : a.video_url})${postExtrasSummary(a)}`,
   },
   instagram_publish_photo: {
     action: "publish_photo",
-    payload: (a) => ({ uploadId: a.upload_id, imageUrl: a.image_url, caption: a.caption }),
-    summary: (a) => `Rasm joylash: «${a.caption}» (${a.upload_id ? `fayl ${a.upload_id}` : a.image_url})`,
+    payload: (a) => ({ uploadId: a.upload_id, imageUrl: a.image_url, caption: a.caption, locationId: a.location_id, collaborators: a.collaborators }),
+    summary: (a) => `Rasm joylash: «${a.caption}» (${a.upload_id ? `fayl ${a.upload_id}` : a.image_url})${postExtrasSummary(a)}`,
+  },
+  instagram_publish_story: {
+    action: "publish_story",
+    payload: (a) => ({ uploadId: a.upload_id, videoUrl: a.video_url, imageUrl: a.image_url }),
+    summary: (a) => `Story joylash (${a.upload_id ? `fayl ${a.upload_id}` : a.video_url || a.image_url})`,
   },
   instagram_save_comment_rule: {
     action: "save_comment_rule",
@@ -674,7 +718,7 @@ list_instagram_accounts dan boshlang. Har bir instagram_* vosita \`account\` (us
 STATISTIKA: instagram_analytics (obunachilar, 30 kun, demografiya — avval definitions ni o'qing), instagram_reels_report (Reels'lar medianaga solishtirib), instagram_list_media, instagram_media_insights.
 KOMMENTLAR: instagram_list_comments, instagram_unanswered_comments, instagram_reply_comment (ochiq), instagram_private_reply (Direct'ga), instagram_hide_comment / instagram_delete_comment (yashirishni afzal ko'ring).
 DIRECT: instagram_list_direct_messages (only_unanswered — odam javobi kerak bo'lganlar), instagram_send_dm (faqat 24 soat ichida).
-JOYLASH: chatga biriktirilgan faylni uzatib bo'lmaydi — instagram_upload_link havolasini foydalanuvchiga bering, u saytga yuklaydi; keyin instagram_list_uploads dan upload_id olib instagram_publish_reel (video) yoki instagram_publish_photo (JPEG) ni chaqiring. Ochiq URL bo'lsa, to'g'ridan-to'g'ri video_url / image_url ham bo'ladi.
+JOYLASH: chatga biriktirilgan faylni uzatib bo'lmaydi — instagram_upload_link havolasini foydalanuvchiga bering, u saytga yuklaydi; keyin instagram_list_uploads dan upload_id olib instagram_publish_reel (video), instagram_publish_photo (JPEG) yoki instagram_publish_story ni chaqiring. Story + post bitta fayldan bo'lsa — avval story, keyin post (post joylangach fayl o'chiriladi). Post va Reels'ga location_id (joyning Facebook sahifa ID si) va collaborators (3 tagacha username) qo'shish mumkin. Ochiq URL bo'lsa, to'g'ridan-to'g'ri video_url / image_url ham bo'ladi.
 AVTO-JAVOBLAR: instagram_list_automations, instagram_save_comment_rule, instagram_save_dm_rule, instagram_configure_direct, instagram_delete_automation_rule, instagram_automation_report.
 Kalit so'zlar vergul bilan, harf katta-kichikligi farqsiz; "contains" qism mos kelishi, shuning uchun o'zak ("narx") barcha shakllarini ushlaydi. Javoblarni auditoriya tilida yozing (odatda o'zbekcha).
 

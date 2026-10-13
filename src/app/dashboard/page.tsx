@@ -189,18 +189,29 @@ export default function Dashboard() {
     xhr.send(fd);
   }
 
-  async function publish(caption: string) {
+  async function publish(form: FormData) {
     if (!account || !selected) return;
+    const post = form.get("post") === "on";
+    const story = form.get("story") === "on";
+    if (!post && !story) return setMsg("Post yoki Story ni belgilang");
     setPublishing(true);
-    setMsg("Instagram videoni qayta ishlamoqda — 1–2 daqiqa kuting…");
+    setMsg("Instagram faylni qayta ishlamoqda — 1–2 daqiqa kuting…");
     const res = await fetch("/api/publish", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId: account.id, uploadId: selected, caption }),
+      body: JSON.stringify({
+        accountId: account.id,
+        uploadId: selected,
+        caption: String(form.get("caption") || ""),
+        locationId: String(form.get("locationId") || ""),
+        collaborators: String(form.get("collaborators") || ""),
+        post,
+        story,
+      }),
     });
     const j = await res.json().catch(() => ({}));
     setPublishing(false);
-    setMsg(res.ok ? "Instagramga joylandi ✅" : `Joylanmadi: ${j.error || "xato"}`);
+    setMsg(res.ok ? `Instagramga joylandi ✅ (${[post && "post", story && "story"].filter(Boolean).join(" + ")})` : `Joylanmadi: ${j.error || "xato"}`);
     if (res.ok) setSelected("");
     await loadUploads();
   }
@@ -530,10 +541,24 @@ export default function Dashboard() {
               className="glass mt-6 grid gap-3 rounded-2xl p-5"
               onSubmit={(e) => {
                 e.preventDefault();
-                publish(String(new FormData(e.currentTarget).get("caption") || ""));
+                publish(new FormData(e.currentTarget));
               }}
             >
+              <div className="flex flex-wrap gap-5 text-sm">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" name="post" defaultChecked /> Post / Reels (lentada)
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" name="story" /> Story (24 soat)
+                </label>
+              </div>
               <textarea name="caption" rows={4} placeholder="Post matni (caption), heshteglar" />
+              <input name="collaborators" placeholder="Hamkorlar (collab): username1, username2 — 3 tagacha" />
+              <input name="locationId" inputMode="numeric" placeholder="Lokatsiya: joyning Facebook sahifa ID si (ixtiyoriy)" />
+              <p className="text-xs text-[var(--muted)]">
+                Story&apos;ga matn, lokatsiya va hamkor qo&apos;shilmaydi — bu Instagram API cheklovi. Hamkorlar taklifni qabul
+                qilgach, post ularning profilida ham ko&apos;rinadi.
+              </p>
               <button className="btn btn-primary" disabled={!selected || publishing}>
                 {publishing ? "Joylanmoqda…" : `@${account.username} ga joylash`}
               </button>
