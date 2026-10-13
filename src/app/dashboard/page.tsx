@@ -80,6 +80,9 @@ type Media = {
   avgWatchSec: number;
 };
 
+// Facebook place page of Shahrisabz city — what Instagram's location_id expects
+const SHAHRISABZ_LOCATION_ID = "361740101103266";
+
 const tabs = [
   ["home", "Boshqaruv"],
   ["publish", "Joylash"],
@@ -554,7 +557,16 @@ export default function Dashboard() {
               </div>
               <textarea name="caption" rows={4} placeholder="Post matni (caption), heshteglar" />
               <input name="collaborators" placeholder="Hamkorlar (collab): username1, username2 — 3 tagacha" />
-              <input name="locationId" inputMode="numeric" placeholder="Lokatsiya: joyning Facebook sahifa ID si (ixtiyoriy)" />
+              <input
+                name="locationId"
+                inputMode="numeric"
+                defaultValue={SHAHRISABZ_LOCATION_ID}
+                placeholder="Lokatsiya: joyning Facebook sahifa ID si (bo'sh — lokatsiyasiz)"
+              />
+              <p className="text-xs text-[var(--muted)]">
+                Standart lokatsiya — Shahrisabz shahri ({SHAHRISABZ_LOCATION_ID}). Boshqa joy uchun instagram.com/explore/locations/
+                sahifasidagi uzun raqamli ID ni qo&apos;ying, kerak bo&apos;lmasa o&apos;chirib tashlang.
+              </p>
               <p className="text-xs text-[var(--muted)]">
                 Story&apos;ga matn, lokatsiya va hamkor qo&apos;shilmaydi — bu Instagram API cheklovi. Hamkorlar taklifni qabul
                 qilgach, post ularning profilida ham ko&apos;rinadi.

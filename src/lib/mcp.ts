@@ -20,7 +20,8 @@ const SUPPORTED_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const account = { type: "string", description: "Instagram username yoki id. Bitta akkaunt bo'lsa, shart emas." };
 const locationId = {
   type: "string",
-  description: "Lokatsiya: joyning Facebook sahifasi ID si (raqam). Foydalanuvchidan oling — Instagram Login API orqali joy qidirib bo'lmaydi.",
+  description:
+    "Lokatsiya: joyning Facebook sahifasi ID si (raqam). Shahrisabz shahri — 361740101103266. Boshqa joyni instagram.com/explore/locations/ dagi uzun raqamli ID dan oling (qisqa 9 xonalilar ishlamaydi).",
 };
 const collaborators = {
   type: "array",
