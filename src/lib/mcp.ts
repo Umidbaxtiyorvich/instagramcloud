@@ -2,7 +2,9 @@ import type { InstagramAccount } from "@prisma/client";
 import { prisma } from "./db";
 import { executeApprovedAction } from "./actions";
 import { freshToken, mediaWithInsights, safeInsights, syncIfStale } from "./ig-data";
-import { listUploads } from "./uploads";
+import { createUploadToken, listUploads, mediaUrl, saveBytes } from "./uploads";
+import { configuredUrl } from "./url";
+import { renderVideo, THEME_NAMES, type VideoSpec } from "./video";
 import { accountTotals, followerDemographics, listComments, listMedia, profile, type IgComment } from "./instagram";
 
 type Json = Record<string, unknown>;
@@ -119,6 +121,37 @@ export const MCP_TOOLS: Tool[] = [
     "instagram_upload_link",
     "Fayl yuklash havolasi",
     "Chatdagi video yoki rasmni Instagramga joylash uchun: bu vosita fayl yuklanadigan sahifa havolasini beradi. Foydalanuvchiga havolani bering, u faylni o'sha yerga yuklaydi, keyin instagram_list_uploads dan upload_id ni olib joylang. Chatga biriktirilgan faylni to'g'ridan-to'g'ri uzatib bo'lmaydi.",
+    {}
+  ),
+  tool(
+    "instagram_make_video",
+    "Video yasash",
+    `Vertikal (9:16) Reels videoni serverda yasaydi — ffmpeg yo'q joyda ham (masalan telefondagi Claude). Siz ssenariyni berasiz: slaydlar (sarlavha + ixtiyoriy izoh + soniya), mavzu rangi, tepadagi brend nomi va pastdagi doimiy qator (telefon). Natija — upload_id va ko'rish havolasi; keyin instagram_publish_reel / instagram_publish_story bilan joylang. Jami 3–60 s, 12 slaydgacha. Matnlar animatsiya bilan chiqadi; emoji chizilmaydi.`,
+    {
+      slides: {
+        type: "array",
+        description: "Ketma-ket slaydlar",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string", description: "Katta matn, ~40 belgigacha" },
+            subtitle: { type: "string", description: "Kichik izoh (ixtiyoriy)" },
+            seconds: { type: "number", description: "1.5–10, standart 3" },
+          },
+          required: ["title"],
+        },
+      },
+      theme: { type: "string", enum: THEME_NAMES, description: "Rang: sky (standart), ocean, red, sunset, dark, light" },
+      brand: { type: "string", description: "Tepada har slaydda turadigan nom, masalan «Oson Market POS»" },
+      footer: { type: "string", description: "Pastda doim turadigan qator, masalan telefon raqam" },
+    },
+    ["slides"],
+    WRITE
+  ),
+  tool(
+    "instagram_upload_url",
+    "To'g'ridan-to'g'ri yuklash havolasi",
+    "Shell'i bor AI uchun (Claude Code va h.k.): o'zingiz yasagan video yoki JPEG ni brauzersiz yuklash havolasi, 30 daqiqa amal qiladi. `curl -X POST --data-binary @video.mp4 -H \"Content-Type: video/mp4\" \"<upload_url>\"` — javobda upload_id keladi, keyin joylang.",
     {}
   ),
   tool(
@@ -659,6 +692,27 @@ async function readTool(userId: string, name: string, args: Json, base: string) 
         url: `${base}/dashboard?tab=publish`,
         say: "Shu havolani oching, video (MP4/MOV, 100 MB gacha) yoki JPEG rasmni yuklang va menga «yukladim» deb yozing.",
       };
+    case "instagram_make_video": {
+      const { bytes, seconds } = await renderVideo(args as unknown as VideoSpec);
+      const u = await saveBytes(userId, bytes, `claude-${Date.now()}.mp4`, "video/mp4");
+      return {
+        upload_id: u.id,
+        seconds,
+        size_mb: +(u.size / 1024 / 1024).toFixed(2),
+        preview_url: mediaUrl(u.publicToken, base),
+        next: "Joylash uchun instagram_publish_reel (upload_id) — story ham kerak bo'lsa avval instagram_publish_story.",
+      };
+    }
+    case "instagram_upload_url": {
+      const origin = configuredUrl() || base;
+      const url = `${origin}/api/uploads/direct?token=${await createUploadToken(userId)}`;
+      return {
+        upload_url: url,
+        expires_in_minutes: 30,
+        example: `curl -X POST --data-binary @video.mp4 -H "Content-Type: video/mp4" "${url}"`,
+        note: "Content-Type: video/mp4, video/quicktime yoki image/jpeg. Javobdagi upload_id bilan joylang.",
+      };
+    }
     case "instagram_list_uploads":
       return (await listUploads(userId)).map((u) => ({
         upload_id: u.id,
@@ -719,7 +773,8 @@ list_instagram_accounts dan boshlang. Har bir instagram_* vosita \`account\` (us
 STATISTIKA: instagram_analytics (obunachilar, 30 kun, demografiya — avval definitions ni o'qing), instagram_reels_report (Reels'lar medianaga solishtirib), instagram_list_media, instagram_media_insights.
 KOMMENTLAR: instagram_list_comments, instagram_unanswered_comments, instagram_reply_comment (ochiq), instagram_private_reply (Direct'ga), instagram_hide_comment / instagram_delete_comment (yashirishni afzal ko'ring).
 DIRECT: instagram_list_direct_messages (only_unanswered — odam javobi kerak bo'lganlar), instagram_send_dm (faqat 24 soat ichida).
-JOYLASH: chatga biriktirilgan faylni uzatib bo'lmaydi — instagram_upload_link havolasini foydalanuvchiga bering, u saytga yuklaydi; keyin instagram_list_uploads dan upload_id olib instagram_publish_reel (video), instagram_publish_photo (JPEG) yoki instagram_publish_story ni chaqiring. Story + post bitta fayldan bo'lsa — avval story, keyin post (post joylangach fayl o'chiriladi). Post va Reels'ga location_id (joyning Facebook sahifa ID si) va collaborators (3 tagacha username) qo'shish mumkin. Ochiq URL bo'lsa, to'g'ridan-to'g'ri video_url / image_url ham bo'ladi.
+VIDEO YASASH: instagram_make_video — ssenariy (slaydlar, rang, brend, telefon) bering, server 9:16 video yasaydi va upload_id qaytaradi; brauzer kerak emas. Shell'i bor AI o'zi yasagan faylni instagram_upload_url orqali curl bilan yuklaydi.
+JOYLASH: chatga biriktirilgan faylni uzatib bo'lmaydi — instagram_upload_link havolasini foydalanuvchiga bering, u saytga yuklaydi (yoki yuqoridagi ikki yo'l); keyin instagram_list_uploads dan upload_id olib instagram_publish_reel (video), instagram_publish_photo (JPEG) yoki instagram_publish_story ni chaqiring. Story + post bitta fayldan bo'lsa — avval story, keyin post (post joylangach fayl o'chiriladi). Post va Reels'ga location_id (joyning Facebook sahifa ID si) va collaborators (3 tagacha username) qo'shish mumkin. Ochiq URL bo'lsa, to'g'ridan-to'g'ri video_url / image_url ham bo'ladi.
 AVTO-JAVOBLAR: instagram_list_automations, instagram_save_comment_rule, instagram_save_dm_rule, instagram_configure_direct, instagram_delete_automation_rule, instagram_automation_report.
 Kalit so'zlar vergul bilan, harf katta-kichikligi farqsiz; "contains" qism mos kelishi, shuning uchun o'zak ("narx") barcha shakllarini ushlaydi. Javoblarni auditoriya tilida yozing (odatda o'zbekcha).
 

@@ -1,3 +1,4 @@
+import { SignJWT, jwtVerify } from "jose";
 import { prisma } from "./db";
 import { randomToken } from "./crypto";
 import { configuredUrl } from "./url";
@@ -31,24 +32,53 @@ async function cleanup() {
 }
 
 export async function saveUpload(userId: string, file: File) {
-  const kind = kindOf(file.type);
+  return saveBytes(userId, new Uint8Array(await file.arrayBuffer()), file.name, file.type);
+}
+
+export async function saveBytes(userId: string, bytes: Uint8Array, filename: string, mimeType: string) {
+  const kind = kindOf(mimeType);
   if (!kind) throw new Error("Faqat MP4/MOV video yoki JPEG rasm yuklash mumkin");
   const max = kind === "video" ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
-  if (file.size > max) throw new Error(`Fayl juda katta: ko'pi bilan ${Math.round(max / 1024 / 1024)} MB`);
+  if (!bytes.length) throw new Error("Fayl bo'sh");
+  if (bytes.length > max) throw new Error(`Fayl juda katta: ko'pi bilan ${Math.round(max / 1024 / 1024)} MB`);
   await cleanup();
   const row = await prisma.mediaUpload.create({
     data: {
       userId,
       publicToken: randomToken(24),
-      filename: file.name.slice(0, 200) || (kind === "video" ? "video.mp4" : "photo.jpg"),
-      mimeType: file.type,
-      size: file.size,
-      data: new Uint8Array(await file.arrayBuffer()),
+      filename: filename.slice(0, 200) || (kind === "video" ? "video.mp4" : "photo.jpg"),
+      mimeType,
+      size: bytes.length,
+      data: bytes,
       expiresAt: new Date(Date.now() + KEEP_MS),
     },
     select: { id: true, filename: true, mimeType: true, size: true, publicToken: true, createdAt: true },
   });
   return { ...row, kind };
+}
+
+// One-time-ish upload links for AI clients that have a shell but no browser session.
+const UPLOAD_LINK_MS = 30 * 60 * 1000;
+
+function uploadSecret() {
+  return new TextEncoder().encode(`${process.env.AUTH_SECRET || "dev-auth-secret-change-me-please"}:upload`);
+}
+
+export async function createUploadToken(userId: string) {
+  return new SignJWT({ sub: userId, purpose: "upload" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(new Date(Date.now() + UPLOAD_LINK_MS))
+    .sign(uploadSecret());
+}
+
+export async function userFromUploadToken(token: string) {
+  try {
+    const { payload } = await jwtVerify(token, uploadSecret());
+    return payload.purpose === "upload" && payload.sub ? String(payload.sub) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function listUploads(userId: string) {
