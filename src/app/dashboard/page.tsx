@@ -301,9 +301,9 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen md:grid md:grid-cols-[240px_1fr]">
-      <aside className="border-b border-[var(--line)] p-5 md:border-b-0 md:border-r">
+      <aside className="glass p-5 md:sticky md:top-0 md:h-screen md:rounded-none">
         <Link href="/" className="display text-xl">
-          instagram<span className="text-[var(--pink)]">cloud</span>
+          instagram<span className="gradient-text">cloud</span>
         </Link>
         <p className="mt-2 text-xs text-[var(--muted)]">{user.email}</p>
         <nav className="mt-6 grid gap-1">
@@ -311,8 +311,8 @@ export default function Dashboard() {
             <button
               key={id}
               onClick={() => setTab(id)}
-              className={`rounded-xl px-3 py-2 text-left text-sm ${
-                tab === id ? "bg-white/10" : "text-[var(--muted)] hover:bg-white/5"
+              className={`rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-all duration-200 ${
+                tab === id ? "bg-gradient-to-r from-sky-400 to-blue-600 text-white shadow-md shadow-blue-500/30" : "text-[var(--muted)] hover:bg-sky-500/10 hover:text-[var(--brand)]"
               }`}
             >
               {label}
@@ -337,7 +337,7 @@ export default function Dashboard() {
         {msg && <p className="mb-4 rounded-xl bg-[var(--mint)]/10 px-4 py-2 text-sm text-[var(--mint)]">{msg}</p>}
 
         {!account && tab === "home" && (
-          <section>
+          <section key={tab} className="rise">
             <h1 className="display text-4xl">Instagramni ulang</h1>
             <p className="mt-3 max-w-xl text-[var(--muted)]">
               Instagramga o&apos;tasiz, u yerda kirasiz va ruxsatni tasdiqlaysiz. Boshqa usul yo&apos;q.
@@ -351,7 +351,7 @@ export default function Dashboard() {
         )}
 
         {account && tab === "home" && (
-          <section>
+          <section key={tab} className="rise">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <h1 className="display text-4xl">@{account.username}</h1>
@@ -492,7 +492,7 @@ export default function Dashboard() {
         )}
 
         {account && tab === "publish" && (
-          <section>
+          <section key={tab} className="rise">
             <h1 className="display text-4xl">Video va rasm joylash</h1>
             <p className="mt-3 max-w-2xl text-[var(--muted)]">
               Faylni shu yerga yuklang — keyin o&apos;zingiz joylaysiz yoki Claude&apos;ga «yukladim, joyla» deysiz. Video:
@@ -579,7 +579,7 @@ export default function Dashboard() {
         )}
 
         {account && tab === "rules" && (
-          <section>
+          <section key={tab} className="rise">
             <h1 className="display text-4xl">Kalit so&apos;z qoidalari</h1>
             <form onSubmit={addRule} className="glass mt-6 grid gap-3 rounded-2xl p-5 md:grid-cols-2">
               <select name="type" defaultValue="comment">
@@ -621,7 +621,7 @@ export default function Dashboard() {
         )}
 
         {account && tab === "log" && (
-          <section>
+          <section key={tab} className="rise">
             <h1 className="display text-4xl">Xabarlar jurnali</h1>
             <div className="mt-6 space-y-2">
               {logs.map((l) => (
@@ -640,7 +640,7 @@ export default function Dashboard() {
         )}
 
         {account && tab === "analytics" && (
-          <section>
+          <section key={tab} className="rise">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <h1 className="display text-4xl">Postlar va Reels</h1>
               {!account.isDemo && (
@@ -686,7 +686,7 @@ export default function Dashboard() {
         )}
 
         {tab === "mcp" && (
-          <section>
+          <section key={tab} className="rise">
             <h1 className="display text-4xl">Claude&apos;ga ulash</h1>
             <p className="mt-3 max-w-2xl text-[var(--muted)]">
               Bitta manzil — Claude Instagramingizni ko&apos;radi va boshqaradi: statistika, kommentlar,
@@ -697,7 +697,7 @@ export default function Dashboard() {
             <div className="glass mt-6 space-y-3 rounded-2xl p-5">
               <p className="text-xs uppercase text-[var(--muted)]">Konnektor manzili (MCP URL)</p>
               <div className="flex gap-2">
-                <code className="block flex-1 break-all rounded-xl bg-black/30 p-3">{mcpUrl}</code>
+                <code className="block flex-1 break-all rounded-xl bg-[var(--ice)] p-3">{mcpUrl}</code>
                 <button className="btn btn-primary !px-4 !py-2 text-sm" onClick={() => copy(mcpUrl, "url")}>
                   {copied === "url" ? "Nusxalandi" : "Nusxa"}
                 </button>
@@ -725,13 +725,13 @@ export default function Dashboard() {
               <article className="glass rounded-2xl p-5 text-sm">
                 <h3 className="display text-2xl">Claude Code, Cursor, ChatGPT</h3>
                 <p className="mt-3 text-[var(--muted)]">Claude Code (brauzerda ruxsat so&apos;raydi):</p>
-                <pre className="mt-1 overflow-x-auto rounded-xl bg-black/30 p-3 text-xs">{`claude mcp add --transport http instagram-cloud ${mcpUrl}`}</pre>
+                <pre className="mt-1 overflow-x-auto rounded-xl bg-[var(--ice)] p-3 text-xs">{`claude mcp add --transport http instagram-cloud ${mcpUrl}`}</pre>
                 <p className="mt-3 text-[var(--muted)]">
                   ChatGPT: Settings → Apps &amp; Connectors → Developer mode → Create → shu URL, OAuth.
                 </p>
                 <p className="mt-3 text-[var(--muted)]">OAuth bo&apos;lmagan mijozlar uchun shaxsiy token:</p>
                 <div className="mt-1 flex gap-2">
-                  <code className="block flex-1 break-all rounded-xl bg-black/30 p-3 text-xs">{user.mcpToken}</code>
+                  <code className="block flex-1 break-all rounded-xl bg-[var(--ice)] p-3 text-xs">{user.mcpToken}</code>
                   <button className="btn btn-ghost !px-3 !py-1 text-xs" onClick={() => copy(user.mcpToken, "token")}>
                     {copied === "token" ? "✓" : "Nusxa"}
                   </button>
@@ -792,7 +792,7 @@ export default function Dashboard() {
               <h3 className="display text-2xl">Ulangan AI ilovalar</h3>
               <div className="mt-3 space-y-2">
                 {connections.map((c) => (
-                  <div key={c.clientId} className="flex items-center justify-between gap-3 rounded-xl bg-white/5 px-4 py-3 text-sm">
+                  <div key={c.clientId} className="flex items-center justify-between gap-3 rounded-xl bg-sky-500/5 px-4 py-3 text-sm">
                     <div>
                       <p>{c.name}</p>
                       <p className="text-xs text-[var(--muted)]">
@@ -820,7 +820,7 @@ export default function Dashboard() {
         )}
 
         {tab === "approvals" && (
-          <section>
+          <section key={tab} className="rise">
             <h1 className="display text-4xl">AI harakatlari</h1>
             <p className="mt-2 text-[var(--muted)]">
               {user.aiApproval === "dashboard"

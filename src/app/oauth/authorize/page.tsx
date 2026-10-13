@@ -36,7 +36,7 @@ export default async function AuthorizePage({
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-16">
       <Link href="/" className="display mb-8 text-2xl">
-        instagram<span className="text-[var(--pink)]">cloud</span>
+        instagram<span className="gradient-text">cloud</span>
       </Link>
       <h1 className="display text-4xl">{v.client.name} ulanmoqchi</h1>
       <p className="mt-4 text-[var(--muted)]">

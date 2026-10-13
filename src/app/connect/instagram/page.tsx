@@ -52,9 +52,9 @@ export default function ConnectInstagramPage() {
   if (!ready) return <p className="p-10 text-[var(--muted)]">Yuklanmoqda…</p>;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-lg flex-col justify-center px-6 py-16">
+    <main className="rise mx-auto flex min-h-screen max-w-lg flex-col justify-center px-6 py-16">
       <Link href="/" className="display mb-8 text-2xl">
-        instagram<span className="text-[var(--pink)]">cloud</span>
+        instagram<span className="gradient-text">cloud</span>
       </Link>
       <h1 className="display text-4xl">Instagramni ulash</h1>
       <p className="mt-4 text-[var(--muted)]">
@@ -73,11 +73,11 @@ export default function ConnectInstagramPage() {
             Haqiqiy Instagramni ulash uchun developers.facebook.com da ilova yarating (Instagram API with
             Instagram Login), `.env` ga `INSTAGRAM_APP_ID` va `INSTAGRAM_APP_SECRET` ni yozing. Redirect URL:
           </p>
-          <code className="mt-2 block break-all rounded-xl bg-black/30 p-3 text-xs">
+          <code className="mt-2 block break-all rounded-xl bg-[var(--ice)] p-3 text-xs">
             {origin}/api/instagram/callback
           </code>
           <p className="mt-3">Webhook URL (komment va Direct avto-javoblari uchun):</p>
-          <code className="mt-2 block break-all rounded-xl bg-black/30 p-3 text-xs">
+          <code className="mt-2 block break-all rounded-xl bg-[var(--ice)] p-3 text-xs">
             {origin}/api/webhooks/instagram
           </code>
         </div>

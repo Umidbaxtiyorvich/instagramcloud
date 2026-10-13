@@ -35,10 +35,10 @@ export default function LoginPage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
       <Link href="/" className="display mb-8 text-2xl">
-        instagram<span className="text-[var(--pink)]">cloud</span>
+        instagram<span className="gradient-text">cloud</span>
       </Link>
       <h1 className="display text-4xl">Kirish</h1>
-      <form onSubmit={onSubmit} className="mt-8 space-y-4">
+      <form onSubmit={onSubmit} className="glass rise mt-8 space-y-4 rounded-3xl p-7">
         <input name="email" type="email" required placeholder="Email" />
         <input name="password" type="password" required placeholder="Parol" />
         {error && <p className="text-sm text-[var(--pink)]">{error}</p>}

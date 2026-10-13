@@ -8,7 +8,7 @@ export default function PrivacyPage() {
   return (
     <main className="mx-auto max-w-2xl px-6 py-16 text-[var(--muted)]">
       <Link href="/" className="display text-2xl text-[var(--fg)]">
-        instagram<span className="text-[var(--pink)]">cloud</span>
+        instagram<span className="gradient-text">cloud</span>
       </Link>
       <h1 className="display mt-8 text-4xl text-[var(--fg)]">Maxfiylik siyosati</h1>
 
