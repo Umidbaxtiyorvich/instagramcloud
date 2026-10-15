@@ -117,7 +117,7 @@ export async function botTolovlar(): Promise<BotTolov[]> {
     if (r.summa && r.sanaAniq && !birinchi.has(kalit)) birinchi.set(kalit, r);
     natija.push(r);
   }
-  return natija;
+  return natija.sort((a, b) => b.sana - a.sana || b.xabarSana - a.xabarSana);
 }
 
 export async function botQarzlar() {

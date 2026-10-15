@@ -35,8 +35,8 @@ const TOLOV_HOLAT: Record<TolovHolat, [string, string]> = {
   future: ["🔮", "sana kelajakda — tekshiring"],
   oqilmoqda: ["⏳", "bot hali o'qimadi"],
 };
-const kun = (ts: number) =>
-  new Date(ts * 1000).toLocaleDateString("uz-UZ", { timeZone: "Asia/Tashkent", day: "2-digit", month: "2-digit", year: "numeric" });
+// Toshkent vaqti bo'yicha kk.oo.yyyy
+const kun = (ts: number) => new Date((ts + 5 * 3600) * 1000).toISOString().slice(0, 10).split("-").reverse().join(".");
 
 type Javob = {
   ruxsat?: boolean;
