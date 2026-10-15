@@ -23,6 +23,39 @@ model User {
   uploads     MediaUpload[]
   oauthCodes  OAuthCode[]
   oauthTokens OAuthToken[]
+  mcpServers  McpServer[]
+}
+
+// AI Ofis agentlari ishlatadigan tashqi MCP serverlar (Notion, Linear, GitHub ...).
+// auth: "none" | "token" (foydalanuvchi bergan API token) | "oauth" (server bilan OAuth 2.1 + PKCE)
+model McpServer {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  url             String
+  auth            String    @default("none")
+  enabled         Boolean   @default(true)
+  // false: agentlar faqat readOnlyHint=true vositalarni ishlatadi (yozish tasdiqsiz ketmasin)
+  allowWrites     Boolean   @default(false)
+  // [{ name, description, readOnly }] — oxirgi tekshiruvdagi tools/list
+  toolsJson       String?
+  checkedAt       DateTime?
+  lastError       String?
+  accessTokenEnc  String?
+  refreshTokenEnc String?
+  tokenExpiresAt  DateTime?
+  // OAuth: dinamik ro'yxatdan o'tgan mijoz va server manzillari
+  oauthClientId   String?
+  oauthClientSecretEnc String?
+  oauthTokenUrl   String?
+  oauthAuthUrl    String?
+  oauthScope      String?
+  oauthVerifierEnc String?
+  oauthState      String?   @unique
+  createdAt       DateTime  @default(now())
+
+  @@unique([userId, name])
 }
 
 model InstagramAccount {

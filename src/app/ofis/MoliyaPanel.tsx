@@ -12,7 +12,30 @@ type Pul = { id: string; sana: number; tur: "kirim" | "chiqim"; summa: number; r
 type Hujjat = { id: string; sana: number; tur: string; turNomi: string; summa: number; raqam: string; kontragent: string; izoh: string; tovarSoni: number };
 type Tovar = { id: string; nom: string; birlik: string; narx: number; tannarx: number; qoldiq: number; qiymat: number; sku: string };
 type Qarzdor = { id: string; nom: string; telefon: string; qarz: number };
-type Tolov = { id: string; sana: string; guruh: string; yubordi: string; tolovchi: string; matn: string; holat: string; summa: number; izoh: string };
+type TolovHolat = "done" | "exists" | "new" | "old" | "future" | "oqilmoqda";
+type Tolov = {
+  id: string;
+  sana: number;
+  sanaAniq: boolean;
+  xabarSana: number;
+  guruh: string;
+  yubordi: string;
+  tolovchi: string;
+  matn: string;
+  holat: TolovHolat;
+  summa: number;
+  izoh: string;
+};
+const TOLOV_HOLAT: Record<TolovHolat, [string, string]> = {
+  done: ["✅", "CloudShop'ga kiritildi"],
+  exists: ["☑️", "CloudShop'da oldindan bor"],
+  new: ["🆕", "tasdiq kutmoqda"],
+  old: ["⚠️", "eski sana — tekshiring"],
+  future: ["🔮", "sana kelajakda — tekshiring"],
+  oqilmoqda: ["⏳", "bot hali o'qimadi"],
+};
+const kun = (ts: number) =>
+  new Date(ts * 1000).toLocaleDateString("uz-UZ", { timeZone: "Asia/Tashkent", day: "2-digit", month: "2-digit", year: "numeric" });
 
 type Javob = {
   ruxsat?: boolean;
@@ -28,6 +51,7 @@ type Javob = {
     jamiQiymat?: number;
     tugagan?: number;
     jami?: number;
+    kiritildi?: number;
     kutmoqda?: number;
   };
 };
@@ -159,9 +183,10 @@ export default function MoliyaPanel({ yop, kirgan }: { yop: () => void; kirgan: 
             )}
             {bolim === "tolovlar" && (
               <>
-                <Kart nom="Cheklar" qiymat={String(d.rows.length)} />
+                <Kart nom="To'lovlar" qiymat={String(d.rows.length)} />
                 <Kart nom="Jami summa" qiymat={pul(d.jami ?? 0)} rang="#3dff9a" />
-                <Kart nom="Kutmoqda" qiymat={String(d.kutmoqda ?? 0)} rang="#ffb45a" />
+                <Kart nom="CloudShop'ga kiritilgan" qiymat={pul(d.kiritildi ?? 0)} />
+                <Kart nom="Tekshiruv kutmoqda" qiymat={String(d.kutmoqda ?? 0)} rang="#ffb45a" />
               </>
             )}
           </div>
@@ -245,14 +270,18 @@ export default function MoliyaPanel({ yop, kirgan }: { yop: () => void; kirgan: 
             {bolim === "tolovlar" &&
               (d.rows as Tolov[]).slice(0, 300).map((r) => (
                 <div key={r.id} className="o_qator">
-                  <span className="o_qSana">{vaqt(Date.parse(r.sana) / 1000)}</span>
+                  <span className="o_qSana" title={`Xabar: ${vaqt(r.xabarSana)}`}>
+                    {r.holat === "oqilmoqda" ? vaqt(r.sana) : kun(r.sana)}
+                    {!r.sanaAniq && r.holat !== "oqilmoqda" && <small> (sana o&apos;qilmagan)</small>}
+                  </span>
                   <span className="o_qKirim">{r.summa ? pul(r.summa) : "—"}</span>
                   <span className="o_qMatn">
-                    {r.holat === "pending" ? "⏳ " : "✅ "}
+                    <span title={TOLOV_HOLAT[r.holat][1]}>{TOLOV_HOLAT[r.holat][0]} </span>
                     <b>{r.tolovchi || r.yubordi || "Noma'lum"}</b>
+                    <small> · {TOLOV_HOLAT[r.holat][1]}</small>
                     {r.guruh && <small> · {r.guruh}</small>}
+                    <small> · xabar {vaqt(r.xabarSana)}</small>
                     {r.matn && <small> · «{r.matn}»</small>}
-                    {r.izoh && <small> · {r.izoh}</small>}
                   </span>
                 </div>
               ))}

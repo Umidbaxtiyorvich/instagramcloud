@@ -6,16 +6,30 @@ export function botSozlangan() {
   return Boolean(process.env.TOLOV_BOT_URL && process.env.TOLOV_BOT_API_KEY);
 }
 
+// Bitta to'lov = xabardagi bitta to'lov qatori. Bot daftar rasmidagi hamma qatorlarni o'qiydi,
+// lekin faqat oxirgisi yangi to'lov — qolganlari "history" (oldin yozilgan) va hisobga kirmaydi.
+export type TolovHolat =
+  | "done" // CloudShop'ga kiritildi
+  | "exists" // CloudShop'da oldindan bor edi
+  | "new" // admin tasdig'ini kutmoqda
+  | "old" // CloudShop'dagi oxirgi to'lovdan eski sana — tekshirish kerak
+  | "future" // sana kelajakda — xato yozilgan bo'lishi mumkin
+  | "oqilmoqda"; // bot hali o'qimagan
+
+export const KUTMOQDA: ReadonlySet<TolovHolat> = new Set(["new", "old", "future", "oqilmoqda"]);
+
 export type BotTolov = {
   id: string;
-  sana: string; // ISO
+  xabarId: string;
+  sana: number; // to'lov sanasi (unix, s); o'qilmagan bo'lsa — xabar vaqti
+  sanaAniq: boolean;
+  xabarSana: number; // xabar guruhga tashlangan vaqt
   guruh: string;
   yubordi: string;
   tolovchi: string;
   matn: string;
-  holat: string; // pending | done | ...
+  holat: TolovHolat;
   summa: number;
-  qatorlar: { sana: number; summa: number; holat: string }[];
   izoh: string;
   rasm: boolean;
 };
@@ -41,34 +55,51 @@ type Xom = {
   status: string;
   note?: string;
   has_photo?: boolean;
-  ai?: { payer_name?: string; note?: string; entries?: { ts?: number; amount?: number; state?: string }[] };
-  entries?: { ts?: number; amount?: number; state?: string }[];
+  ai?: { payer_name?: string; note?: string } | null;
+  entries?: { ts?: number; date_ok?: boolean; amount?: number; state?: string }[];
 };
+
+const TOLOV_HOLATLARI = new Set(["done", "exists", "new", "old", "future"]);
 
 export async function botTolovlar(): Promise<BotTolov[]> {
   const rows = await bot<Xom[]>("/items");
-  return rows
-    .map((m) => {
-      const qatorlar = (m.entries ?? m.ai?.entries ?? []).map((e) => ({
-        sana: Number(e.ts) || 0,
-        summa: Math.round(Number(e.amount) || 0),
-        holat: String(e.state ?? ""),
-      }));
-      return {
-        id: m.id,
-        sana: m.date,
-        guruh: m.chat_title ?? "",
-        yubordi: m.full_name ?? (m.username ? `@${m.username}` : ""),
-        tolovchi: m.ai?.payer_name ?? "",
-        matn: (m.text ?? "").slice(0, 200),
-        holat: m.status,
-        summa: qatorlar.reduce((s, q) => s + q.summa, 0),
-        qatorlar,
-        izoh: (m.note || m.ai?.note || "").slice(0, 200),
-        rasm: Boolean(m.has_photo),
-      };
-    })
-    .sort((a, b) => (a.sana < b.sana ? 1 : -1));
+  const out: BotTolov[] = [];
+  for (const m of rows) {
+    const xabarSana = Math.floor(Date.parse(m.date) / 1000) || 0;
+    const umumiy = {
+      xabarId: m.id,
+      xabarSana,
+      guruh: m.chat_title ?? "",
+      yubordi: m.full_name ?? (m.username ? `@${m.username}` : ""),
+      tolovchi: m.ai?.payer_name ?? "",
+      matn: (m.text ?? "").slice(0, 200),
+      izoh: (m.note || m.ai?.note || "").slice(0, 200),
+      rasm: Boolean(m.has_photo),
+    };
+    const entries = m.entries ?? [];
+    // bot hali o'qimagan xabar — summasiz, "o'qilmoqda"
+    if (m.status === "pending" && !m.ai && !entries.length) {
+      out.push({ ...umumiy, id: m.id, sana: xabarSana, sanaAniq: false, holat: "oqilmoqda", summa: 0 });
+      continue;
+    }
+    entries.forEach((e, k) => {
+      // "history" — daftardagi eski yozuvlar, "skipped" — admin o'tkazib yuborgan yoki to'lov emas
+      if (!TOLOV_HOLATLARI.has(String(e.state))) return;
+      // xabar butunlay o'tkazilgan ("to'lov emas") bo'lsa, faqat CloudShop'ga tushganlari to'lov
+      if (m.status === "skipped" && e.state !== "done" && e.state !== "exists") return;
+      const summa = Math.round(Number(e.amount) || 0);
+      if (summa <= 0) return;
+      out.push({
+        ...umumiy,
+        id: `${m.id}:${k}`,
+        sana: Number(e.ts) || xabarSana,
+        sanaAniq: e.date_ok !== false,
+        holat: e.state as TolovHolat,
+        summa,
+      });
+    });
+  }
+  return out.sort((a, b) => b.sana - a.sana || b.xabarSana - a.xabarSana);
 }
 
 export async function botQarzlar() {

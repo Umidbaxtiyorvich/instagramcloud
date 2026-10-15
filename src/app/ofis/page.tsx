@@ -7,6 +7,7 @@ import dynamic from "next/dynamic";
 
 // WebGL sahna faqat brauzerda yuklanadi
 import MoliyaPanel, { pul } from "./MoliyaPanel";
+import UlanishPanel from "./UlanishPanel";
 
 const Sahna3D = dynamic(() => import("./Sahna3D"), {
   ssr: false,
@@ -63,7 +64,7 @@ type IgLog = { kind: string; direction: string; username: string | null; text: s
 
 type Eslatma = { id: string; matn: string; jamoa: JamoaId; vaqt: number };
 type Ofis = { agentlar: Agent[]; vazifalar: Vazifa[]; xabarlar: Xabar[]; eslatmalar: Eslatma[] };
-type Tab = "ofis" | "vazifalar" | "miya" | "moliya";
+type Tab = "ofis" | "vazifalar" | "miya" | "moliya" | "ulanishlar";
 
 const KALIT = "ai-ofis-v1";
 const BOSH_OFIS: Ofis = { agentlar: BOSHLANGICH_AGENTLAR, vazifalar: [], xabarlar: [], eslatmalar: [] };
@@ -131,6 +132,18 @@ export default function OfisSahifa() {
   const [ofis, setOfis] = useState<Ofis>(BOSH_OFIS);
   const [yuklandi, setYuklandi] = useState(false);
   const [tab, setTab] = useState<Tab>("ofis");
+  // MCP OAuth'dan qaytganda (?ulanish=...) — Ulanishlar oynasi natija bilan ochiladi
+  const [ulanishXabar, setUlanishXabar] = useState<string | null>(null);
+  useEffect(() => {
+    const x = new URLSearchParams(window.location.search).get("ulanish");
+    if (!x) return;
+    const t = setTimeout(() => {
+      setUlanishXabar(x);
+      setTab("ulanishlar");
+      window.history.replaceState(null, "", "/ofis");
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
   const [jamoa, setJamoa] = useState<JamoaId | null>(null);
   const [chatAgent, setChatAgent] = useState<string | null>(null);
   const [buyruq, setBuyruq] = useState("");
@@ -260,7 +273,8 @@ export default function OfisSahifa() {
     if (!foydalanuvchi) return;
     const tekshir = async () => {
       try {
-        const d = (await (await fetch("/api/ofis/moliya?bolim=tolovlar&davr=bugun")).json()) as {
+        // davr to'lov sanasi bo'yicha: bugun kelgan chekdagi to'lov kechagi bo'lishi mumkin
+        const d = (await (await fetch("/api/ofis/moliya?bolim=tolovlar&davr=oy")).json()) as {
           ruxsat?: boolean;
           holat?: { cloudshop: boolean; bot: boolean };
           data?: { rows: { id: string; summa: number; tolovchi: string; yubordi: string; guruh: string }[] };
@@ -592,6 +606,7 @@ export default function OfisSahifa() {
               ["ofis", "Ofis"],
               ["vazifalar", `Vazifalar ${ofis.vazifalar.length || ""}${tashqiTasdiqlar.length ? ` · ✋${tashqiTasdiqlar.length}` : ""}`],
               ["moliya", "💰 Moliya"],
+              ["ulanishlar", "🔌 Ulanishlar"],
               ["miya", "Miya"],
             ] as [Tab, string][]
           ).map(([k, nom]) => (
@@ -824,6 +839,18 @@ export default function OfisSahifa() {
 
       {/* ---------- moliya (CloudShop + Telegram bot) ---------- */}
       {tab === "moliya" && <MoliyaPanel yop={() => setTab("ofis")} kirgan={!!foydalanuvchi} />}
+
+      {/* ---------- ulanishlar (MCP) ---------- */}
+      {tab === "ulanishlar" && (
+        <UlanishPanel
+          yop={() => {
+            setUlanishXabar(null);
+            setTab("ofis");
+          }}
+          kirgan={!!foydalanuvchi}
+          xabar={ulanishXabar}
+        />
+      )}
 
       {/* ---------- miya ---------- */}
       {tab === "miya" && (

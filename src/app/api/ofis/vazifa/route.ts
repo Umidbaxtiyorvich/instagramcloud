@@ -6,6 +6,7 @@ import { getSessionUser } from "@/lib/auth";
 import { JAMOALAR, lokalTaqsimot, type JamoaId, type Taqsimot } from "@/lib/ofis";
 import { MOLIYA_NOMLARI, MOLIYA_VOSITALAR, lokalMoliya, moliyaHolati, moliyaRuxsat, moliyaVosita, type Davr } from "@/lib/ofis-moliya";
 import { IG_VOSITALAR, amalNomi, igAkkaunt, igVosita, lokalInstagram, yangiTasdiqlar } from "@/lib/ofis-instagram";
+import { agentMcp, type McpSorov } from "@/lib/mcp-ulanish";
 
 const JAMOA_IDLAR = JAMOALAR.map((j) => j.id) as [JamoaId, ...JamoaId[]];
 
@@ -150,12 +151,17 @@ export async function POST(req: Request) {
   }
 
   const akk = await igAkkaunt(user.id);
+  const mcp = await agentMcp(user.id).catch((e: Error): McpSorov => {
+    console.error("ofis: MCP ulanishlari", e.message);
+    return { servers: [], toolsets: [], nomlar: {}, tavsif: "" };
+  });
   const kontekst = [
     akk ? `Ulangan Instagram: @${akk.username}${akk.isDemo ? " (demo)" : ""}, ${akk.followersCount} obunachi.` : "Instagram ulanmagan — instagram_* vositalari ishlamaydi.",
     `Mavjud agentlar:\n${agentlar.map((a) => `- id=${a.id} | ${a.ism} | ${a.rol} | jamoa=${a.jamoa} | ${a.konikmalar.join(", ")}`).join("\n")}`,
     jamoa ? `Foydalanuvchi ${jamoa} jamoasi xonasida turibdi.` : "",
     agentId ? `Foydalanuvchi to'g'ridan-to'g'ri agentId=${agentId} bilan gaplashyapti — shu agentni tanlang.` : "",
     tarix?.length ? `Oldingi suhbat:\n${tarix.map((x) => `${x.kimdan === "men" ? "Foydalanuvchi" : "Agent"}: ${x.matn}`).join("\n")}` : "",
+    mcp.tavsif,
     `Yangi vazifa: ${matn}`,
   ]
     .filter(Boolean)
@@ -170,90 +176,109 @@ export async function POST(req: Request) {
   }));
 
   const boshlandi = new Date();
-  const amallar: string[] = [];
-  const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: kontekst }];
+  let amallar: string[] = [];
+  let messages: Anthropic.Beta.BetaMessageParam[] = [];
 
-  try {
-    for (let qadam = 0; qadam < 8; qadam++) {
-      const res = await client.beta.messages.parse({
-        model: "claude-opus-5-5",
-        max_tokens: 16000,
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
-        output_config: { effort: "medium", format: betaZodOutputFormat(Javob) },
-        system: [{ type: "text", text: TIZIM, cache_control: { type: "ephemeral" } }],
-        tools: vositalar.length ? vositalar : undefined,
-        messages,
-      });
-
-      if (res.stop_reason === "tool_use" || res.stop_reason === "pause_turn") {
-        // javobni o'zgartirmasdan tarixga qo'shamiz (parse qo'shgan maydonlarsiz)
-        messages.push({
-          role: "assistant",
-          content: res.content.map((b) =>
-            b.type === "text" ? { type: "text" as const, text: b.text } : (b as Anthropic.Beta.BetaContentBlockParam),
-          ),
+  // MCP serveri ishlamasa (o'chgan, token eskirgan) — vazifa ulanishlarsiz qayta bajariladi
+  let mcpBilan = mcp.servers.length > 0;
+  for (let urinish = 0; urinish < 2; urinish++) {
+    amallar = [];
+    messages = [{ role: "user", content: kontekst }];
+    const tools: Anthropic.Beta.BetaToolUnion[] = [...vositalar, ...(mcpBilan ? mcp.toolsets : [])];
+    try {
+      for (let qadam = 0; qadam < 8; qadam++) {
+        const res = await client.beta.messages.parse({
+          model: "claude-opus-5-5",
+          max_tokens: 16000,
+          betas: ["server-side-fallback-2026-07-01", ...(mcpBilan ? (["mcp-client-2025-11-20"] as const) : [])],
+          fallbacks: "default",
+          output_config: { effort: "medium", format: betaZodOutputFormat(Javob) },
+          system: [{ type: "text", text: TIZIM, cache_control: { type: "ephemeral" } }],
+          tools: tools.length ? tools : undefined,
+          ...(mcpBilan ? { mcp_servers: mcp.servers } : {}),
+          messages,
         });
-        if (res.stop_reason === "pause_turn") continue;
-        const natijalar: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+
+        // tashqi ulanishlar Anthropic tomonida chaqiriladi — faqat qaydga olamiz
         for (const b of res.content) {
-          if (b.type !== "tool_use") continue;
-          try {
-            const kirish = (b.input ?? {}) as Record<string, unknown>;
-            if (b.name.startsWith("moliya_")) {
-              if (!moliyaBor) throw new Error("Moliya ma'lumotiga ruxsat yo'q");
-              const matnNatija = await moliyaVosita(b.name, { davr: kirish.davr as Davr | undefined, qidiruv: kirish.qidiruv as string | undefined });
-              amallar.push(MOLIYA_NOMLARI[b.name] ?? b.name);
-              natijalar.push({ type: "tool_result", tool_use_id: b.id, content: matnNatija.slice(0, 20000) });
-              continue;
-            }
-            const matnNatija = await igVosita(user.id, b.name, kirish);
-            if (!b.name.startsWith("list_") && !NOMLAR_OQISH.has(b.name)) {
-              amallar.push(`Tasdiqqa qo'yildi: ${b.name.replace("instagram_", "")}`);
-            } else {
-              amallar.push(amalNomi(b.name));
-            }
-            natijalar.push({ type: "tool_result", tool_use_id: b.id, content: matnNatija.slice(0, 20000) });
-          } catch (e) {
-            natijalar.push({
-              type: "tool_result",
-              tool_use_id: b.id,
-              content: e instanceof Error ? e.message : "Xato",
-              is_error: true,
-            });
-          }
+          if (b.type === "mcp_tool_use") amallar.push(`${mcp.nomlar[b.server_name] ?? b.server_name}: ${b.name}`);
         }
-        messages.push({ role: "user", content: natijalar });
+
+        if (res.stop_reason === "tool_use" || res.stop_reason === "pause_turn") {
+          // javobni o'zgartirmasdan tarixga qo'shamiz (parse qo'shgan maydonlarsiz)
+          messages.push({
+            role: "assistant",
+            content: res.content.map((b) =>
+              b.type === "text" ? { type: "text" as const, text: b.text } : (b as Anthropic.Beta.BetaContentBlockParam),
+            ),
+          });
+          if (res.stop_reason === "pause_turn") continue;
+          const natijalar: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+          for (const b of res.content) {
+            if (b.type !== "tool_use") continue;
+            try {
+              const kirish = (b.input ?? {}) as Record<string, unknown>;
+              if (b.name.startsWith("moliya_")) {
+                if (!moliyaBor) throw new Error("Moliya ma'lumotiga ruxsat yo'q");
+                const matnNatija = await moliyaVosita(b.name, { davr: kirish.davr as Davr | undefined, qidiruv: kirish.qidiruv as string | undefined });
+                amallar.push(MOLIYA_NOMLARI[b.name] ?? b.name);
+                natijalar.push({ type: "tool_result", tool_use_id: b.id, content: matnNatija.slice(0, 20000) });
+                continue;
+              }
+              const matnNatija = await igVosita(user.id, b.name, kirish);
+              if (!b.name.startsWith("list_") && !NOMLAR_OQISH.has(b.name)) {
+                amallar.push(`Tasdiqqa qo'yildi: ${b.name.replace("instagram_", "")}`);
+              } else {
+                amallar.push(amalNomi(b.name));
+              }
+              natijalar.push({ type: "tool_result", tool_use_id: b.id, content: matnNatija.slice(0, 20000) });
+            } catch (e) {
+              natijalar.push({
+                type: "tool_result",
+                tool_use_id: b.id,
+                content: e instanceof Error ? e.message : "Xato",
+                is_error: true,
+              });
+            }
+          }
+          messages.push({ role: "user", content: natijalar });
+          continue;
+        }
+
+        if (res.stop_reason === "refusal" || !res.parsed_output) {
+          return NextResponse.json({ taqsimot: await lokal() });
+        }
+        const p = res.parsed_output;
+        const tasdiqlar = await yangiTasdiqlar(user.id, boshlandi);
+        const borAgent = p.agentId && agentlar.some((a) => a.id === p.agentId) ? p.agentId : null;
+        const taqsimot: Taqsimot = {
+          ...p,
+          tasdiqKerak: p.tasdiqKerak || tasdiqlar.length > 0,
+          agentId: borAgent,
+          yangiAgent: borAgent ? null : p.yangiAgent ?? (await lokal()).yangiAgent,
+          manba: "claude",
+          instagram: amallar.length || tasdiqlar.length ? { amallar, tasdiqlar } : undefined,
+        };
+        return NextResponse.json({ taqsimot });
+      }
+      return NextResponse.json({ taqsimot: await lokal(), eslatma: "Vazifa juda uzun bo'lib ketdi, lokal rejim" });
+    } catch (e) {
+      if (mcpBilan && e instanceof Anthropic.BadRequestError) {
+        console.error("ofis: MCP ulanishi bilan xato, ulanishlarsiz qayta urinish", e.message);
+        mcpBilan = false;
         continue;
       }
-
-      if (res.stop_reason === "refusal" || !res.parsed_output) {
-        return NextResponse.json({ taqsimot: await lokal() });
+      if (e instanceof Anthropic.AuthenticationError) {
+        console.error("ofis: Claude kaliti noto'g'ri");
+      } else if (e instanceof Anthropic.RateLimitError) {
+        console.error("ofis: Claude limiti tugadi");
+      } else if (e instanceof Anthropic.APIError) {
+        console.error(`ofis: Claude xatosi ${e.status}`, e.message);
+      } else {
+        console.error("ofis:", e);
       }
-      const p = res.parsed_output;
-      const tasdiqlar = await yangiTasdiqlar(user.id, boshlandi);
-      const borAgent = p.agentId && agentlar.some((a) => a.id === p.agentId) ? p.agentId : null;
-      const taqsimot: Taqsimot = {
-        ...p,
-        tasdiqKerak: p.tasdiqKerak || tasdiqlar.length > 0,
-        agentId: borAgent,
-        yangiAgent: borAgent ? null : p.yangiAgent ?? (await lokal()).yangiAgent,
-        manba: "claude",
-        instagram: amallar.length || tasdiqlar.length ? { amallar, tasdiqlar } : undefined,
-      };
-      return NextResponse.json({ taqsimot });
+      return NextResponse.json({ taqsimot: await lokal(), eslatma: "Claude javob bermadi, lokal rejim" });
     }
-    return NextResponse.json({ taqsimot: await lokal(), eslatma: "Vazifa juda uzun bo'lib ketdi, lokal rejim" });
-  } catch (e) {
-    if (e instanceof Anthropic.AuthenticationError) {
-      console.error("ofis: Claude kaliti noto'g'ri");
-    } else if (e instanceof Anthropic.RateLimitError) {
-      console.error("ofis: Claude limiti tugadi");
-    } else if (e instanceof Anthropic.APIError) {
-      console.error(`ofis: Claude xatosi ${e.status}`, e.message);
-    } else {
-      console.error("ofis:", e);
-    }
-    return NextResponse.json({ taqsimot: await lokal(), eslatma: "Claude javob bermadi, lokal rejim" });
   }
+  return NextResponse.json({ taqsimot: await lokal(), eslatma: "Claude javob bermadi, lokal rejim" });
 }

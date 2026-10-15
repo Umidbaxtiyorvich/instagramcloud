@@ -1,7 +1,7 @@
 // AI Ofis "Moliya" jamoasi: CloudShop (kassa, tovarlar, hujjatlar, qarzlar)
 // va Telegram to'lov boti cheklari. Hammasi faqat o'qish.
 import { cloudshopSozlangan, hujjatlar, kassa, qarzlar, tovarlar } from "./cloudshop";
-import { botQarzlar, botSozlangan, botTolovlar } from "./tolov-bot";
+import { KUTMOQDA, botQarzlar, botSozlangan, botTolovlar, type TolovHolat } from "./tolov-bot";
 
 const KUN = 86400;
 const TZ = 5 * 3600;
@@ -58,13 +58,26 @@ export async function qarzXulosa() {
   return { rows, jami: rows.reduce((s, r) => s + r.qarz, 0) };
 }
 
+// Davr to'lov sanasi bo'yicha (daftardagi sana), xabar tashlangan vaqt bo'yicha emas
 export async function tolovXulosa(dan: number, gacha: number) {
-  const rows = (await botTolovlar()).filter((r) => {
-    const t = Date.parse(r.sana) / 1000;
-    return t >= dan && t <= gacha;
-  });
-  return { rows, kutmoqda: rows.filter((r) => r.holat === "pending").length, jami: rows.reduce((s, r) => s + r.summa, 0) };
+  const rows = (await botTolovlar()).filter((r) => r.sana >= dan && r.sana <= gacha);
+  const kiritildi = rows.filter((r) => r.holat === "done" || r.holat === "exists");
+  return {
+    rows,
+    jami: rows.reduce((s, r) => s + r.summa, 0),
+    kiritildi: kiritildi.reduce((s, r) => s + r.summa, 0),
+    kutmoqda: rows.filter((r) => KUTMOQDA.has(r.holat)).length,
+  };
 }
+
+export const TOLOV_HOLAT_NOMI: Record<TolovHolat, string> = {
+  done: "✅ CloudShop'ga kiritildi",
+  exists: "☑️ CloudShop'da oldindan bor",
+  new: "🆕 tasdiq kutmoqda",
+  old: "⚠️ eski sana — tekshirish kerak",
+  future: "🔮 sana kelajakda — tekshirish kerak",
+  oqilmoqda: "⏳ bot hali o'qimadi",
+};
 
 // ---------- agentlar uchun matnli hisobotlar ----------
 export async function moliyaVosita(nom: string, args: { davr?: Davr; qidiruv?: string }) {
@@ -106,10 +119,14 @@ export async function moliyaVosita(nom: string, args: { davr?: Davr; qidiruv?: s
   if (nom === "moliya_tolovlar") {
     const d = await tolovXulosa(dan, gacha);
     return (
-      `📲 Telegram botga kelgan to'lov cheklari (${davrNomi}): ${d.rows.length} ta, jami ${pul(d.jami)}, tekshiruv kutmoqda: ${d.kutmoqda}.\n` +
+      `📲 Telegram bot orqali kelgan to'lovlar (${davrNomi}, to'lov sanasi bo'yicha): ${d.rows.length} ta, jami ${pul(d.jami)}, ` +
+      `shundan CloudShop'ga kiritilgan ${pul(d.kiritildi)}, tekshiruv kutmoqda: ${d.kutmoqda}.\n` +
       d.rows
-        .slice(0, 20)
-        .map((r) => `${r.sana.slice(0, 16).replace("T", " ")} ${r.holat === "pending" ? "⏳" : "✅"} ${pul(r.summa)} · ${r.tolovchi || r.yubordi || "—"} · ${r.guruh}`)
+        .slice(0, 25)
+        .map(
+          (r) =>
+            `${sana(r.sana)}${r.sanaAniq ? "" : " (sana o'qilmagan)"} · ${r.summa ? pul(r.summa) : "—"} · ${r.tolovchi || r.yubordi || "—"} · ${TOLOV_HOLAT_NOMI[r.holat]}`,
+        )
         .join("\n")
     );
   }

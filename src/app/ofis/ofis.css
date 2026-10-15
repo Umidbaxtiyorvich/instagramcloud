@@ -322,7 +322,7 @@
 
 .o_korsatkichlar {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
   margin-bottom: 16px;
 }
@@ -1011,4 +1011,140 @@ a.o_vosita {
   .o_davrlar {
     margin-left: 0;
   }
+}
+
+/* ---------- ulanishlar (MCP) ---------- */
+.o_ulanish {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.o_ulanishBosh {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.o_ulanishBosh small {
+  color: #8a8fb3;
+  overflow-wrap: anywhere;
+}
+
+.o_holatNuqta {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6c7090;
+  flex: none;
+  align-self: center;
+}
+
+.o_yashil {
+  background: #3dff9a;
+}
+
+.o_qizil {
+  background: #ff6b5a;
+}
+
+.o_ulanishMatn {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #c9cdea;
+}
+
+.o_ulanishXato {
+  color: #ff8a7a;
+}
+
+.o_ulanishTugmalar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.o_ulanishTugmalar .o_tugma {
+  width: auto;
+  flex: 1;
+}
+
+.o_ulanishTugmalar a.o_misol {
+  text-decoration: none;
+}
+
+.o_misol:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.o_vositalar {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #c9cdea;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.o_vositalar small {
+  color: #8a8fb3;
+}
+
+.o_tokenYangi {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.o_tokenYangi .o_qidiruv {
+  margin: 0;
+}
+
+.o_ulanishSarlavha {
+  margin: 18px 0 10px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a8fb3;
+}
+
+.o_tayyorlar {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.o_tayyor {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  text-align: left;
+  font: inherit;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+
+.o_tayyor:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.o_tayyor small {
+  font-size: 11.5px;
+  color: #8a8fb3;
+}
+
+.o_ulanishForma {
+  margin-top: 6px;
 }
