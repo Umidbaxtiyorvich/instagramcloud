@@ -75,13 +75,19 @@ shu vositalardan foydalaning va javobni moliya jamoasiga bering. Ular faqat o'qi
 
 // faqat o'qiydigan Instagram vositalari (qolganlari tasdiq navbatiga tushadi)
 const NOMLAR_OQISH = new Set([
-  "instagram_accounts",
+  "instagram_analytics",
   "instagram_reels_report",
-  "instagram_insights",
+  "instagram_list_media",
+  "instagram_media_insights",
   "instagram_list_comments",
-  "instagram_list_dms",
-  "instagram_list_rules",
-  "instagram_inbox_topics",
+  "instagram_unanswered_comments",
+  "instagram_list_direct_messages",
+  "instagram_list_automations",
+  "instagram_automation_report",
+  "instagram_list_uploads",
+  "instagram_upload_link",
+  "instagram_upload_url",
+  "instagram_make_video",
 ]);
 
 let mijoz: Anthropic | null = null;

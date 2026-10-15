@@ -164,7 +164,8 @@ export async function lokalMoliya(matn: string) {
   const t = matn.toLowerCase().replace(/[‘’ʻʼ`]/g, "'");
   const davr: Davr = /kecha/.test(t) ? "kecha" : /hafta|7 kun/.test(t) ? "hafta" : /oy|30 kun/.test(t) ? "oy" : "bugun";
   let vosita: string | null = null;
-  if (/telegram|bot|chek|transfer/.test(t)) vosita = "moliya_tolovlar";
+  // "bot" faqat so'z boshida: "hisobot" ichidagi "bot" cheklarga olib ketmasin
+  if (/telegram|(^|[^a-z'])bot|chek|transfer/.test(t)) vosita = "moliya_tolovlar";
   else if (/qarz/.test(t)) vosita = "moliya_qarzlar";
   else if (/tovar|qoldiq|ombor|sklad/.test(t)) vosita = "moliya_tovarlar";
   else if (/sotuv|yuk|qabul|hujjat|nakladnoy/.test(t)) vosita = "moliya_hujjatlar";

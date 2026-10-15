@@ -134,7 +134,7 @@ export const JAMOALAR: Jamoa[] = [
     tavsif: "Kirim-chiqim, tovarlar, qarzlar, Telegram to'lovlar",
     vositalar: ["CloudShop", "Telegram bot @claudeadminbot_bot", "Excel"],
     konikmalar: ["kirim-chiqim", "tovar-qoldig'i", "qarzlar", "to'lov-cheklari", "xarajat-hisobi", "hisob-faktura"],
-    kalitlar: ["pul", "xarajat", "daromad", "foyda", "byudjet", "hisob", "faktura", "invoys", "to'lov", "soliq", "maosh", "moliya", "kirim", "chiqim", "kassa", "tovar", "qoldiq", "ombor", "qarz", "chek", "transfer"],
+    kalitlar: ["pul", "xarajat", "daromad", "foyda", "byudjet", "hisob-kitob", "hisobla", "faktura", "invoys", "to'lov", "soliq", "maosh", "moliya", "kirim", "chiqim", "kassa", "tovar", "qoldiq", "ombor", "qarz", "chek", "transfer"],
   },
   {
     id: "mijozlar",
