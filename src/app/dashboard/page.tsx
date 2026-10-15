@@ -322,6 +322,9 @@ export default function Dashboard() {
             </button>
           ))}
         </nav>
+        <a href="/ofis" className="mt-4 block rounded-xl bg-white/5 px-3 py-2 text-sm hover:bg-white/10">
+          🏢 AI Ofis — agentlar
+        </a>
         <button
           className="btn btn-ghost mt-8 w-full !py-2 text-sm"
           onClick={async () => {

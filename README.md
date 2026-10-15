@@ -78,3 +78,18 @@ OAuth qo‘llamaydigan mijozlar (Cursor va h.k.) uchun kabinetdagi shaxsiy token
 ```
 
 Ulangan AI ilovalarni kabinetdagi **AI-konnektor** bo‘limida ko‘rish va uzish mumkin.
+
+AI video joylash, Direct yuborish yoki qoida o‘zgartirishni so‘rasa, kabinetdagi **Tasdiqlar** da «Ha» bosing.
+
+## AI Ofis (`/ofis`)
+
+Agentlar bilan ishlaydigan virtual 3D ofis (three.js / React Three Fiber) — to‘liq o‘zbek tilida. Odamlar haqiqiy 3D modellar: o‘tiradi, yozadi, yo‘laklarda yuradi; kamerani sichqoncha bilan aylantirish va yaqinlashtirish mumkin.
+
+- 8 jamoa (Kreativ, Ijtimoiy tarmoq, Tadqiqot, Dasturlash, Savdo, Moliya, Mijozlar xizmati, Tahlil) va markazda umumiy **Miya** (xotira)
+- Pastdagi qatorga vazifa yozing yoki 🎤 bosib ayting — dispetcher uni mos jamoaga beradi, mos agent bo‘lmasa **yangi agent yaratadi**
+- Xonani bossangiz — jamoa paneli (vositalar, ko‘nikmalar, agentlar); agentni bossangiz — u bilan chat
+- **Vazifalar** taxtasi: jarayonda / tasdiq kutmoqda / bajarildi; tashqariga chiqadigan ishlar tasdiqlanmaguncha bajarilmaydi
+- `ANTHROPIC_API_KEY` berilsa va tizimga kirgan bo‘lsangiz, agentlar Claude bilan ishlaydi (vazifani bajarib, natija qaytaradi). Kalitsiz — kalit so‘zlar bo‘yicha lokal rejim
+- **Instagram Cloud bilan ulangan:** agentlar haqiqiy akkaunt ma’lumotlari bilan ishlaydi — statistika va Reels hisoboti (Tahlil), kommentlar va avto-javob qoidalari (Ijtimoiy tarmoq), Direct mavzulari (Mijozlar xizmati). Javob, Direct, Reels, qoida kabi yozish harakatlari kabinetdagi tasdiq navbatiga tushadi va ofisdagi «Vazifalar» taxtasida ham tasdiqlanadi. AI-konnektor (Claude/ChatGPT) orqali kelgan tasdiqlar ham shu yerda ko‘rinadi; yangi avto-javoblar ofisda jonli ko‘rinib, «Miya»ga yoziladi
+- **Moliya (Telegram bot + CloudShop):** «💰 Moliya» bo‘limida kirim-chiqim (kassa), tovarlar qoldig‘i, sotuv/qabul hujjatlari, xaridorlar qarzi va @claudeadminbot_bot guruhdan olgan to‘lov cheklari tarixi ko‘rinadi (bugun / kecha / 7 kun / 30 kun). Hisobchi agent shu ma’lumotlar bilan javob beradi, botga yangi chek kelsa ofisda jonli ko‘rinadi. Faqat o‘qish — CloudShop’ga yozish botning o‘zida. Sozlash: `.env.example` dagi `MOLIYA_ADMIN_EMAILS`, `CS_*`, `CLOUDSHOP_APP_KEY`, `TOLOV_BOT_URL`, `TOLOV_BOT_API_KEY`
+- Ovoz: brauzerning Web Speech API (`uz-UZ`, Chrome’da eng yaxshi ishlaydi)
