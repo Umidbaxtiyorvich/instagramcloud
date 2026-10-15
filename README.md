@@ -48,3 +48,14 @@ Cursor `mcp.json` misoli:
 ```
 
 AI video joylash, Direct yuborish yoki qoida o‘zgartirishni so‘rasa, kabinetdagi **Tasdiqlar** da «Ha» bosing.
+
+## AI Ofis (`/ofis`)
+
+Agentlar bilan ishlaydigan virtual 3D ofis — to‘liq o‘zbek tilida.
+
+- 8 jamoa (Kreativ, Ijtimoiy tarmoq, Tadqiqot, Dasturlash, Savdo, Moliya, Mijozlar xizmati, Tahlil) va markazda umumiy **Miya** (xotira)
+- Pastdagi qatorga vazifa yozing yoki 🎤 bosib ayting — dispetcher uni mos jamoaga beradi, mos agent bo‘lmasa **yangi agent yaratadi**
+- Xonani bossangiz — jamoa paneli (vositalar, ko‘nikmalar, agentlar); agentni bossangiz — u bilan chat
+- **Vazifalar** taxtasi: jarayonda / tasdiq kutmoqda / bajarildi; tashqariga chiqadigan ishlar tasdiqlanmaguncha bajarilmaydi
+- `ANTHROPIC_API_KEY` berilsa va tizimga kirgan bo‘lsangiz, agentlar Claude bilan ishlaydi (vazifani bajarib, natija qaytaradi). Kalitsiz — kalit so‘zlar bo‘yicha lokal rejim
+- Ovoz: brauzerning Web Speech API (`uz-UZ`, Chrome’da eng yaxshi ishlaydi)
