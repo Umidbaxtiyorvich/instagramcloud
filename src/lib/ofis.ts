@@ -131,10 +131,10 @@ export const JAMOALAR: Jamoa[] = [
     nom: "Moliya",
     belgi: "💰",
     rang: "#2cc6c6",
-    tavsif: "Xarajat, daromad, hisob-faktura",
-    vositalar: ["Excel", "Click / Payme", "1C"],
-    konikmalar: ["xarajat-hisobi", "hisob-faktura", "byudjet", "soliq-eslatma"],
-    kalitlar: ["pul", "xarajat", "daromad", "foyda", "byudjet", "hisob", "faktura", "invoys", "to'lov", "soliq", "maosh", "moliya"],
+    tavsif: "Kirim-chiqim, tovarlar, qarzlar, Telegram to'lovlar",
+    vositalar: ["CloudShop", "Telegram bot @claudeadminbot_bot", "Excel"],
+    konikmalar: ["kirim-chiqim", "tovar-qoldig'i", "qarzlar", "to'lov-cheklari", "xarajat-hisobi", "hisob-faktura"],
+    kalitlar: ["pul", "xarajat", "daromad", "foyda", "byudjet", "hisob", "faktura", "invoys", "to'lov", "soliq", "maosh", "moliya", "kirim", "chiqim", "kassa", "tovar", "qoldiq", "ombor", "qarz", "chek", "transfer"],
   },
   {
     id: "mijozlar",
@@ -169,7 +169,7 @@ export const BOSHLANGICH_AGENTLAR: Agent[] = [
   { id: "a6", ism: "Tadqiqotchi", rol: "Bozor va trendlar", jamoa: "tadqiqot", avatar: "🕵️", konikmalar: ["trend-izlash", "xulosa-yozish"], holat: "bosh" },
   { id: "a7", ism: "Dasturchi", rol: "Sayt va botlar", jamoa: "dasturlash", avatar: "👨‍💻", konikmalar: ["sayt-yasash", "bot-yozish"], holat: "bosh" },
   { id: "a8", ism: "Sotuvchi", rol: "Lid va takliflar", jamoa: "savdo", avatar: "🧑‍💼", konikmalar: ["lid-topish", "taklif-yozish"], holat: "bosh" },
-  { id: "a9", ism: "Hisobchi", rol: "Xarajat va daromad", jamoa: "moliya", avatar: "🧮", konikmalar: ["xarajat-hisobi", "hisob-faktura"], holat: "bosh" },
+  { id: "a9", ism: "Hisobchi", rol: "Xarajat va daromad", jamoa: "moliya", avatar: "🧮", konikmalar: ["kirim-chiqim", "to'lov-cheklari"], holat: "bosh" },
   { id: "a10", ism: "Operator", rol: "Mijoz savollari", jamoa: "mijozlar", avatar: "🎧", konikmalar: ["savolga-javob", "shikoyat-hal"], holat: "bosh" },
   { id: "a11", ism: "Analitik", rol: "Statistika va hisobot", jamoa: "tahlil", avatar: "📈", konikmalar: ["haftalik-hisobot", "reels-tahlili"], holat: "bosh" },
 ];

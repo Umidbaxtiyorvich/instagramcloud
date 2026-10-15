@@ -4,6 +4,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
 import { JAMOALAR, lokalTaqsimot, type JamoaId, type Taqsimot } from "@/lib/ofis";
+import { MOLIYA_NOMLARI, MOLIYA_VOSITALAR, lokalMoliya, moliyaHolati, moliyaRuxsat, moliyaVosita, type Davr } from "@/lib/ofis-moliya";
 import { IG_VOSITALAR, amalNomi, igAkkaunt, igVosita, lokalInstagram, yangiTasdiqlar } from "@/lib/ofis-instagram";
 
 const JAMOA_IDLAR = JAMOALAR.map((j) => j.id) as [JamoaId, ...JamoaId[]];
@@ -66,7 +67,11 @@ INSTAGRAM: foydalanuvchining Instagram Cloud akkaunti ulangan bo'lsa, sizda inst
 - Statistika, Reels hisoboti, kommentlar, Direct, qoidalar haqidagi savollarda avval vositani chaqirib, HAQIQIY ma'lumot bilan javob bering (o'ylab topmang).
 - Yozish vositalari (kommentga javob, Direct yuborish, komment yashirish, Reels joylash, qoida yaratish/o'zgartirish/o'chirish) darhol bajarilmaydi — foydalanuvchi tasdig'iga navbatga qo'yiladi. Ularni faqat foydalanuvchi aniq so'raganda chaqiring; bunda tasdiqKerak = true.
 - Jamoalar: statistika va hisobotlar — tahlil; kommentlar, postlar, Reels, avto-javob qoidalari — ijtimoiy; Direct va mijoz savollari — mijozlar.
-- natija ichida qaysi raqam/ma'lumot qayerdan olinganini qisqa ko'rsating.`;
+- natija ichida qaysi raqam/ma'lumot qayerdan olinganini qisqa ko'rsating.
+
+MOLIYA (do'kon): moliya_* vositalari CloudShop kassasi (kirim/chiqim), tovarlar qoldig'i, sotuv/qabul hujjatlari, qarzlar
+va Telegram to'lov botiga (@claudeadminbot_bot) kelgan cheklarni O'QIYDI. Pul, kirim, chiqim, tovar, qarz, to'lov savollarida
+shu vositalardan foydalaning va javobni moliya jamoasiga bering. Ular faqat o'qiydi — CloudShop'ga yozish botning o'zida qilinadi.`;
 
 // faqat o'qiydigan Instagram vositalari (qolganlari tasdiq navbatiga tushadi)
 const NOMLAR_OQISH = new Set([
@@ -98,6 +103,22 @@ export async function POST(req: Request) {
   const lokal = async (): Promise<Taqsimot> => {
     let t = lokalTaqsimot(matn, agentlar, jamoa);
     const ig = user ? await lokalInstagram(user.id, matn).catch(() => null) : null;
+    const mol = !ig && user && moliyaRuxsat(user.email) ? await lokalMoliya(matn).catch((e: Error) => ({ vosita: "", natija: `⚠️ ${e.message}` })) : null;
+    if (mol) {
+      const boshqa = t.jamoa !== "moliya" ? lokalTaqsimot(matn, agentlar, "moliya") : t;
+      t = {
+        ...boshqa,
+        jamoa: "moliya",
+        qadamlar: ["Ma'lumotni olish", "Hisoblash", "Sizga ko'rsatish"],
+        natija: mol.natija,
+        tasdiqKerak: false,
+        instagram: mol.vosita ? { amallar: [MOLIYA_NOMLARI[mol.vosita]], tasdiqlar: [] } : undefined,
+      };
+      if (t.agentId && !agentlar.some((a) => a.id === t.agentId && a.jamoa === "moliya")) t.agentId = null;
+      // moliya savollarini avvalo mavjud Hisobchi oladi
+      const hisobchi = agentlar.find((a) => a.jamoa === "moliya");
+      if (!t.agentId && hisobchi) t = { ...t, agentId: hisobchi.id, yangiAgent: null };
+    }
     if (ig) {
       const boshqa = ig.jamoa !== t.jamoa ? lokalTaqsimot(matn, agentlar, ig.jamoa) : t;
       t = {
@@ -134,13 +155,13 @@ export async function POST(req: Request) {
     .filter(Boolean)
     .join("\n\n");
 
-  const vositalar: Anthropic.Beta.BetaTool[] = akk
-    ? IG_VOSITALAR.map((v) => ({
-        name: v.name,
-        description: v.description,
-        input_schema: v.inputSchema as Anthropic.Beta.BetaTool.InputSchema,
-      }))
-    : [];
+  const mh = moliyaHolati();
+  const moliyaBor = moliyaRuxsat(user.email) && (mh.cloudshop || mh.bot);
+  const vositalar: Anthropic.Beta.BetaTool[] = [...(akk ? IG_VOSITALAR : []), ...(moliyaBor ? MOLIYA_VOSITALAR : [])].map((v) => ({
+    name: v.name,
+    description: v.description,
+    input_schema: v.inputSchema as Anthropic.Beta.BetaTool.InputSchema,
+  }));
 
   const boshlandi = new Date();
   const amallar: string[] = [];
@@ -172,7 +193,15 @@ export async function POST(req: Request) {
         for (const b of res.content) {
           if (b.type !== "tool_use") continue;
           try {
-            const matnNatija = await igVosita(user.id, b.name, (b.input ?? {}) as Record<string, unknown>);
+            const kirish = (b.input ?? {}) as Record<string, unknown>;
+            if (b.name.startsWith("moliya_")) {
+              if (!moliyaBor) throw new Error("Moliya ma'lumotiga ruxsat yo'q");
+              const matnNatija = await moliyaVosita(b.name, { davr: kirish.davr as Davr | undefined, qidiruv: kirish.qidiruv as string | undefined });
+              amallar.push(MOLIYA_NOMLARI[b.name] ?? b.name);
+              natijalar.push({ type: "tool_result", tool_use_id: b.id, content: matnNatija.slice(0, 20000) });
+              continue;
+            }
+            const matnNatija = await igVosita(user.id, b.name, kirish);
             if (!b.name.startsWith("list_") && !NOMLAR_OQISH.has(b.name)) {
               amallar.push(`Tasdiqqa qo'yildi: ${b.name.replace("instagram_", "")}`);
             } else {

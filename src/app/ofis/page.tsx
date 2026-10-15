@@ -6,6 +6,8 @@ import "./ofis.css";
 import dynamic from "next/dynamic";
 
 // WebGL sahna faqat brauzerda yuklanadi
+import MoliyaPanel, { pul } from "./MoliyaPanel";
+
 const Sahna3D = dynamic(() => import("./Sahna3D"), {
   ssr: false,
   loading: () => <div className="o_yuklanmoqda">3D ofis yuklanmoqda…</div>,
@@ -43,6 +45,10 @@ const MISOLLAR = [
   "Oxirgi kommentlarni ko'rib chiq",
   "Direct'da nimalar so'ralyapti?",
   "Avto-javob qoidalarimni ko'rsat",
+  "Bugungi kirim-chiqimni ko'rsat",
+  "Telegram botga kelgan to'lovlar",
+  "Tovar qoldiqlari",
+  "Xaridorlar qarzi",
   "Drive'dagi 3 ta yangi klipdan 30 soniyalik reels yasab ber",
   "Ertangi Instagram postlarini rejalashtir",
   "Raqobatchilarimizning narxlarini o'rganib chiq",
@@ -57,7 +63,7 @@ type IgLog = { kind: string; direction: string; username: string | null; text: s
 
 type Eslatma = { id: string; matn: string; jamoa: JamoaId; vaqt: number };
 type Ofis = { agentlar: Agent[]; vazifalar: Vazifa[]; xabarlar: Xabar[]; eslatmalar: Eslatma[] };
-type Tab = "ofis" | "vazifalar" | "miya";
+type Tab = "ofis" | "vazifalar" | "miya" | "moliya";
 
 const KALIT = "ai-ofis-v1";
 const BOSH_OFIS: Ofis = { agentlar: BOSHLANGICH_AGENTLAR, vazifalar: [], xabarlar: [], eslatmalar: [] };
@@ -137,6 +143,7 @@ export default function OfisSahifa() {
   const [igAkkaunt, setIgAkkaunt] = useState<IgAkkaunt | null>(null);
   const [igTasdiqlar, setIgTasdiqlar] = useState<IgTasdiq[]>([]);
   const [jonli, setJonli] = useState<Record<string, number>>({});
+  const [moliyaHolat, setMoliyaHolat] = useState<{ cloudshop: boolean; bot: boolean } | null>(null);
   const [ovoz, setOvoz] = useState<{ faol: boolean; matn: string; maqsad: "buyruq" | "chat" }>({
     faol: false,
     matn: "",
@@ -246,6 +253,53 @@ export default function OfisSahifa() {
       clearInterval(t);
     };
   }, [igAkkaunt]);
+
+  // Telegram to'lov botiga yangi chek kelsa — Hisobchi ishlaydi va Miya'ga yoziladi
+  const korilganCheklar = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!foydalanuvchi) return;
+    const tekshir = async () => {
+      try {
+        const d = (await (await fetch("/api/ofis/moliya?bolim=tolovlar&davr=bugun")).json()) as {
+          ruxsat?: boolean;
+          holat?: { cloudshop: boolean; bot: boolean };
+          data?: { rows: { id: string; summa: number; tolovchi: string; yubordi: string; guruh: string }[] };
+        };
+        if (d.ruxsat && d.holat) setMoliyaHolat(d.holat);
+        if (!d.ruxsat || !d.data) return;
+        const rows = d.data.rows;
+        if (korilganCheklar.current === null) {
+          korilganCheklar.current = new Set(rows.map((r) => r.id));
+          return;
+        }
+        const yangi = rows.filter((r) => !korilganCheklar.current!.has(r.id));
+        yangi.forEach((r) => korilganCheklar.current!.add(r.id));
+        if (!yangi.length) return;
+        setOfis((o) => {
+          const a = o.agentlar.find((x) => x.jamoa === "moliya");
+          if (a) setJonli((j) => ({ ...j, [a.id]: Date.now() + 6000 }));
+          return {
+            ...o,
+            eslatmalar: [
+              ...yangi.map((r) => ({
+                id: yangiId(),
+                matn: `📲 Telegram botga to'lov cheki: ${r.summa ? `${pul(r.summa)} so'm` : "summa aniqlanmoqda"} — ${r.tolovchi || r.yubordi || "?"}${r.guruh ? ` (${r.guruh})` : ""}`,
+                jamoa: "moliya" as JamoaId,
+                vaqt: Date.now(),
+              })),
+              ...o.eslatmalar,
+            ].slice(0, 200),
+          };
+        });
+      } catch {}
+    };
+    const boshla = setTimeout(tekshir, 0);
+    const t = setInterval(tekshir, 30000);
+    return () => {
+      clearTimeout(boshla);
+      clearInterval(t);
+    };
+  }, [foydalanuvchi]);
 
   // jonli ish muddati tugagach agentni bo'shatamiz
   useEffect(() => {
@@ -361,7 +415,7 @@ export default function OfisSahifa() {
               agentId,
               matn:
                 t.javob +
-                (t.instagram?.amallar.length ? `\n\n🔗 Instagram Cloud: ${t.instagram.amallar.join(" · ")}` : "") +
+                (t.instagram?.amallar.length ? `\n\n🔗 Manba: ${t.instagram.amallar.join(" · ")}` : "") +
                 (t.instagram?.tasdiqlar.length
                   ? `\n✋ Tasdiqingizni kutadi:\n${t.instagram.tasdiqlar.map((x) => `• ${x.summary}`).join("\n")}`
                   : ""),
@@ -537,6 +591,7 @@ export default function OfisSahifa() {
             [
               ["ofis", "Ofis"],
               ["vazifalar", `Vazifalar ${ofis.vazifalar.length || ""}${tashqiTasdiqlar.length ? ` · ✋${tashqiTasdiqlar.length}` : ""}`],
+              ["moliya", "💰 Moliya"],
               ["miya", "Miya"],
             ] as [Tab, string][]
           ).map(([k, nom]) => (
@@ -577,6 +632,8 @@ export default function OfisSahifa() {
       {/* ---------- jamoa paneli ---------- */}
       {tab === "ofis" && tanlanganJamoa && (
         <JamoaPaneli
+          moliyaniOch={() => setTab("moliya")}
+          moliyaHolat={moliyaHolat}
           instagram={igAkkaunt}
           kirgan={!!foydalanuvchi}
           jamoa={tanlanganJamoa}
@@ -765,6 +822,9 @@ export default function OfisSahifa() {
         </div>
       )}
 
+      {/* ---------- moliya (CloudShop + Telegram bot) ---------- */}
+      {tab === "moliya" && <MoliyaPanel yop={() => setTab("ofis")} kirgan={!!foydalanuvchi} />}
+
       {/* ---------- miya ---------- */}
       {tab === "miya" && (
         <div className={`${s.panel} ${s.taxta}`} style={{ width: "min(640px, calc(100vw - 32px))" }}>
@@ -886,6 +946,8 @@ export default function OfisSahifa() {
 }
 
 function JamoaPaneli({
+  moliyaniOch,
+  moliyaHolat,
   instagram,
   kirgan,
   jamoa,
@@ -903,6 +965,8 @@ function JamoaPaneli({
   yashirin: boolean;
   instagram: IgAkkaunt | null;
   kirgan: boolean;
+  moliyaniOch: () => void;
+  moliyaHolat: { cloudshop: boolean; bot: boolean } | null;
 }) {
   if (yashirin) return null;
   const ishda = agentlar.filter((a) => a.holat === "ishlamoqda").length;
@@ -943,6 +1007,12 @@ function JamoaPaneli({
         </div>
       </div>
 
+      {jamoa.id === "moliya" && (
+        <button className={s.tugma} style={{ marginTop: 0, marginBottom: 12 }} onClick={moliyaniOch}>
+          💰 Kirim-chiqim, tovarlar va pullar tarixi
+        </button>
+      )}
+
       <div className={s.bolimNom}>
         Ulangan vositalar <em>● ulangan</em>
       </div>
@@ -963,6 +1033,15 @@ function JamoaPaneli({
                 <small className={s.ulanmagan}>○ {kirgan ? "ulash" : "kirish kerak"}</small>
               </a>
             )
+          ) : v === "CloudShop" || v.startsWith("Telegram bot") ? (
+            <div key={v} className={s.vosita}>
+              {v}
+              {(v === "CloudShop" ? moliyaHolat?.cloudshop : moliyaHolat?.bot) ? (
+                <small>● ulangan</small>
+              ) : (
+                <small className={s.ulanmagan}>○ {moliyaHolat ? "sozlanmagan" : "kirish kerak"}</small>
+              )}
+            </div>
           ) : (
             <div key={v} className={s.vosita}>
               {v}
