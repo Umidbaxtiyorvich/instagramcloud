@@ -263,21 +263,28 @@ export async function POST(req: Request) {
       }
       return NextResponse.json({ taqsimot: await lokal(), eslatma: "Vazifa juda uzun bo'lib ketdi, lokal rejim" });
     } catch (e) {
-      if (mcpBilan && e instanceof Anthropic.BadRequestError) {
+      const kreditYoq = e instanceof Anthropic.BadRequestError && /credit balance/i.test(e.message);
+      if (mcpBilan && e instanceof Anthropic.BadRequestError && !kreditYoq) {
         console.error("ofis: MCP ulanishi bilan xato, ulanishlarsiz qayta urinish", e.message);
         mcpBilan = false;
         continue;
       }
-      if (e instanceof Anthropic.AuthenticationError) {
+      let eslatma = "Claude javob bermadi, lokal rejim";
+      if (kreditYoq) {
+        console.error("ofis: Anthropic hisobida kredit yo'q");
+        eslatma = "Anthropic API hisobida kredit tugagan (console.anthropic.com → Billing) — hozircha lokal rejim";
+      } else if (e instanceof Anthropic.AuthenticationError) {
         console.error("ofis: Claude kaliti noto'g'ri");
+        eslatma = "ANTHROPIC_API_KEY noto'g'ri — hozircha lokal rejim";
       } else if (e instanceof Anthropic.RateLimitError) {
         console.error("ofis: Claude limiti tugadi");
+        eslatma = "Claude limiti tugadi, birozdan keyin urinib ko'ring — hozircha lokal rejim";
       } else if (e instanceof Anthropic.APIError) {
         console.error(`ofis: Claude xatosi ${e.status}`, e.message);
       } else {
         console.error("ofis:", e);
       }
-      return NextResponse.json({ taqsimot: await lokal(), eslatma: "Claude javob bermadi, lokal rejim" });
+      return NextResponse.json({ taqsimot: await lokal(), eslatma });
     }
   }
   return NextResponse.json({ taqsimot: await lokal(), eslatma: "Claude javob bermadi, lokal rejim" });
