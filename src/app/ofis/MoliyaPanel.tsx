@@ -25,6 +25,7 @@ type Tolov = {
   holat: TolovHolat;
   summa: number;
   izoh: string;
+  takror: number;
 };
 const TOLOV_HOLAT: Record<TolovHolat, [string, string]> = {
   done: ["✅", "CloudShop'ga kiritildi"],
@@ -279,6 +280,7 @@ export default function MoliyaPanel({ yop, kirgan }: { yop: () => void; kirgan: 
                     <span title={TOLOV_HOLAT[r.holat][1]}>{TOLOV_HOLAT[r.holat][0]} </span>
                     <b>{r.tolovchi || r.yubordi || "Noma'lum"}</b>
                     <small> · {TOLOV_HOLAT[r.holat][1]}</small>
+                    {r.takror > 0 && <small> · {r.takror + 1} marta yuborilgan, bir marta sanaldi</small>}
                     {r.guruh && <small> · {r.guruh}</small>}
                     <small> · xabar {vaqt(r.xabarSana)}</small>
                     {r.matn && <small> · «{r.matn}»</small>}

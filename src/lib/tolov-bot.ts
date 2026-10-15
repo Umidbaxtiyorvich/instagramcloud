@@ -32,6 +32,7 @@ export type BotTolov = {
   summa: number;
   izoh: string;
   rasm: boolean;
+  takror: number; // shu to'lov guruhga necha marta qayta tashlangan (bir marta sanaladi)
 };
 
 async function bot<T>(path: string): Promise<T> {
@@ -79,7 +80,7 @@ export async function botTolovlar(): Promise<BotTolov[]> {
     const entries = m.entries ?? [];
     // bot hali o'qimagan xabar — summasiz, "o'qilmoqda"
     if (m.status === "pending" && !m.ai && !entries.length) {
-      out.push({ ...umumiy, id: m.id, sana: xabarSana, sanaAniq: false, holat: "oqilmoqda", summa: 0 });
+      out.push({ ...umumiy, id: m.id, sana: xabarSana, sanaAniq: false, holat: "oqilmoqda", summa: 0, takror: 0 });
       continue;
     }
     entries.forEach((e, k) => {
@@ -96,10 +97,27 @@ export async function botTolovlar(): Promise<BotTolov[]> {
         sanaAniq: e.date_ok !== false,
         holat: e.state as TolovHolat,
         summa,
+        takror: 0,
       });
     });
   }
-  return out.sort((a, b) => b.sana - a.sana || b.xabarSana - a.xabarSana);
+  out.sort((a, b) => b.sana - a.sana || a.xabarSana - b.xabarSana);
+  // Bir chek guruhga ikki marta tashlansa, ikkalasi ham "CloudShop'da bor" bo'lib chiqadi —
+  // bir xil to'lovchi, summa va kun bo'lsa bitta to'lov deb sanaymiz
+  const kun = (ts: number) => Math.floor((ts + 5 * 3600) / 86400);
+  const birinchi = new Map<string, BotTolov>();
+  const natija: BotTolov[] = [];
+  for (const r of out) {
+    const kalit = `${(r.tolovchi || r.yubordi).trim().toLowerCase()}|${r.summa}|${kun(r.sana)}`;
+    const avval = r.summa && r.sanaAniq ? birinchi.get(kalit) : undefined;
+    if (avval && avval.xabarId !== r.xabarId && (r.holat === "done" || r.holat === "exists")) {
+      avval.takror++;
+      continue;
+    }
+    if (r.summa && r.sanaAniq && !birinchi.has(kalit)) birinchi.set(kalit, r);
+    natija.push(r);
+  }
+  return natija;
 }
 
 export async function botQarzlar() {
