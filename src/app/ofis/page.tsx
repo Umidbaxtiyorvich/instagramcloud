@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import "./ofis.css";
+import { OtirganOdam, YuruvchiOdam, qiyofa } from "./Odam";
 import {
   BOSHLANGICH_AGENTLAR,
   JAMOALAR,
@@ -52,6 +53,14 @@ const MISOLLAR = [
   "Mijozga chegirma haqida taklif xati yoz",
   "Shu oygi xarajatlarni hisobla",
   "O'tgan haftaning statistikasidan hisobot tayyorla",
+];
+
+// yo'lak bo'ylab aylanib yuradigan xodimlar (1 — ichki halqa, 2 — tashqi halqa)
+const YURUVCHILAR = [
+  { yol: 1, kechik: 0, muddat: 40, rang: "#4d8dff" },
+  { yol: 1, kechik: -20, muddat: 40, rang: "#ff4d8d" },
+  { yol: 2, kechik: -8, muddat: 70, rang: "#2ecf8f" },
+  { yol: 2, kechik: -43, muddat: 70, rang: "#ffb45a" },
 ];
 
 type Eslatma = { id: string; matn: string; jamoa: JamoaId; vaqt: number };
@@ -435,6 +444,19 @@ export default function OfisSahifa() {
             </div>
           </div>
 
+          {/* yo'laklarda yurib yurgan xodimlar */}
+          {YURUVCHILAR.map((y, i) => (
+            <div key={i} className={`${s.anchor} ${s.yol} ${s["yol" + y.yol]}`} style={{ animationDelay: `${y.kechik}s`, animationDuration: `${y.muddat}s` }}>
+              <div className={s.tik}>
+                <div className={s.tikIchi}>
+                  <div className={`${s.burilish} ${s["burilish" + y.yol]}`} style={{ animationDelay: `${y.kechik}s`, animationDuration: `${y.muddat}s` }}>
+                    <YuruvchiOdam q={qiyofa("yuruvchi" + i, y.rang)} kepkaRang={y.rang} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+
           {/* xonalar */}
           {JAMOALAR.map((j) => {
             const { x, y } = xonaKoordinata(j.id);
@@ -474,14 +496,12 @@ export default function OfisSahifa() {
                           <div className={`${s.monitorEkran} ${a?.holat === "ishlamoqda" ? s.monitorYonik : ""}`} />
                         </div>
                       </div>
-                      <div className={s.stul} style={{ left: sx + 23, top: sy + 52 }} />
+                      {!a && <div className={s.stul} style={{ left: sx + 23, top: sy + 52 }} />}
                       {a && (
-                        <div className={s.anchor} style={{ left: sx + 36, top: sy + 62 }}>
+                        <div className={s.anchor} style={{ left: sx + 34, top: sy + 66 }}>
                           <div className={s.tik}>
                             <div
-                              className={`${s.tikIchi} ${s.agent} ${
-                                a.holat === "ishlamoqda" ? s.agentIshda : a.yangi ? s.agentYangi : ""
-                              }`}
+                              className={`${s.tikIchi} ${s.agent} ${a.yangi ? s.agentYangi : ""}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setJamoa(a.jamoa);
@@ -499,8 +519,7 @@ export default function OfisSahifa() {
                                 />
                                 {a.ism}
                               </div>
-                              <div className={s.agentTana}>{a.avatar}</div>
-                              <div className={s.agentOyoq} />
+                              <OtirganOdam q={qiyofa(a.id + a.ism, j.rang)} ishda={a.holat === "ishlamoqda"} kepkaRang={j.rang} />
                             </div>
                           </div>
                         </div>
