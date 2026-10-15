@@ -51,7 +51,7 @@ AI video joylash, Direct yuborish yoki qoida o‘zgartirishni so‘rasa, kabinet
 
 ## AI Ofis (`/ofis`)
 
-Agentlar bilan ishlaydigan virtual 3D ofis — to‘liq o‘zbek tilida.
+Agentlar bilan ishlaydigan virtual 3D ofis (three.js / React Three Fiber) — to‘liq o‘zbek tilida. Odamlar haqiqiy 3D modellar: o‘tiradi, yozadi, yo‘laklarda yuradi; kamerani sichqoncha bilan aylantirish va yaqinlashtirish mumkin.
 
 - 8 jamoa (Kreativ, Ijtimoiy tarmoq, Tadqiqot, Dasturlash, Savdo, Moliya, Mijozlar xizmati, Tahlil) va markazda umumiy **Miya** (xotira)
 - Pastdagi qatorga vazifa yozing yoki 🎤 bosib ayting — dispetcher uni mos jamoaga beradi, mos agent bo‘lmasa **yangi agent yaratadi**

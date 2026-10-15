@@ -11,388 +11,46 @@
   user-select: none;
 }
 
-/* ---------- 3D sahna ---------- */
-.o_kamera {
+/* ---------- 3D sahna ustidagi yorliqlar ---------- */
+.o_yuklanmoqda {
   position: absolute;
   inset: 0;
-  transition: transform 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
+  display: grid;
+  place-items: center;
+  color: #8c90b0;
+  font-weight: 700;
+  font-size: 14px;
 }
 
-.o_dunyo {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform-style: preserve-3d;
-  transition: transform 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.o_dunyo * {
-  transform-style: preserve-3d;
-}
-
-.o_pol {
-  position: absolute;
-  inset: -80px;
-  border-radius: 40px;
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px) 0 0 / 40px 40px,
-    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px) 0 0 / 40px 40px,
-    #121424;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);
-}
-
-.o_chiziqlar {
+.o_yorliqlar {
   position: absolute;
   inset: 0;
-  overflow: visible;
   pointer-events: none;
+  overflow: hidden;
+  z-index: 5;
 }
 
-.o_chiziq {
-  stroke-width: 2;
-  stroke-dasharray: 6 10;
-  opacity: 0.35;
-  animation: oqim 1.6s linear infinite;
-}
-
-.o_chiziqFaol {
-  stroke-width: 3.5;
-  opacity: 0.95;
-  animation-duration: 0.6s;
-}
-
-@keyframes oqim {
-  to {
-    stroke-dashoffset: -32;
-  }
-}
-
-/* xona */
-.o_xona {
-  position: absolute;
-  cursor: pointer;
-}
-
-.o_xonaPol {
-  position: absolute;
-  inset: 0;
-  border-radius: 6px;
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px) 0 0 / 32px 32px,
-    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px) 0 0 / 32px 32px,
-    color-mix(in srgb, var(--r) 55%, #1a1b2e);
-  box-shadow:
-    inset 0 0 0 2px color-mix(in srgb, var(--r) 80%, white 10%),
-    0 0 60px color-mix(in srgb, var(--r) 30%, transparent);
-  transition: filter 0.3s;
-}
-
-.o_xona:hover .o_xonaPol {
-  filter: brightness(1.18);
-}
-
-.o_xonaTanlangan .o_xonaPol {
-  filter: brightness(1.25);
-  box-shadow:
-    inset 0 0 0 3px #fff,
-    0 0 90px color-mix(in srgb, var(--r) 60%, transparent);
-}
-
-.o_gilam {
-  position: absolute;
-  border-radius: 4px;
-  border: 2px dashed rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.05);
-  transform: translateZ(1px);
-}
-
-.o_devorOrqa,
-.o_devorChap {
+.o_yorliq {
   position: absolute;
   left: 0;
   top: 0;
-  background: linear-gradient(to top, color-mix(in srgb, var(--r) 70%, #000 25%), color-mix(in srgb, var(--r) 85%, #fff 8%));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  visibility: hidden;
+  will-change: transform;
 }
 
-.o_devorOrqa {
-  transform-origin: top;
-  transform: rotateX(90deg);
-}
-
-.o_devorChap {
-  transform-origin: left;
-  transform: rotateY(-90deg);
-  filter: brightness(0.82);
-}
-
-.o_deraza {
-  position: absolute;
-  top: 18px;
-  height: 34px;
-  width: 54px;
-  border-radius: 4px;
-  background: linear-gradient(180deg, rgba(180, 220, 255, 0.55), rgba(120, 150, 255, 0.25));
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
-}
-
-.o_javon {
-  position: absolute;
-  height: 8px;
-  width: 70px;
-  top: 30px;
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: 2px;
-}
-
-/* stol */
-.o_stol {
-  position: absolute;
-  width: 72px;
-  height: 40px;
-}
-
-.o_stolUst,
-.o_stolOld,
-.o_stolYon {
-  position: absolute;
-  left: 0;
-  top: 0;
-}
-
-.o_stolUst {
-  width: 72px;
-  height: 40px;
-  background: #f1ece4;
-  border-radius: 3px;
-  transform: translateZ(26px);
-}
-
-.o_stolOld {
-  top: 40px;
-  width: 72px;
-  height: 26px;
-  background: #bdb5a9;
-  transform-origin: top;
-  transform: rotateX(90deg);
-}
-
-.o_stolYon {
-  left: 72px;
-  width: 26px;
-  height: 40px;
-  background: #a39b90;
-  transform-origin: left;
-  transform: rotateY(-90deg);
-}
-
-.o_monitor {
-  position: absolute;
-  left: 24px;
-  top: 5px;
-  width: 44px;
-  height: 4px;
-  transform: translateZ(26px);
-}
-
-.o_monitorEkran {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 44px;
-  height: 30px;
-  border-radius: 2px;
-  background: #23263a;
-  border: 2px solid #3a3d52;
-  transform-origin: bottom;
-  transform: rotateX(-90deg);
-}
-
-.o_monitorYonik {
-  background:
-    repeating-linear-gradient(180deg, transparent 0 3px, rgba(10, 12, 24, 0.9) 3px 5px),
-    linear-gradient(90deg, #7dffc3 0 40%, #fff 40% 55%, #ffd36b 55% 70%, transparent 70%) 0 0 / 100% 100%,
-    #11131f;
-  box-shadow: 0 0 16px color-mix(in srgb, var(--r) 80%, transparent);
-  animation: o_kod 1.2s steps(4) infinite;
-}
-
-@keyframes o_kod {
-  to { background-position: 0 -10px, 0 0, 0 0; }
-}
-
-.o_stul {
-  position: absolute;
-  width: 26px;
-  height: 22px;
-  border-radius: 6px;
-  background: #2b2d3f;
-  transform: translateZ(14px);
-}
-
-.o_gul {
-  position: absolute;
-  width: 0;
-  height: 0;
-}
-
-/* billbord: kameraga qarab turadigan narsalar */
-.o_anchor {
-  position: absolute;
-  width: 0;
-  height: 0;
-}
-
-.o_tik {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform-origin: 0 0;
-  transform: rotateZ(45deg) rotateX(-60deg);
-}
-
-.o_tikIchi {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+.o_yorliq .o_xonaYorliq {
   pointer-events: auto;
 }
 
-.o_agent {
-  cursor: pointer;
+.o_yorliqAgent {
+  z-index: 1;
 }
 
-.o_agentYangi {
-  animation: o_kirish 0.9s cubic-bezier(0.2, 1.3, 0.4, 1) both;
-}
-
-@keyframes o_kirish {
-  0% { transform: translate(-50%, -40px) scale(0.6); opacity: 0; }
-  100% { transform: translate(-50%, 0) scale(1); opacity: 1; }
-}
-
-/* odamchalar */
-.o_odam,
-.o_yuruvchi {
-  display: block;
-  overflow: visible;
-  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.25));
-}
-
-.o_odam {
-  /* stol odamning chap-yuqorisida turadi — rasmni ko'zguda aks ettiramiz */
-  transform: scaleX(-1);
-}
-
-.o_odam .o_bosh {
-  transform-box: view-box;
-  transform-origin: 47px 44px;
-  animation: o_boshIdle 6s ease-in-out infinite;
-}
-
-.o_odamIshda .o_bosh {
-  animation: o_boshIsh 1.4s ease-in-out infinite;
-}
-
-.o_odamIshda .o_qol {
-  animation: o_yoz 0.18s ease-in-out infinite alternate;
-}
-
-.o_odamIshda .o_qol2 {
-  animation-delay: 0.09s;
-}
-
-@keyframes o_boshIdle {
-  0%, 70%, 100% { transform: rotate(0deg); }
-  78%, 90% { transform: rotate(-7deg); }
-}
-
-@keyframes o_boshIsh {
-  0%, 100% { transform: translateY(0) rotate(1deg); }
-  50% { transform: translateY(1px) rotate(-1deg); }
-}
-
-@keyframes o_yoz {
-  to { transform: translateY(-2px); }
-}
-
-.o_yuruvchi .o_tanaYur {
-  animation: o_sakrash 0.25s ease-in-out infinite alternate;
-}
-
-.o_oyoqA,
-.o_oyoqB {
-  transform-box: view-box;
-  transform-origin: 32px 72px;
-  animation: o_qadam 0.5s ease-in-out infinite alternate;
-}
-
-.o_oyoqB {
-  animation-direction: alternate-reverse;
-}
-
-.o_qolYurA,
-.o_qolYurB {
-  transform-box: view-box;
-  transform-origin: 32px 47px;
-  animation: o_qadam 0.5s ease-in-out infinite alternate;
-}
-
-.o_qolYurB {
-  animation-direction: alternate-reverse;
-}
-
-@keyframes o_qadam {
-  from { transform: rotate(24deg); }
-  to { transform: rotate(-24deg); }
-}
-
-@keyframes o_sakrash {
-  to { transform: translateY(-2px); }
-}
-
-/* yo'laklar: ichki halqa 360..760, tashqi halqa -40..1160 (W = 1120) */
-.o_yol {
-  left: 0;
-  top: 0;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-}
-
-.o_yol1 { animation-name: o_halqa1; }
-.o_yol2 { animation-name: o_halqa2; }
-
-@keyframes o_halqa1 {
-  0% { transform: translate(360px, 360px); }
-  25% { transform: translate(760px, 360px); }
-  50% { transform: translate(760px, 760px); }
-  75% { transform: translate(360px, 760px); }
-  100% { transform: translate(360px, 360px); }
-}
-
-@keyframes o_halqa2 {
-  0% { transform: translate(-40px, -40px); }
-  25% { transform: translate(1160px, -40px); }
-  50% { transform: translate(1160px, 1160px); }
-  75% { transform: translate(-40px, 1160px); }
-  100% { transform: translate(-40px, -40px); }
-}
-
-/* +x va +y bo'ylab o'ngga, -x va -y bo'ylab chapga qaraydi */
-.o_burilish {
-  animation-name: o_burilish;
-  animation-timing-function: step-end;
-  animation-iteration-count: infinite;
-}
-
-@keyframes o_burilish {
-  0% { transform: scaleX(1); }
-  50% { transform: scaleX(-1); }
-  100% { transform: scaleX(-1); }
+.o_tikIchiHtml {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
 }
 
 .o_agentNom {
@@ -461,52 +119,6 @@
   font-weight: 600;
   color: #9aa0c0;
   font-size: 11px;
-}
-
-/* miya */
-.o_miyaHalqa {
-  position: absolute;
-  border-radius: 50%;
-  border: 2px solid rgba(140, 200, 255, 0.55);
-  box-shadow: 0 0 30px rgba(110, 180, 255, 0.35), inset 0 0 30px rgba(110, 180, 255, 0.25);
-  animation: halqa 4s ease-in-out infinite;
-}
-
-@keyframes halqa {
-  50% { opacity: 0.45; }
-}
-
-.o_miyaPlatforma {
-  position: absolute;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(130, 200, 255, 0.45), rgba(40, 60, 140, 0.25) 60%, transparent 72%);
-}
-
-.o_nur {
-  width: 70px;
-  height: 230px;
-  border-radius: 40px 40px 0 0;
-  background: linear-gradient(to top, rgba(140, 210, 255, 0.55), rgba(140, 210, 255, 0));
-  filter: blur(2px);
-  position: absolute;
-  bottom: 0;
-  left: -35px;
-}
-
-.o_shar {
-  width: 78px;
-  height: 78px;
-  border-radius: 50%;
-  margin-bottom: 120px;
-  background: radial-gradient(circle at 35% 30%, #ffffff, #9fd8ff 35%, #4a7dff 70%, #2b2f8f);
-  box-shadow: 0 0 40px #7cc4ff, 0 0 90px rgba(90, 150, 255, 0.6);
-  animation: shar 3s ease-in-out infinite;
-  cursor: pointer;
-}
-
-.o_sharBand {
-  animation: shar 0.6s ease-in-out infinite;
-  box-shadow: 0 0 60px #b28cff, 0 0 140px rgba(178, 140, 255, 0.9);
 }
 
 @keyframes shar {

@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import "./ofis.css";
-import { OtirganOdam, YuruvchiOdam, qiyofa } from "./Odam";
+import dynamic from "next/dynamic";
+
+// WebGL sahna faqat brauzerda yuklanadi
+const Sahna3D = dynamic(() => import("./Sahna3D"), {
+  ssr: false,
+  loading: () => <div className="o_yuklanmoqda">3D ofis yuklanmoqda…</div>,
+});
 import {
   BOSHLANGICH_AGENTLAR,
   JAMOALAR,
@@ -18,12 +24,9 @@ import {
 // ofis.css dagi barcha klasslar "o_" bilan boshlanadi
 const s = new Proxy({} as Record<string, string>, { get: (_t, k) => `o_${String(k)}` });
 
-// ---------- sahna o'lchamlari ----------
-const R = 320; // xona tomoni
-const GAP = 80;
-const W = 3 * R + 2 * GAP;
-const DEVOR = 78;
+const MAKS_AGENT = 6; // bir xonadagi stollar soni
 
+// minixarita uchun xonalar joylashuvi (ustun, qator)
 const JOYLAR: Record<JamoaId, [number, number]> = {
   tadqiqot: [0, 0],
   ijtimoiy: [1, 0],
@@ -35,17 +38,6 @@ const JOYLAR: Record<JamoaId, [number, number]> = {
   tahlil: [2, 2],
 };
 
-// stol joylari (xona ichida)
-const STOLLAR: [number, number][] = [
-  [62, 70],
-  [190, 70],
-  [62, 160],
-  [190, 160],
-  [62, 245],
-  [190, 245],
-];
-const MAKS_AGENT = STOLLAR.length;
-
 const MISOLLAR = [
   "Drive'dagi 3 ta yangi klipdan 30 soniyalik reels yasab ber",
   "Ertangi Instagram postlarini rejalashtir",
@@ -53,14 +45,6 @@ const MISOLLAR = [
   "Mijozga chegirma haqida taklif xati yoz",
   "Shu oygi xarajatlarni hisobla",
   "O'tgan haftaning statistikasidan hisobot tayyorla",
-];
-
-// yo'lak bo'ylab aylanib yuradigan xodimlar (1 — ichki halqa, 2 — tashqi halqa)
-const YURUVCHILAR = [
-  { yol: 1, kechik: 0, muddat: 40, rang: "#4d8dff" },
-  { yol: 1, kechik: -20, muddat: 40, rang: "#ff4d8d" },
-  { yol: 2, kechik: -8, muddat: 70, rang: "#2ecf8f" },
-  { yol: 2, kechik: -43, muddat: 70, rang: "#ffb45a" },
 ];
 
 type Eslatma = { id: string; matn: string; jamoa: JamoaId; vaqt: number };
@@ -77,10 +61,6 @@ const birinchiBelgi = (s: string) => {
 const yangiId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const rangi = (r: string) => ({ "--r": r }) as CSSProperties;
 
-function xonaKoordinata(id: JamoaId) {
-  const [c, r] = JOYLAR[id];
-  return { x: c * (R + GAP), y: r * (R + GAP) };
-}
 
 function ballar(nom: string, ishlatildi: number) {
   let h = 0;
@@ -151,6 +131,7 @@ export default function OfisSahifa() {
     matn: "",
     maqsad: "buyruq",
   });
+  const [yangiAgentlar, setYangiAgentlar] = useState<Set<string>>(() => new Set());
   const tanishRef = useRef<Tanish | null>(null);
   const xabarOxiri = useRef<HTMLDivElement>(null);
 
@@ -289,6 +270,8 @@ export default function OfisSahifa() {
         setChatAgent(agentId);
         setTab("ofis");
         if (yangiAgent) {
+          const id = yangiAgent.id;
+          setYangiAgentlar((s) => new Set(s).add(id));
           setToast(`✨ Yangi agent yaratildi: ${yangiAgent.avatar} ${yangiAgent.ism} — ${jamoaById(t.jamoa).nom} jamoasi`);
         } else if (d.eslatma) {
           setToast(d.eslatma);
@@ -367,16 +350,10 @@ export default function OfisSahifa() {
 
   const ovozniTugat = () => tanishRef.current?.stop();
 
-  // ---------- kamera ----------
-  const asosiyMasshtab = Math.min(ekran.w / (W * 1.5), (ekran.h - 120) / (W * 0.82));
+  // ---------- kamera: panellar ochiq bo'lsa xonani bo'sh joyga suramiz ----------
   const panelChap = jamoa && tab === "ofis" && ekran.w > 720;
   const panelOng = chatAgent && tab === "ofis" && ekran.w > 720;
-  const fokus = jamoa ? xonaKoordinata(jamoa) : null;
-  const masshtab = fokus ? asosiyMasshtab * 2.1 : asosiyMasshtab;
-  const dx = fokus ? W / 2 - (fokus.x + R / 2) : 0;
-  const dy = fokus ? W / 2 - (fokus.y + R / 2) : 0;
-  const kameraX = (panelChap ? 190 : 0) - (panelOng ? 200 : 0);
-  const kameraY = ekran.w <= 720 && (jamoa || chatAgent) ? -ekran.h * 0.22 : -20;
+  const surish = (panelChap ? 190 : 0) - (panelOng ? 200 : 0);
 
   const agentlarJamoada = useMemo(() => {
     const m = new Map<JamoaId, Agent[]>();
@@ -387,169 +364,32 @@ export default function OfisSahifa() {
   const ishlayotgan = ofis.agentlar.filter((a) => a.holat === "ishlamoqda").length;
   const tanlanganJamoa = jamoa ? jamoaById(jamoa) : null;
   const chatAgentObj = ofis.agentlar.find((a) => a.id === chatAgent) ?? null;
-  const markaz = W / 2;
 
   return (
     <div className={s.ekran}>
-      {/* ---------- 3D ofis ---------- */}
-      <div className={s.kamera} style={{ transform: `translate(${kameraX}px, ${kameraY}px)` }}>
-        <div
-          className={s.dunyo}
-          style={{
-            width: W,
-            height: W,
-            marginLeft: -W / 2,
-            marginTop: -W / 2,
-            transform: `scale(${masshtab}) rotateX(60deg) rotateZ(-45deg) translate(${dx}px, ${dy}px)`,
-          }}
-        >
-          <div className={s.pol} onClick={() => setJamoa(null)} />
-
-          <svg className={s.chiziqlar} width={W} height={W} viewBox={`0 0 ${W} ${W}`}>
-            {JAMOALAR.map((j) => {
-              const { x, y } = xonaKoordinata(j.id);
-              const faol = agentlarJamoada.get(j.id)?.some((a) => a.holat === "ishlamoqda");
-              return (
-                <line
-                  key={j.id}
-                  x1={markaz}
-                  y1={markaz}
-                  x2={x + R / 2}
-                  y2={y + R / 2}
-                  stroke={j.rang}
-                  className={`${s.chiziq} ${faol ? s.chiziqFaol : ""}`}
-                />
-              );
-            })}
-          </svg>
-
-          {/* miya */}
-          {[300, 220, 150].map((d) => (
-            <div
-              key={d}
-              className={s.miyaHalqa}
-              style={{ width: d, height: d, left: markaz - d / 2, top: markaz - d / 2 }}
-            />
-          ))}
-          <div className={s.miyaPlatforma} style={{ width: 260, height: 260, left: markaz - 130, top: markaz - 130 }} />
-          <div className={s.anchor} style={{ left: markaz, top: markaz }}>
-            <div className={s.tik}>
-              <div className={s.nur} />
-              <div className={s.tikIchi}>
-                <div className={s.xonaYorliq} style={{ ...rangi("#7cc4ff"), marginBottom: 10 }}>
-                  🧠 Miya <small>{ofis.eslatmalar.length} eslatma · umumiy xotira</small>
-                </div>
-                <div className={`${s.shar} ${band ? s.sharBand : ""}`} onClick={() => setTab("miya")} />
-              </div>
-            </div>
-          </div>
-
-          {/* yo'laklarda yurib yurgan xodimlar */}
-          {YURUVCHILAR.map((y, i) => (
-            <div key={i} className={`${s.anchor} ${s.yol} ${s["yol" + y.yol]}`} style={{ animationDelay: `${y.kechik}s`, animationDuration: `${y.muddat}s` }}>
-              <div className={s.tik}>
-                <div className={s.tikIchi}>
-                  <div className={`${s.burilish} ${s["burilish" + y.yol]}`} style={{ animationDelay: `${y.kechik}s`, animationDuration: `${y.muddat}s` }}>
-                    <YuruvchiOdam q={qiyofa("yuruvchi" + i, y.rang)} kepkaRang={y.rang} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {/* xonalar */}
-          {JAMOALAR.map((j) => {
-            const { x, y } = xonaKoordinata(j.id);
-            const agentlar = agentlarJamoada.get(j.id) ?? [];
-            return (
-              <div
-                key={j.id}
-                className={`${s.xona} ${jamoa === j.id ? s.xonaTanlangan : ""}`}
-                style={{ ...rangi(j.rang), left: x, top: y, width: R, height: R }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setJamoa(j.id);
-                  setTab("ofis");
-                }}
-              >
-                <div className={s.xonaPol} />
-                <div className={s.gilam} style={{ left: 40, top: 50, width: R - 70, height: R - 80 }} />
-                <div className={s.devorOrqa} style={{ width: R, height: DEVOR }}>
-                  <div className={s.deraza} style={{ left: 40 }} />
-                  <div className={s.deraza} style={{ left: 110 }} />
-                  <div className={s.javon} style={{ left: 210 }} />
-                </div>
-                <div className={s.devorChap} style={{ width: DEVOR, height: R }}>
-                  <div className={s.deraza} style={{ left: 14, top: 120, width: 34, height: 54 }} />
-                </div>
-
-                {STOLLAR.map(([sx, sy], i) => {
-                  const a = agentlar[i];
-                  if (!a && i >= Math.max(2, agentlar.length)) return null;
-                  return (
-                    <div key={i}>
-                      <div className={s.stol} style={{ left: sx, top: sy }}>
-                        <div className={s.stolUst} />
-                        <div className={s.stolOld} />
-                        <div className={s.stolYon} />
-                        <div className={s.monitor}>
-                          <div className={`${s.monitorEkran} ${a?.holat === "ishlamoqda" ? s.monitorYonik : ""}`} />
-                        </div>
-                      </div>
-                      {!a && <div className={s.stul} style={{ left: sx + 23, top: sy + 52 }} />}
-                      {a && (
-                        <div className={s.anchor} style={{ left: sx + 34, top: sy + 66 }}>
-                          <div className={s.tik}>
-                            <div
-                              className={`${s.tikIchi} ${s.agent} ${a.yangi ? s.agentYangi : ""}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setJamoa(a.jamoa);
-                                setChatAgent(a.id);
-                                setTab("ofis");
-                              }}
-                            >
-                              {a.holat === "ishlamoqda" && <div className={s.pufak}>•••</div>}
-                              {a.holat === "tasdiq" && <div className={s.pufak}>✋</div>}
-                              <div className={s.agentNom}>
-                                <i
-                                  className={`${s.nuqta} ${
-                                    a.holat === "ishlamoqda" ? s.nuqtaIshda : a.holat === "tasdiq" ? s.nuqtaTasdiq : ""
-                                  }`}
-                                />
-                                {a.ism}
-                              </div>
-                              <OtirganOdam q={qiyofa(a.id + a.ism, j.rang)} ishda={a.holat === "ishlamoqda"} kepkaRang={j.rang} />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-
-                <div className={s.anchor} style={{ left: R - 40, top: R - 30 }}>
-                  <div className={s.tik}>
-                    <div className={s.tikIchi} style={{ fontSize: 30 }}>
-                      🪴
-                    </div>
-                  </div>
-                </div>
-
-                <div className={s.anchor} style={{ left: 30, top: 30 }}>
-                  <div className={s.tik}>
-                    <div className={s.tikIchi} style={{ bottom: DEVOR + 10 }}>
-                      <div className={s.xonaYorliq}>
-                        {j.belgi} {j.nom} <small>{agentlar.length} agent</small>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      {/* ---------- 3D ofis (WebGL) ---------- */}
+      <Sahna3D
+        agentlar={ofis.agentlar}
+        jamoa={tab === "ofis" ? jamoa : null}
+        band={band}
+        eslatmaSoni={ofis.eslatmalar.length}
+        yangiAgentlar={yangiAgentlar}
+        surish={surish}
+        onXona={(id) => {
+          setJamoa(id);
+          setTab("ofis");
+        }}
+        onAgent={(a) => {
+          setJamoa(a.jamoa);
+          setChatAgent(a.id);
+          setTab("ofis");
+        }}
+        onMiya={() => setTab("miya")}
+        onBosh={() => {
+          setJamoa(null);
+          setChatAgent(null);
+        }}
+      />
 
       {/* ---------- yuqori panel ---------- */}
       <div className={s.ustPanel}>
