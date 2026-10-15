@@ -4,6 +4,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
 import { JAMOALAR, lokalTaqsimot, type JamoaId, type Taqsimot } from "@/lib/ofis";
+import { IG_VOSITALAR, amalNomi, igAkkaunt, igVosita, lokalInstagram, yangiTasdiqlar } from "@/lib/ofis-instagram";
 
 const JAMOA_IDLAR = JAMOALAR.map((j) => j.id) as [JamoaId, ...JamoaId[]];
 
@@ -59,7 +60,24 @@ Vazifangiz:
 5. natija: vazifaning o'zini imkon qadar bajaring — matn, reja, post matni, ssenariy, javob shabloni, hisob-kitob va hokazo.
    Tashqi tizimga kirish kerak bo'lsa (fayl, akkaunt), nima qilinishini aniq reja sifatida yozing. Markdown ishlatmang, oddiy matn.
 6. tasdiqKerak: natija tashqariga chiqsa (joylash, yuborish, to'lov) true.
-Hamma matn faqat o'zbek tilida (lotin yozuvida) bo'lsin.`;
+Hamma matn faqat o'zbek tilida (lotin yozuvida) bo'lsin.
+
+INSTAGRAM: foydalanuvchining Instagram Cloud akkaunti ulangan bo'lsa, sizda instagram_* vositalari bor.
+- Statistika, Reels hisoboti, kommentlar, Direct, qoidalar haqidagi savollarda avval vositani chaqirib, HAQIQIY ma'lumot bilan javob bering (o'ylab topmang).
+- Yozish vositalari (kommentga javob, Direct yuborish, komment yashirish, Reels joylash, qoida yaratish/o'zgartirish/o'chirish) darhol bajarilmaydi — foydalanuvchi tasdig'iga navbatga qo'yiladi. Ularni faqat foydalanuvchi aniq so'raganda chaqiring; bunda tasdiqKerak = true.
+- Jamoalar: statistika va hisobotlar — tahlil; kommentlar, postlar, Reels, avto-javob qoidalari — ijtimoiy; Direct va mijoz savollari — mijozlar.
+- natija ichida qaysi raqam/ma'lumot qayerdan olinganini qisqa ko'rsating.`;
+
+// faqat o'qiydigan Instagram vositalari (qolganlari tasdiq navbatiga tushadi)
+const NOMLAR_OQISH = new Set([
+  "instagram_accounts",
+  "instagram_reels_report",
+  "instagram_insights",
+  "instagram_list_comments",
+  "instagram_list_dms",
+  "instagram_list_rules",
+  "instagram_inbox_topics",
+]);
 
 let mijoz: Anthropic | null = null;
 function claude() {
@@ -75,8 +93,23 @@ export async function POST(req: Request) {
   }
   const { matn, jamoa, agentId, agentlar, tarix } = tahlil.data;
 
-  const lokal = () => {
-    const t = lokalTaqsimot(matn, agentlar, jamoa);
+  const user = await getSessionUser();
+
+  const lokal = async (): Promise<Taqsimot> => {
+    let t = lokalTaqsimot(matn, agentlar, jamoa);
+    const ig = user ? await lokalInstagram(user.id, matn).catch(() => null) : null;
+    if (ig) {
+      const boshqa = ig.jamoa !== t.jamoa ? lokalTaqsimot(matn, agentlar, ig.jamoa) : t;
+      t = {
+        ...boshqa,
+        jamoa: ig.jamoa,
+        qadamlar: [...ig.qadamlar, "Sizga ko'rsatish"],
+        natija: ig.natija,
+        tasdiqKerak: false,
+        instagram: { amallar: ig.amallar, tasdiqlar: [] },
+      };
+      if (t.agentId && !agentlar.some((a) => a.id === t.agentId && a.jamoa === ig.jamoa)) t.agentId = null;
+    }
     if (agentId && agentlar.some((a) => a.id === agentId)) {
       const a = agentlar.find((x) => x.id === agentId)!;
       return { ...t, jamoa: a.jamoa, agentId, yangiAgent: null };
@@ -85,12 +118,13 @@ export async function POST(req: Request) {
   };
 
   const client = claude();
-  const user = client ? await getSessionUser() : null;
   if (!client || !user) {
-    return NextResponse.json({ taqsimot: lokal(), eslatma: client ? "Claude uchun tizimga kiring" : undefined });
+    return NextResponse.json({ taqsimot: await lokal(), eslatma: client ? "Claude uchun tizimga kiring" : undefined });
   }
 
+  const akk = await igAkkaunt(user.id);
   const kontekst = [
+    akk ? `Ulangan Instagram: @${akk.username}${akk.isDemo ? " (demo)" : ""}, ${akk.followersCount} obunachi.` : "Instagram ulanmagan — instagram_* vositalari ishlamaydi.",
     `Mavjud agentlar:\n${agentlar.map((a) => `- id=${a.id} | ${a.ism} | ${a.rol} | jamoa=${a.jamoa} | ${a.konikmalar.join(", ")}`).join("\n")}`,
     jamoa ? `Foydalanuvchi ${jamoa} jamoasi xonasida turibdi.` : "",
     agentId ? `Foydalanuvchi to'g'ridan-to'g'ri agentId=${agentId} bilan gaplashyapti — shu agentni tanlang.` : "",
@@ -100,28 +134,81 @@ export async function POST(req: Request) {
     .filter(Boolean)
     .join("\n\n");
 
+  const vositalar: Anthropic.Beta.BetaTool[] = akk
+    ? IG_VOSITALAR.map((v) => ({
+        name: v.name,
+        description: v.description,
+        input_schema: v.inputSchema as Anthropic.Beta.BetaTool.InputSchema,
+      }))
+    : [];
+
+  const boshlandi = new Date();
+  const amallar: string[] = [];
+  const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: kontekst }];
+
   try {
-    const res = await client.beta.messages.parse({
-      model: "claude-opus-5-5",
-      max_tokens: 16000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: "medium", format: betaZodOutputFormat(Javob) },
-      system: [{ type: "text", text: TIZIM, cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: kontekst }],
-    });
-    if (res.stop_reason === "refusal" || !res.parsed_output) {
-      return NextResponse.json({ taqsimot: lokal() });
+    for (let qadam = 0; qadam < 8; qadam++) {
+      const res = await client.beta.messages.parse({
+        model: "claude-opus-5-5",
+        max_tokens: 16000,
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+        output_config: { effort: "medium", format: betaZodOutputFormat(Javob) },
+        system: [{ type: "text", text: TIZIM, cache_control: { type: "ephemeral" } }],
+        tools: vositalar.length ? vositalar : undefined,
+        messages,
+      });
+
+      if (res.stop_reason === "tool_use" || res.stop_reason === "pause_turn") {
+        // javobni o'zgartirmasdan tarixga qo'shamiz (parse qo'shgan maydonlarsiz)
+        messages.push({
+          role: "assistant",
+          content: res.content.map((b) =>
+            b.type === "text" ? { type: "text" as const, text: b.text } : (b as Anthropic.Beta.BetaContentBlockParam),
+          ),
+        });
+        if (res.stop_reason === "pause_turn") continue;
+        const natijalar: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+        for (const b of res.content) {
+          if (b.type !== "tool_use") continue;
+          try {
+            const matnNatija = await igVosita(user.id, b.name, (b.input ?? {}) as Record<string, unknown>);
+            if (!b.name.startsWith("list_") && !NOMLAR_OQISH.has(b.name)) {
+              amallar.push(`Tasdiqqa qo'yildi: ${b.name.replace("instagram_", "")}`);
+            } else {
+              amallar.push(amalNomi(b.name));
+            }
+            natijalar.push({ type: "tool_result", tool_use_id: b.id, content: matnNatija.slice(0, 20000) });
+          } catch (e) {
+            natijalar.push({
+              type: "tool_result",
+              tool_use_id: b.id,
+              content: e instanceof Error ? e.message : "Xato",
+              is_error: true,
+            });
+          }
+        }
+        messages.push({ role: "user", content: natijalar });
+        continue;
+      }
+
+      if (res.stop_reason === "refusal" || !res.parsed_output) {
+        return NextResponse.json({ taqsimot: await lokal() });
+      }
+      const p = res.parsed_output;
+      const tasdiqlar = await yangiTasdiqlar(user.id, boshlandi);
+      const borAgent = p.agentId && agentlar.some((a) => a.id === p.agentId) ? p.agentId : null;
+      const taqsimot: Taqsimot = {
+        ...p,
+        tasdiqKerak: p.tasdiqKerak || tasdiqlar.length > 0,
+        agentId: borAgent,
+        yangiAgent: borAgent ? null : p.yangiAgent ?? (await lokal()).yangiAgent,
+        manba: "claude",
+        instagram: amallar.length || tasdiqlar.length ? { amallar, tasdiqlar } : undefined,
+      };
+      return NextResponse.json({ taqsimot });
     }
-    const p = res.parsed_output;
-    const borAgent = p.agentId && agentlar.some((a) => a.id === p.agentId) ? p.agentId : null;
-    const taqsimot: Taqsimot = {
-      ...p,
-      agentId: borAgent,
-      yangiAgent: borAgent ? null : p.yangiAgent ?? lokal().yangiAgent,
-      manba: "claude",
-    };
-    return NextResponse.json({ taqsimot });
+    return NextResponse.json({ taqsimot: await lokal(), eslatma: "Vazifa juda uzun bo'lib ketdi, lokal rejim" });
   } catch (e) {
     if (e instanceof Anthropic.AuthenticationError) {
       console.error("ofis: Claude kaliti noto'g'ri");
@@ -132,6 +219,6 @@ export async function POST(req: Request) {
     } else {
       console.error("ofis:", e);
     }
-    return NextResponse.json({ taqsimot: lokal(), eslatma: "Claude javob bermadi, lokal rejim" });
+    return NextResponse.json({ taqsimot: await lokal(), eslatma: "Claude javob bermadi, lokal rejim" });
   }
 }

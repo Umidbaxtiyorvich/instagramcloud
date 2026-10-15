@@ -50,6 +50,8 @@ export type Vazifa = {
   manba: "claude" | "lokal";
   vaqt: number;
   tugadi?: number;
+  amallar?: string[];
+  tasdiqlar?: { id: string; summary: string }[];
 };
 
 export type Xabar = {
@@ -69,6 +71,8 @@ export type Taqsimot = {
   natija: string;
   tasdiqKerak: boolean;
   manba: "claude" | "lokal";
+  // Instagram Cloud bilan bajarilgan amallar va tasdiq navbatidagi harakatlar
+  instagram?: { amallar: string[]; tasdiqlar: { id: string; summary: string }[] };
 };
 
 export const JAMOALAR: Jamoa[] = [

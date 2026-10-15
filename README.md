@@ -58,4 +58,5 @@ Agentlar bilan ishlaydigan virtual 3D ofis (three.js / React Three Fiber) — to
 - Xonani bossangiz — jamoa paneli (vositalar, ko‘nikmalar, agentlar); agentni bossangiz — u bilan chat
 - **Vazifalar** taxtasi: jarayonda / tasdiq kutmoqda / bajarildi; tashqariga chiqadigan ishlar tasdiqlanmaguncha bajarilmaydi
 - `ANTHROPIC_API_KEY` berilsa va tizimga kirgan bo‘lsangiz, agentlar Claude bilan ishlaydi (vazifani bajarib, natija qaytaradi). Kalitsiz — kalit so‘zlar bo‘yicha lokal rejim
+- **Instagram Cloud bilan ulangan:** agentlar haqiqiy akkaunt ma’lumotlari bilan ishlaydi — statistika va Reels hisoboti (Tahlil), kommentlar va avto-javob qoidalari (Ijtimoiy tarmoq), Direct mavzulari (Mijozlar xizmati). Javob, Direct, Reels, qoida kabi yozish harakatlari kabinetdagi tasdiq navbatiga tushadi va ofisdagi «Vazifalar» taxtasida ham tasdiqlanadi. AI-konnektor (Claude/ChatGPT) orqali kelgan tasdiqlar ham shu yerda ko‘rinadi; yangi avto-javoblar ofisda jonli ko‘rinib, «Miya»ga yoziladi
 - Ovoz: brauzerning Web Speech API (`uz-UZ`, Chrome’da eng yaxshi ishlaydi)

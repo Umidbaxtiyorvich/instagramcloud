@@ -39,6 +39,10 @@ const JOYLAR: Record<JamoaId, [number, number]> = {
 };
 
 const MISOLLAR = [
+  "Instagram statistikasidan hisobot ber",
+  "Oxirgi kommentlarni ko'rib chiq",
+  "Direct'da nimalar so'ralyapti?",
+  "Avto-javob qoidalarimni ko'rsat",
   "Drive'dagi 3 ta yangi klipdan 30 soniyalik reels yasab ber",
   "Ertangi Instagram postlarini rejalashtir",
   "Raqobatchilarimizning narxlarini o'rganib chiq",
@@ -46,6 +50,10 @@ const MISOLLAR = [
   "Shu oygi xarajatlarni hisobla",
   "O'tgan haftaning statistikasidan hisobot tayyorla",
 ];
+
+type IgAkkaunt = { id: string; username: string; followersCount: number; isDemo: boolean };
+type IgTasdiq = { id: string; summary: string; toolName: string; createdAt: string };
+type IgLog = { kind: string; direction: string; username: string | null; text: string; replyText: string | null; createdAt: string };
 
 type Eslatma = { id: string; matn: string; jamoa: JamoaId; vaqt: number };
 type Ofis = { agentlar: Agent[]; vazifalar: Vazifa[]; xabarlar: Xabar[]; eslatmalar: Eslatma[] };
@@ -126,6 +134,9 @@ export default function OfisSahifa() {
   const [ochiqNatija, setOchiqNatija] = useState<string | null>(null);
   const [ekran, setEkran] = useState({ w: 1280, h: 800 });
   const [foydalanuvchi, setFoydalanuvchi] = useState<string | null | undefined>(undefined);
+  const [igAkkaunt, setIgAkkaunt] = useState<IgAkkaunt | null>(null);
+  const [igTasdiqlar, setIgTasdiqlar] = useState<IgTasdiq[]>([]);
+  const [jonli, setJonli] = useState<Record<string, number>>({});
   const [ovoz, setOvoz] = useState<{ faol: boolean; matn: string; maqsad: "buyruq" | "chat" }>({
     faol: false,
     matn: "",
@@ -149,7 +160,11 @@ export default function OfisSahifa() {
     }, 0);
     fetch("/api/me")
       .then((r) => r.json())
-      .then((d) => setFoydalanuvchi(d.user ? d.user.name || d.user.email : null))
+      .then((d) => {
+        setFoydalanuvchi(d.user ? d.user.name || d.user.email : null);
+        const a = d.user?.accounts?.[0];
+        if (a) setIgAkkaunt({ id: a.id, username: a.username, followersCount: a.followersCount, isDemo: a.isDemo });
+      })
       .catch(() => setFoydalanuvchi(null));
     return () => clearTimeout(t);
   }, []);
@@ -167,6 +182,81 @@ export default function OfisSahifa() {
     window.addEventListener("resize", f);
     return () => window.removeEventListener("resize", f);
   }, []);
+
+  // Instagram Cloud tasdiq navbati (ofisdan ham, AI-konnektordan ham kelganlar)
+  const tasdiqlarniYangila = useCallback(() => {
+    fetch("/api/approvals")
+      .then((r) => (r.ok ? r.json() : { approvals: [] }))
+      .then((d: { approvals: (IgTasdiq & { status: string })[] }) =>
+        setIgTasdiqlar(d.approvals.filter((a) => a.status === "pending").map(({ id, summary, toolName, createdAt }) => ({ id, summary, toolName, createdAt }))),
+      )
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!foydalanuvchi) return;
+    const boshla = setTimeout(tasdiqlarniYangila, 0);
+    const t = setInterval(tasdiqlarniYangila, 15000);
+    return () => {
+      clearTimeout(boshla);
+      clearInterval(t);
+    };
+  }, [foydalanuvchi, tasdiqlarniYangila]);
+
+  // Instagram avto-javoblari: yangi javob chiqsa, mos agent bir necha soniya "ishlaydi"
+  const oxirgiLog = useRef<string | null>(null);
+  useEffect(() => {
+    if (!igAkkaunt) return;
+    const tekshir = async () => {
+      try {
+        const d = (await (await fetch(`/api/logs?accountId=${igAkkaunt.id}`)).json()) as { logs: IgLog[] };
+        const loglar = d.logs ?? [];
+        if (oxirgiLog.current === null) {
+          oxirgiLog.current = loglar[0]?.createdAt ?? "";
+          return;
+        }
+        const yangi = loglar.filter((l) => l.createdAt > oxirgiLog.current! && l.direction === "out");
+        if (loglar[0]) oxirgiLog.current = loglar[0].createdAt;
+        if (!yangi.length) return;
+        const vaqt = Date.now() + 5000;
+        setOfis((o) => {
+          const kim = (jamoa: JamoaId, konikma: string) =>
+            o.agentlar.find((a) => a.jamoa === jamoa && a.konikmalar.includes(konikma)) ?? o.agentlar.find((a) => a.jamoa === jamoa);
+          const ishchilar: Record<string, number> = {};
+          const eslatmalar = yangi.map((l) => {
+            const dm = l.kind.startsWith("dm");
+            const a = dm ? kim("mijozlar", "savolga-javob") : kim("ijtimoiy", "komment-javob");
+            if (a) ishchilar[a.id] = vaqt;
+            return {
+              id: yangiId(),
+              matn: `🤖 Avto-javob (${dm ? "Direct" : "komment"})${l.username ? ` @${l.username}` : ""}: «${(l.replyText || l.text).slice(0, 80)}»`,
+              jamoa: (dm ? "mijozlar" : "ijtimoiy") as JamoaId,
+              vaqt: Date.now(),
+            };
+          });
+          setJonli((j) => ({ ...j, ...ishchilar }));
+          return { ...o, eslatmalar: [...eslatmalar, ...o.eslatmalar].slice(0, 200) };
+        });
+      } catch {}
+    };
+    const boshla = setTimeout(tekshir, 0);
+    const t = setInterval(tekshir, 10000);
+    return () => {
+      clearTimeout(boshla);
+      clearInterval(t);
+    };
+  }, [igAkkaunt]);
+
+  // jonli ish muddati tugagach agentni bo'shatamiz
+  useEffect(() => {
+    const qolgan = Object.values(jonli);
+    if (!qolgan.length) return;
+    const t = setTimeout(() => {
+      const hozir = Date.now();
+      setJonli((j) => Object.fromEntries(Object.entries(j).filter(([, v]) => v > hozir)));
+    }, Math.max(200, Math.min(...qolgan) - Date.now()));
+    return () => clearTimeout(t);
+  }, [jonli]);
 
   const jarayonSoni = ofis.vazifalar.filter((v) => v.holat === "jarayonda").length;
   useEffect(() => {
@@ -250,7 +340,9 @@ export default function OfisSahifa() {
           qadamlar: t.qadamlar.length ? t.qadamlar.slice(0, 6) : ["Bajarish"],
           bosqich: 0,
           natija: t.natija,
-          tasdiqKerak: t.tasdiqKerak,
+          tasdiqKerak: t.tasdiqKerak || !!t.instagram?.tasdiqlar.length,
+          amallar: t.instagram?.amallar,
+          tasdiqlar: t.instagram?.tasdiqlar,
           manba: t.manba,
           vaqt: Date.now(),
         };
@@ -263,9 +355,21 @@ export default function OfisSahifa() {
           xabarlar: [
             ...o.xabarlar,
             { id: yangiId(), kimdan: "men" as const, agentId, matn: toza, vaqt: Date.now() },
-            { id: yangiId(), kimdan: "agent" as const, agentId, matn: t.javob, vaqt: Date.now() },
+            {
+              id: yangiId(),
+              kimdan: "agent" as const,
+              agentId,
+              matn:
+                t.javob +
+                (t.instagram?.amallar.length ? `\n\n🔗 Instagram Cloud: ${t.instagram.amallar.join(" · ")}` : "") +
+                (t.instagram?.tasdiqlar.length
+                  ? `\n✋ Tasdiqingizni kutadi:\n${t.instagram.tasdiqlar.map((x) => `• ${x.summary}`).join("\n")}`
+                  : ""),
+              vaqt: Date.now(),
+            },
           ].slice(-400),
         }));
+        if (t.instagram?.tasdiqlar.length) tasdiqlarniYangila();
         setJamoa(t.jamoa);
         setChatAgent(agentId);
         setTab("ofis");
@@ -282,31 +386,59 @@ export default function OfisSahifa() {
         setBand(false);
       }
     },
-    [band, ofis.agentlar, ofis.xabarlar],
+    [band, ofis.agentlar, ofis.xabarlar, tasdiqlarniYangila],
   );
 
-  const tasdiqla = (id: string, ha: boolean) => {
+  // Instagram Cloud tasdig'i: «Ha» bo'lsa harakat haqiqatan Instagramga yuboriladi
+  const igQaror = async (id: string, ha: boolean) => {
+    const r = await fetch("/api/approvals", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, decision: ha ? "approve" : "reject" }),
+    });
+    const d = (await r.json().catch(() => ({}))) as { error?: string; result?: { demo?: boolean } };
+    if (!r.ok) throw new Error(d.error || "Instagram xatosi");
+    return d.result?.demo ? " (demo akkaunt)" : "";
+  };
+
+  const tasdiqla = async (id: string, ha: boolean) => {
+    const v = ofis.vazifalar.find((x) => x.id === id);
+    if (!v) return;
+    let matn = ha ? "Tasdiqlandi ✅ Bajaryapman." : "Bekor qilindi. Boshqa variant kerak bo'lsa, ayting.";
+    if (v.tasdiqlar?.length) {
+      const natijalar = await Promise.all(
+        v.tasdiqlar.map((x) =>
+          igQaror(x.id, ha)
+            .then((demo) => `${ha ? "✅" : "🚫"} ${x.summary}${demo}`)
+            .catch((e: Error) => `⚠️ ${x.summary} — ${e.message}`),
+        ),
+      );
+      matn = (ha ? "Instagram'ga yuborildi:\n" : "Rad etildi, hech narsa yuborilmadi:\n") + natijalar.join("\n");
+      tasdiqlarniYangila();
+    }
     setOfis((o) => {
-      const v = o.vazifalar.find((x) => x.id === id);
-      if (!v) return o;
       const vazifalar = o.vazifalar.map((x) => (x.id === id ? { ...x, holat: "bajarildi" as const } : x));
       const qolgan = vazifalar.some((x) => x.agentId === v.agentId && x.holat !== "bajarildi");
       return {
         ...o,
         vazifalar,
         agentlar: o.agentlar.map((a) => (a.id === v.agentId && !qolgan ? { ...a, holat: "bosh" } : a)),
-        xabarlar: [
-          ...o.xabarlar,
-          {
-            id: yangiId(),
-            kimdan: "agent",
-            agentId: v.agentId,
-            matn: ha ? "Tasdiqlandi ✅ Bajaryapman." : "Bekor qilindi. Boshqa variant kerak bo'lsa, ayting.",
-            vaqt: Date.now(),
-          },
-        ],
+        xabarlar: [...o.xabarlar, { id: yangiId(), kimdan: "agent", agentId: v.agentId, matn, vaqt: Date.now() }],
       };
     });
+  };
+
+  // AI-konnektor (Claude/ChatGPT) yoki boshqa joydan kelgan tasdiqlar
+  const ofisTasdiqIdlari = new Set(ofis.vazifalar.flatMap((v) => v.tasdiqlar?.map((x) => x.id) ?? []));
+  const tashqiTasdiqlar = igTasdiqlar.filter((x) => !ofisTasdiqIdlari.has(x.id));
+  const tashqiQaror = async (x: IgTasdiq, ha: boolean) => {
+    try {
+      const demo = await igQaror(x.id, ha);
+      setToast(`${ha ? "✅ Yuborildi" : "🚫 Rad etildi"}: ${x.summary}${demo}`);
+    } catch (e) {
+      setToast(`⚠️ ${e instanceof Error ? e.message : "Xato"}`);
+    }
+    tasdiqlarniYangila();
   };
 
   // ---------- ovoz ----------
@@ -361,6 +493,10 @@ export default function OfisSahifa() {
     return m;
   }, [ofis.agentlar]);
 
+  const sahnaAgentlari = useMemo(
+    () => ofis.agentlar.map((a) => (jonli[a.id] && a.holat === "bosh" ? { ...a, holat: "ishlamoqda" as const } : a)),
+    [ofis.agentlar, jonli],
+  );
   const ishlayotgan = ofis.agentlar.filter((a) => a.holat === "ishlamoqda").length;
   const tanlanganJamoa = jamoa ? jamoaById(jamoa) : null;
   const chatAgentObj = ofis.agentlar.find((a) => a.id === chatAgent) ?? null;
@@ -369,7 +505,7 @@ export default function OfisSahifa() {
     <div className={s.ekran}>
       {/* ---------- 3D ofis (WebGL) ---------- */}
       <Sahna3D
-        agentlar={ofis.agentlar}
+        agentlar={sahnaAgentlari}
         jamoa={tab === "ofis" ? jamoa : null}
         band={band}
         eslatmaSoni={ofis.eslatmalar.length}
@@ -400,7 +536,7 @@ export default function OfisSahifa() {
           {(
             [
               ["ofis", "Ofis"],
-              ["vazifalar", `Vazifalar ${ofis.vazifalar.length || ""}`],
+              ["vazifalar", `Vazifalar ${ofis.vazifalar.length || ""}${tashqiTasdiqlar.length ? ` · ✋${tashqiTasdiqlar.length}` : ""}`],
               ["miya", "Miya"],
             ] as [Tab, string][]
           ).map(([k, nom]) => (
@@ -413,6 +549,11 @@ export default function OfisSahifa() {
           <i className={`${s.nuqta} ${ishlayotgan ? s.nuqtaIshda : ""}`} />
           {ofis.agentlar.length} agent · {ishlayotgan} ishlamoqda
         </div>
+        {foydalanuvchi && (
+          <Link href="/dashboard" className={s.kirishLink} title="Instagram Cloud kabineti">
+            📸 {igAkkaunt ? `@${igAkkaunt.username}` : "Kabinet"}
+          </Link>
+        )}
         {foydalanuvchi === null && (
           <Link href="/login" className={s.kirishLink} title="Kirgandan keyin agentlar Claude bilan ishlaydi">
             Kirish
@@ -436,6 +577,8 @@ export default function OfisSahifa() {
       {/* ---------- jamoa paneli ---------- */}
       {tab === "ofis" && tanlanganJamoa && (
         <JamoaPaneli
+          instagram={igAkkaunt}
+          kirgan={!!foydalanuvchi}
           jamoa={tanlanganJamoa}
           agentlar={agentlarJamoada.get(tanlanganJamoa.id) ?? []}
           vazifalar={ofis.vazifalar.filter((v) => v.jamoa === tanlanganJamoa.id)}
@@ -545,9 +688,26 @@ export default function OfisSahifa() {
               return (
                 <div key={holat} className={s.ustun}>
                   <h3>
-                    {nom} · {royxat.length}
+                    {nom} · {royxat.length + (holat === "tasdiq" ? tashqiTasdiqlar.length : 0)}
                   </h3>
-                  {!royxat.length && <div className={s.bosh}>Bo&apos;sh</div>}
+                  {!royxat.length && !(holat === "tasdiq" && tashqiTasdiqlar.length) && (
+                    <div className={s.bosh}>Bo&apos;sh</div>
+                  )}
+                  {holat === "tasdiq" &&
+                    tashqiTasdiqlar.map((x) => (
+                      <div key={x.id} className={s.karta} style={rangi("#ff4d8d")}>
+                        <p>{x.summary}</p>
+                        <small>📸 Instagram Cloud · AI-konnektordan · {new Date(x.createdAt).toLocaleString("uz-UZ")}</small>
+                        <div className={s.kartaTugmalar}>
+                          <button className={s.ha} onClick={() => tashqiQaror(x, true)}>
+                            Tasdiqlash
+                          </button>
+                          <button className={s.yoq} onClick={() => tashqiQaror(x, false)}>
+                            Rad etish
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   {royxat.map((v) => {
                     const a = ofis.agentlar.find((x) => x.id === v.agentId);
                     const j = jamoaById(v.jamoa);
@@ -564,6 +724,10 @@ export default function OfisSahifa() {
                           {holat === "jarayonda" && ` · ${v.bosqich + 1}/${v.qadamlar.length}`}
                           {v.manba === "claude" ? " · Claude" : ""}
                         </small>
+                        {!!v.amallar?.length && <small className={s.igAmal}>🔗 {v.amallar.join(" · ")}</small>}
+                        {!!v.tasdiqlar?.length && holat === "tasdiq" && (
+                          <small className={s.igAmal}>✋ {v.tasdiqlar.map((x) => x.summary).join(" · ")}</small>
+                        )}
                         {holat === "tasdiq" && (
                           <div className={s.kartaTugmalar}>
                             <button
@@ -722,6 +886,8 @@ export default function OfisSahifa() {
 }
 
 function JamoaPaneli({
+  instagram,
+  kirgan,
   jamoa,
   agentlar,
   vazifalar,
@@ -735,6 +901,8 @@ function JamoaPaneli({
   yop: () => void;
   agentniOch: (id: string) => void;
   yashirin: boolean;
+  instagram: IgAkkaunt | null;
+  kirgan: boolean;
 }) {
   if (yashirin) return null;
   const ishda = agentlar.filter((a) => a.holat === "ishlamoqda").length;
@@ -779,12 +947,29 @@ function JamoaPaneli({
         Ulangan vositalar <em>● ulangan</em>
       </div>
       <div className={s.vositalar}>
-        {jamoa.vositalar.map((v) => (
-          <div key={v} className={s.vosita}>
-            {v}
-            <small>● ulangan</small>
-          </div>
-        ))}
+        {jamoa.vositalar.map((v) =>
+          v.startsWith("Instagram") ? (
+            instagram ? (
+              <a key={v} className={s.vosita} href="/dashboard">
+                {v}
+                <small>
+                  ● @{instagram.username}
+                  {instagram.isDemo ? " · demo" : ""}
+                </small>
+              </a>
+            ) : (
+              <a key={v} className={s.vosita} href={kirgan ? "/connect/instagram" : "/login"}>
+                {v}
+                <small className={s.ulanmagan}>○ {kirgan ? "ulash" : "kirish kerak"}</small>
+              </a>
+            )
+          ) : (
+            <div key={v} className={s.vosita}>
+              {v}
+              <small>● ulangan</small>
+            </div>
+          ),
+        )}
       </div>
 
       <div className={s.bolimNom}>
