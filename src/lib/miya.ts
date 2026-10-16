@@ -70,7 +70,7 @@ export async function moliyaTekshir(userId: string, s: MiyaSozlama) {
       userId,
       "tovar",
       "ogoh",
-      `📦 Kam qolgan tovarlar (${s.kamQoldiq} tadan kam): ${kam.length} xil.\n` +
+      `📦 Kam qolgan tovarlar (${s.kamQoldiq} ta yoki kamroq): ${kam.length} xil.\n` +
         kam.slice(0, 15).map((x) => `• ${x.nom}: ${x.qoldiq} ${x.birlik}`).join("\n") +
         (kam.length > 15 ? `\n… va yana ${kam.length - 15} xil` : ""),
       `kam:${uch}`,
@@ -282,6 +282,8 @@ export async function reelsYasaVaJoyla(userId: string, s: MiyaSozlama, kalit: st
 }
 
 async function reelsVaqti(userId: string, s: MiyaSozlama): Promise<boolean> {
+  // Instagram'i ulanmagan foydalanuvchida Reels yo'q (navbatni boshqalardan olmasin)
+  if (!(await igAkkaunt(userId))) return false;
   const { sana, daqiqa } = toshkent();
   for (const v of s.reelsVaqtlari.split(",").map((x) => x.trim()).filter(Boolean)) {
     const m = v.match(/^(\d{1,2}):(\d{2})$/);
