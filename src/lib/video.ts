@@ -3,9 +3,12 @@ import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import ffmpegPath from "ffmpeg-static";
+import { createCanvas, GlobalFonts, type SKRSContext2D } from "@napi-rs/canvas";
 
 // Vertical text-slide videos rendered on the server, so an AI client without ffmpeg
 // (Claude on a phone) can still "make" a Reel: it sends the script, we draw it.
+// Text is drawn into PNG layers here: the static ffmpeg build on Render has no
+// libfreetype, so its `drawtext` filter doesn't exist. ffmpeg only fades and overlays.
 
 export type Slide = { title: string; subtitle?: string; seconds?: number };
 export type VideoSpec = {
@@ -16,12 +19,12 @@ export type VideoSpec = {
 };
 
 const THEMES = {
-  sky: { c0: "0x38BDF8", c1: "0x1D4ED8", text: "white", accent: "0xFDE68A" },
-  ocean: { c0: "0x0EA5E9", c1: "0x312E81", text: "white", accent: "0x67E8F9" },
-  red: { c0: "0xF87171", c1: "0xB91C1C", text: "white", accent: "0xFDE68A" },
-  sunset: { c0: "0xFB923C", c1: "0xDB2777", text: "white", accent: "0xFEF08A" },
-  dark: { c0: "0x1E293B", c1: "0x020617", text: "white", accent: "0x38BDF8" },
-  light: { c0: "0xF0F9FF", c1: "0xBAE6FD", text: "0x0B1B33", accent: "0x1677FF" },
+  sky: { c0: "0x38BDF8", c1: "0x1D4ED8", text: "#FFFFFF", accent: "#FDE68A" },
+  ocean: { c0: "0x0EA5E9", c1: "0x312E81", text: "#FFFFFF", accent: "#67E8F9" },
+  red: { c0: "0xF87171", c1: "0xB91C1C", text: "#FFFFFF", accent: "#FDE68A" },
+  sunset: { c0: "0xFB923C", c1: "0xDB2777", text: "#FFFFFF", accent: "#FEF08A" },
+  dark: { c0: "0x1E293B", c1: "0x020617", text: "#FFFFFF", accent: "#38BDF8" },
+  light: { c0: "0xF0F9FF", c1: "0xBAE6FD", text: "#0B1B33", accent: "#1677FF" },
 } as const;
 
 export const THEME_NAMES = Object.keys(THEMES) as (keyof typeof THEMES)[];
@@ -31,39 +34,48 @@ const H = 1920;
 const FONT_BOLD = path.join(process.cwd(), "assets/fonts/Montserrat-ExtraBold.ttf");
 const FONT_SEMI = path.join(process.cwd(), "assets/fonts/Montserrat-SemiBold.ttf");
 
-// drawtext doesn't wrap, so lines are broken here by an approximate character budget
-function wrap(text: string, max: number) {
+let shriftlar = false;
+function shrift() {
+  if (shriftlar) return;
+  GlobalFonts.registerFromPath(FONT_BOLD, "MontserratXB");
+  GlobalFonts.registerFromPath(FONT_SEMI, "MontserratSB");
+  shriftlar = true;
+}
+
+// Montserrat has no emoji glyphs — they would render as boxes
+const tozala = (s: string) => s.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, "").replace(/\s{2,}/g, " ").trim();
+
+// wrap by measured width, so long Uzbek words don't overflow
+function wrap(ctx: SKRSContext2D, text: string, maxW: number) {
   const lines: string[] = [];
   for (const para of text.split("\n")) {
     let line = "";
     for (const word of para.split(/\s+/).filter(Boolean)) {
-      if (line && (line + " " + word).length > max) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && ctx.measureText(next).width > maxW) {
         lines.push(line);
         line = word;
-      } else line = line ? `${line} ${word}` : word;
+      } else line = next;
     }
     if (line) lines.push(line);
   }
   return lines;
 }
 
-// a Windows drive colon must be escaped for the option parser (quotes only protect it from the graph parser)
-const esc = (p: string) => p.replace(/\\/g, "/").replace(/:/g, "\\:");
-
 export function validateSpec(spec: VideoSpec) {
-  const slides = (spec.slides || []).filter((s) => s && String(s.title || "").trim());
+  const slides = (spec.slides || []).filter((s) => s && tozala(String(s.title || "")));
   if (!slides.length) throw new Error("Kamida bitta slayd (title) kerak");
   if (slides.length > 12) throw new Error("Ko'pi bilan 12 ta slayd");
   const norm = slides.map((s) => ({
-    title: String(s.title).trim().slice(0, 120),
-    subtitle: s.subtitle ? String(s.subtitle).trim().slice(0, 200) : "",
+    title: tozala(String(s.title)).slice(0, 120),
+    subtitle: s.subtitle ? tozala(String(s.subtitle)).slice(0, 200) : "",
     seconds: Math.min(Math.max(Number(s.seconds) || 3, 1.5), 10),
   }));
   const total = norm.reduce((a, s) => a + s.seconds, 0);
   if (total < 3) norm[norm.length - 1].seconds += 3 - total;
   if (total > 60) throw new Error("Video 60 soniyadan oshmasin");
   const theme = spec.theme && spec.theme in THEMES ? spec.theme : "sky";
-  return { slides: norm, theme, brand: (spec.brand || "").trim().slice(0, 40), footer: (spec.footer || "").trim().slice(0, 60) };
+  return { slides: norm, theme, brand: tozala(spec.brand || "").slice(0, 40), footer: tozala(spec.footer || "").slice(0, 60) };
 }
 
 function run(args: string[]) {
@@ -77,72 +89,121 @@ function run(args: string[]) {
   });
 }
 
+type Theme = (typeof THEMES)[keyof typeof THEMES];
+
+// brand at the top and the footer band — the same on every slide
+async function doimiyQatlam(theme: Theme, brand: string, footer: string) {
+  const c = createCanvas(W, H);
+  const ctx = c.getContext("2d");
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  if (brand) {
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = theme.text;
+    ctx.font = "44px MontserratSB";
+    ctx.fillText(brand.toUpperCase(), W / 2, 172);
+    ctx.globalAlpha = 1;
+  }
+  if (footer) {
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.fillRect(0, H - 300, W, 300);
+    ctx.fillStyle = theme.accent;
+    ctx.font = "64px MontserratXB";
+    ctx.fillText(footer, W / 2, H - 150, W - 80);
+  }
+  return c.encode("png");
+}
+
+// one slide's title, accent bar and subtitle on a transparent layer
+async function slaydQatlam(theme: Theme, title: string, subtitle: string) {
+  const c = createCanvas(W, H);
+  const ctx = c.getContext("2d");
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.font = "104px MontserratXB";
+  const titleLines = wrap(ctx, title, W - 140);
+  ctx.font = "58px MontserratSB";
+  const subLines = subtitle ? wrap(ctx, subtitle, W - 160) : [];
+  const titleH = titleLines.length * 128;
+  const subH = subLines.length ? 50 + subLines.length * 76 : 0;
+  let y = Math.round((H - titleH - subH) / 2) - 60;
+  ctx.fillStyle = theme.text;
+  ctx.shadowColor = "rgba(0,0,0,0.18)";
+  ctx.shadowBlur = 18;
+  ctx.font = "104px MontserratXB";
+  for (const line of titleLines) {
+    ctx.fillText(line, W / 2, y);
+    y += 128;
+  }
+  if (subLines.length) {
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = theme.accent;
+    ctx.fillRect(W / 2 - 60, y + 10, 120, 8);
+    y += 50;
+    ctx.fillStyle = theme.text;
+    ctx.font = "58px MontserratSB";
+    for (const line of subLines) {
+      ctx.fillText(line, W / 2, y);
+      y += 76;
+    }
+  }
+  return c.encode("png");
+}
+
 export async function renderVideo(input: VideoSpec) {
   const spec = validateSpec(input);
   const t = THEMES[spec.theme];
   const total = spec.slides.reduce((a, s) => a + s.seconds, 0);
+  shrift();
   const dir = await mkdtemp(path.join(tmpdir(), "igv-"));
   try {
-    const filters: string[] = [];
-    let n = 0;
-    // text goes through files so quotes, colons and apostrophes need no escaping
-    const textFile = async (s: string) => {
-      const f = path.join(dir, `t${n++}.txt`);
-      await writeFile(f, s, "utf8");
-      return esc(f);
-    };
-    const draw = (file: string, font: string, size: number, color: string, y: string, enable: string, alpha: string) =>
-      `drawtext=fontfile='${esc(font)}':textfile='${file}':fontsize=${size}:fontcolor=${color}:x=(w-tw)/2:y='${y}':enable='${enable}':alpha='${alpha}'`;
-
-    if (spec.brand) {
-      filters.push(draw(await textFile(spec.brand.toUpperCase()), FONT_SEMI, 44, t.text, "150", "gte(t,0)", "0.85"));
-    }
-    if (spec.footer) {
-      filters.push(`drawbox=x=0:y=${H - 300}:w=${W}:h=300:color=black@0.25:t=fill`);
-      filters.push(draw(await textFile(spec.footer), FONT_BOLD, 64, t.accent, `${H - 150}-th/2`, "gte(t,0)", "1"));
-    }
-
-    let start = 0;
-    for (const s of spec.slides) {
-      const a = start;
-      const b = start + s.seconds;
-      const enable = `between(t,${a.toFixed(2)},${b.toFixed(2)})`;
-      // fade in over 0.4 s, fade out over the last 0.3 s
-      const alpha = `if(lt(t,${a}+0.4),(t-${a})/0.4,if(gt(t,${b}-0.3),(${b}-t)/0.3,1))`;
-      const rise = `40*max(0,1-(t-${a})/0.4)`;
-      const titleLines = wrap(s.title, 15);
-      const subLines = s.subtitle ? wrap(s.subtitle, 26) : [];
-      const titleH = titleLines.length * 128;
-      const subH = subLines.length ? 50 + subLines.length * 76 : 0;
-      let y = Math.round((H - titleH - subH) / 2) - 60;
-      for (const line of titleLines) {
-        filters.push(draw(await textFile(line), FONT_BOLD, 104, t.text, `${y}+${rise}`, enable, alpha));
-        y += 128;
-      }
-      if (subLines.length) {
-        filters.push(`drawbox=x=${W / 2 - 60}:y=${y + 10}:w=120:h=8:color=${t.accent}:t=fill:enable='${enable}'`);
-        y += 50;
-        for (const line of subLines) {
-          filters.push(draw(await textFile(line), FONT_SEMI, 58, t.text, `${y}+${rise}*1.5`, enable, alpha));
-          y += 76;
-        }
-      }
-      start = b;
-    }
-
-    const out = path.join(dir, "out.mp4");
-    const script = path.join(dir, "vf.txt");
-    await writeFile(script, filters.join(",\n"), "utf8");
-    await run([
+    const args = [
       "-y", "-loglevel", "error",
       "-f", "lavfi", "-i", `gradients=s=${W}x${H}:c0=${t.c0}:c1=${t.c1}:x0=0:y0=0:x1=${W}:y1=${H}:speed=0.008:d=${total.toFixed(2)}:r=30`,
       "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-      "-filter_script:v", script,
+    ];
+    const graph: string[] = [];
+    let last = "0:v";
+    let n = 2; // next input index
+
+    if (spec.brand || spec.footer) {
+      const f = path.join(dir, "doimiy.png");
+      await writeFile(f, await doimiyQatlam(t, spec.brand, spec.footer));
+      args.push("-loop", "1", "-framerate", "30", "-t", total.toFixed(2), "-i", f);
+      graph.push(`[${last}][${n}:v]overlay=0:0:format=auto[b${n}]`);
+      last = `b${n}`;
+      n++;
+    }
+
+    let start = 0;
+    for (const [i, s] of spec.slides.entries()) {
+      const a = start;
+      const d = s.seconds;
+      const f = path.join(dir, `s${i}.png`);
+      await writeFile(f, await slaydQatlam(t, s.title, s.subtitle));
+      args.push("-loop", "1", "-framerate", "30", "-t", d.toFixed(2), "-i", f);
+      // fade in over 0.4 s, fade out over the last 0.3 s, rise 40 px while appearing
+      graph.push(
+        `[${n}:v]format=rgba,fade=t=in:st=0:d=0.4:alpha=1,fade=t=out:st=${(d - 0.3).toFixed(2)}:d=0.3:alpha=1,setpts=PTS-STARTPTS+${a.toFixed(2)}/TB[l${n}]`,
+        `[${last}][l${n}]overlay=x=0:y='40*max(0,1-(t-${a.toFixed(2)})/0.4)':eof_action=pass:format=auto[b${n}]`,
+      );
+      last = `b${n}`;
+      n++;
+      start += d;
+    }
+
+    const out = path.join(dir, "out.mp4");
+    const script = path.join(dir, "graph.txt");
+    await writeFile(script, `${graph.join(";\n")};\n[${last}]format=yuv420p[v]`, "utf8");
+    args.push(
+      "-filter_complex_script", script,
+      "-map", "[v]", "-map", "1:a",
       "-t", total.toFixed(2),
       "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p", "-profile:v", "high",
       "-c:a", "aac", "-b:a", "96k", "-shortest", "-movflags", "+faststart",
       out,
-    ]);
+    );
+    await run(args);
     return { bytes: new Uint8Array(await readFile(out)), seconds: total };
   } finally {
     await rm(dir, { recursive: true, force: true });

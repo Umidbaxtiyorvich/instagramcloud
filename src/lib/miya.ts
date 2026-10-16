@@ -295,14 +295,31 @@ async function reelsVaqti(userId: string, s: MiyaSozlama): Promise<boolean> {
       await xabar(userId, "reels", "ogoh", `⏰ Reels joylash vaqti (${v}). Avtomatik Reels o'chirilgan — ofisda «Reels yasa» deb ayting yoki o'zingiz video yuklang.`, kalit);
       return false;
     }
-    // band qilib olamiz: ikki tick bir vaqtda kelsa, faqat bittasi yasaydi
-    if (!(await xabar(userId, "reels", "ogoh", `🎬 Reels tayyorlanmoqda (${v})…`, kalit))) continue;
+    // band qilib olamiz: ikki tick bir vaqtda kelsa, faqat bittasi yasaydi.
+    // Xato bilan tugagan urinish vaqt oynasi ichida bir marta qayta urinadi.
+    let urinish = 1;
+    if (!(await xabar(userId, "reels", "ogoh", `🎬 Reels tayyorlanmoqda (${v})…`, kalit))) {
+      const qayta = await prisma.miyaXabar.updateMany({
+        where: { userId, kalit, daraja: "xavf", matn: { contains: "joylanmadi" }, NOT: { matn: { contains: "ikkinchi urinishda" } } },
+        data: { daraja: "ogoh", telegram: true, matn: `🎬 Reels tayyorlanmoqda (${v}, 2-urinish)…` },
+      });
+      if (!qayta.count) continue;
+      urinish = 2;
+    }
     try {
       await reelsYasaVaJoyla(userId, s, kalit);
     } catch (e) {
+      const m = e instanceof Error ? e.message : "xato";
       await prisma.miyaXabar.update({
         where: { userId_kalit: { userId, kalit } },
-        data: { daraja: "xavf", telegram: false, matn: `⚠️ ${v} dagi Reels joylanmadi: ${e instanceof Error ? e.message : "xato"}. O'zingiz joylashingiz kerak.` },
+        data: {
+          daraja: "xavf",
+          telegram: false,
+          matn:
+            urinish === 1
+              ? `⚠️ ${v} dagi Reels joylanmadi: ${m}. 10 daqiqadan keyin yana bir bor urinib ko'raman.`
+              : `⚠️ ${v} dagi Reels ikkinchi urinishda ham joylanmadi: ${m}. O'zingiz joylashingiz kerak.`,
+        },
       });
     }
     return true;

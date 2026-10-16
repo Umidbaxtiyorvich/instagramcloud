@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // ffmpeg-static resolves its binary relative to its own folder, which bundling would break
-  serverExternalPackages: ["ffmpeg-static"],
+  serverExternalPackages: ["ffmpeg-static", "@napi-rs/canvas"],
   turbopack: {
     rules: {
       "*.css": {
