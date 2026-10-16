@@ -24,6 +24,72 @@ model User {
   oauthCodes  OAuthCode[]
   oauthTokens OAuthToken[]
   mcpServers  McpServer[]
+  miya        MiyaSozlama?
+  miyaXabarlar MiyaXabar[]
+  rejaPostlar RejaPost[]
+  xotira      Xotira?
+}
+
+// AI Ofis «Miya»: avtomatik kuzatuv sozlamalari (CloudShop, Instagram, Reels)
+model MiyaSozlama {
+  userId          String    @id
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  autoReels       Boolean   @default(true)
+  // Toshkent vaqti, vergul bilan: kuniga shu vaqtlarda Reels
+  reelsVaqtlari   String    @default("10:00,19:00")
+  // Reels uchun brend nomi va pastki qator (telefon); bo'sh bo'lsa akkaunt nomi
+  reelsBrend      String    @default("")
+  reelsFooter     String    @default("")
+  kamQoldiq       Int       @default(5)
+  qarzKunlari     Int       @default(30)
+  oxirgiMoliya    DateTime?
+  oxirgiInstagram DateTime?
+  // oldingi tekshiruvdagi jami qarz — o'sishni sezish uchun
+  oxirgiQarz      Int?
+  createdAt       DateTime  @default(now())
+}
+
+// Miya topgan narsalar: ogohlantirishlar va hisobotlar. kalit — bir xil xabar qaytarilmasin
+model MiyaXabar {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tur       String // tovar | qoldiq | narx | kassa | qarz | instagram | reels | post
+  daraja    String   @default("info") // info | ogoh | xavf
+  matn      String
+  kalit     String
+  oqildi    Boolean  @default(false)
+  telegram  Boolean  @default(false) // Telegram'ga yuborildi
+  createdAt DateTime @default(now())
+
+  @@unique([userId, kalit])
+  @@index([userId, createdAt])
+}
+
+// Belgilangan vaqtda joylanadigan post / Reels / story
+model RejaPost {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tur       String // reel | photo | story | reel_story | photo_story
+  uploadId  String
+  caption   String   @default("")
+  vaqt      DateTime
+  holat     String   @default("kutmoqda") // kutmoqda | joylanmoqda | joylandi | xato
+  xato      String?
+  manba     String   @default("men") // men | miya
+  createdAt DateTime @default(now())
+
+  @@index([holat, vaqt])
+}
+
+// ChatGPT xotirasi eksportidan olingan foydalanuvchi profili
+model Xotira {
+  userId     String   @id
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profil     String
+  manba      String   @default("chatgpt")
+  yangilandi DateTime @default(now())
 }
 
 // AI Ofis agentlari ishlatadigan tashqi MCP serverlar (Notion, Linear, GitHub ...).

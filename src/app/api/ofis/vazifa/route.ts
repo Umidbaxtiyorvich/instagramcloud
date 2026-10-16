@@ -7,6 +7,8 @@ import { JAMOALAR, lokalTaqsimot, type JamoaId, type Taqsimot } from "@/lib/ofis
 import { MOLIYA_NOMLARI, MOLIYA_VOSITALAR, lokalMoliya, moliyaHolati, moliyaRuxsat, moliyaVosita, type Davr } from "@/lib/ofis-moliya";
 import { IG_VOSITALAR, amalNomi, igAkkaunt, igVosita, lokalInstagram, yangiTasdiqlar } from "@/lib/ofis-instagram";
 import { agentMcp, type McpSorov } from "@/lib/mcp-ulanish";
+import { MIYA_VOSITALAR, rejaQosh, toshkent } from "@/lib/miya";
+import { prisma } from "@/lib/db";
 import OpenAI from "openai";
 import { javobSxemasi, openai, openaiModel, openaiVazifa } from "@/lib/ofis-openai";
 
@@ -74,7 +76,12 @@ INSTAGRAM: foydalanuvchining Instagram Cloud akkaunti ulangan bo'lsa, sizda inst
 
 MOLIYA (do'kon): moliya_* vositalari CloudShop kassasi (kirim/chiqim), tovarlar qoldig'i, sotuv/qabul hujjatlari, qarzlar
 va Telegram to'lov botiga (@claudeadminbot_bot) kelgan cheklarni O'QIYDI. Pul, kirim, chiqim, tovar, qarz, to'lov savollarida
-shu vositalardan foydalaning va javobni moliya jamoasiga bering. Ular faqat o'qiydi — CloudShop'ga yozish botning o'zida qilinadi.`;
+shu vositalardan foydalaning va javobni moliya jamoasiga bering. Ular faqat o'qiydi — CloudShop'ga yozish botning o'zida qilinadi.
+
+REELS VA REJA: Reels/post/story so'ralsa — ssenariy va matnni o'zingiz yozing, instagram_make_video bilan video yasang, keyin
+instagram_publish_reel / instagram_publish_story bilan joylang. Foydalanuvchi «shu vaqtga qo'y» desa yoki vaqt aytsa —
+instagram_list_uploads dan faylni topib miya_reja_post bilan o'sha vaqtga rejalashtiring (vaqt Toshkent bo'yicha).
+Foydalanuvchi haqidagi ma'lumot berilgan bo'lsa, uning uslubi va biznesiga mos yozing.`;
 
 // faqat o'qiydigan Instagram vositalari (qolganlari tasdiq navbatiga tushadi)
 const NOMLAR_OQISH = new Set([
@@ -158,7 +165,14 @@ export async function POST(req: Request) {
     console.error("ofis: MCP ulanishlari", e.message);
     return { servers: [], toolsets: [], nomlar: {}, tavsif: "" };
   });
+  const [xotira, miyaXabarlar] = await Promise.all([
+    prisma.xotira.findUnique({ where: { userId: user.id } }),
+    prisma.miyaXabar.findMany({ where: { userId: user.id, daraja: { in: ["ogoh", "xavf"] } }, orderBy: { createdAt: "desc" }, take: 5 }),
+  ]);
   const kontekst = [
+    xotira ? `Foydalanuvchi haqida (uning ChatGPT tarixidan) — shunga qarab muloqot qiling:\n${xotira.profil}` : "",
+    miyaXabarlar.length ? `Miya oxirgi topgan muammolar:\n${miyaXabarlar.map((x) => `- ${x.matn.split("\n")[0]}`).join("\n")}` : "",
+    `Hozir Toshkentda: ${toshkent().sana} ${String(Math.floor(toshkent().daqiqa / 60)).padStart(2, "0")}:${String(toshkent().daqiqa % 60).padStart(2, "0")}.`,
     akk ? `Ulangan Instagram: @${akk.username}${akk.isDemo ? " (demo)" : ""}, ${akk.followersCount} obunachi.` : "Instagram ulanmagan — instagram_* vositalari ishlamaydi.",
     `Mavjud agentlar:\n${agentlar.map((a) => `- id=${a.id} | ${a.ism} | ${a.rol} | jamoa=${a.jamoa} | ${a.konikmalar.join(", ")}`).join("\n")}`,
     jamoa ? `Foydalanuvchi ${jamoa} jamoasi xonasida turibdi.` : "",
@@ -172,7 +186,7 @@ export async function POST(req: Request) {
 
   const mh = moliyaHolati();
   const moliyaBor = moliyaRuxsat(user.email) && (mh.cloudshop || mh.bot);
-  const vositalar: Anthropic.Beta.BetaTool[] = [...(akk ? IG_VOSITALAR : []), ...(moliyaBor ? MOLIYA_VOSITALAR : [])].map((v) => ({
+  const vositalar: Anthropic.Beta.BetaTool[] = [...(akk ? [...IG_VOSITALAR, ...MIYA_VOSITALAR] : []), ...(moliyaBor ? MOLIYA_VOSITALAR : [])].map((v) => ({
     name: v.name,
     description: v.description,
     input_schema: v.inputSchema as Anthropic.Beta.BetaTool.InputSchema,
@@ -184,6 +198,11 @@ export async function POST(req: Request) {
 
   // Ofis vositasini bajaradi (ikkala dvigatel uchun umumiy). Instagram'ga yozish tasdiq navbatiga tushadi.
   const vositaBajar = async (nom: string, kirish: Record<string, unknown>) => {
+    if (nom === "miya_reja_post") {
+      const r = await rejaQosh(user.id, kirish as { upload_id: string; tur: string; caption?: string; vaqt: string });
+      amallar.push(`Rejaga qo'yildi: ${r.tur} — ${String(kirish.vaqt)}`);
+      return `Rejaga qo'yildi (ID ${r.id}): ${r.tur}, Toshkent vaqti ${String(kirish.vaqt)} da o'zi joylanadi.`;
+    }
     if (nom.startsWith("moliya_")) {
       if (!moliyaBor) throw new Error("Moliya ma'lumotiga ruxsat yo'q");
       const n = await moliyaVosita(nom, { davr: kirish.davr as Davr | undefined, qidiruv: kirish.qidiruv as string | undefined });
@@ -218,7 +237,7 @@ export async function POST(req: Request) {
         client: oai,
         tizim: TIZIM,
         kontekst,
-        vositalar: [...(akk ? IG_VOSITALAR : []), ...(moliyaBor ? MOLIYA_VOSITALAR : [])],
+        vositalar: [...(akk ? [...IG_VOSITALAR, ...MIYA_VOSITALAR] : []), ...(moliyaBor ? MOLIYA_VOSITALAR : [])],
         mcp: mcpBilan ? mcp : null,
         sxema: javobSxemasi(JAMOA_IDLAR),
         bajar: vositaBajar,

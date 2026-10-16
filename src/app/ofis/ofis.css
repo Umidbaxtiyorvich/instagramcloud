@@ -1148,3 +1148,78 @@ a.o_vosita {
 .o_ulanishForma {
   margin-top: 6px;
 }
+
+/* ---------- miya ---------- */
+.o_miya {
+  margin-bottom: 8px;
+}
+
+.o_miyaSon {
+  display: inline-block;
+  min-width: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+  color: #1a0d00;
+  background: #ffb45a;
+}
+
+.o_miyaXabar {
+  padding: 10px 12px 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 3px solid var(--r, #3dff9a);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #c9cdea;
+}
+
+.o_miyaXabar small {
+  display: block;
+  margin-bottom: 2px;
+  color: #8a8fb3;
+  font-size: 11px;
+}
+
+.o_miyaYangi {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.o_miyaQator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.o_miyaYorliq {
+  display: block;
+  margin: 8px 0 4px;
+  font-size: 12px;
+  color: #8a8fb3;
+}
+
+.o_miya select.o_qidiruv,
+.o_miya textarea.o_qidiruv {
+  resize: vertical;
+}
+
+.o_miyaProfil {
+  max-height: 340px;
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: #c9cdea;
+}

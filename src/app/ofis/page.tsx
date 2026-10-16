@@ -8,6 +8,7 @@ import dynamic from "next/dynamic";
 // WebGL sahna faqat brauzerda yuklanadi
 import MoliyaPanel, { pul } from "./MoliyaPanel";
 import UlanishPanel from "./UlanishPanel";
+import MiyaBoshqaruv from "./MiyaBoshqaruv";
 
 const Sahna3D = dynamic(() => import("./Sahna3D"), {
   ssr: false,
@@ -854,19 +855,21 @@ export default function OfisSahifa() {
 
       {/* ---------- miya ---------- */}
       {tab === "miya" && (
-        <div className={`${s.panel} ${s.taxta}`} style={{ width: "min(640px, calc(100vw - 32px))" }}>
+        <div className={`${s.panel} ${s.taxta}`} style={{ width: "min(780px, calc(100vw - 32px))" }}>
           <div className={s.panelBosh}>
             <div className={s.panelBelgi} style={rangi("#7cc4ff")}>
               🧠
             </div>
             <div>
-              <h2>Miya — umumiy xotira</h2>
-              <p>Har bir bajarilgan ish shu yerga yoziladi, hech narsa unutilmaydi</p>
+              <h2>Miya — kuzatuvchi va xotira</h2>
+              <p>CloudShop va Instagram&apos;ni o&apos;zi kuzatadi, Reels joylaydi, rejadagi postlarni chiqaradi, sizni eslab qoladi</p>
             </div>
             <button className={s.yop} onClick={() => setTab("ofis")} aria-label="Yopish">
               ✕
             </button>
           </div>
+          <MiyaBoshqaruv kirgan={!!foydalanuvchi} />
+          <h3 className="o_ulanishSarlavha">Ofis tarixi</h3>
           {!ofis.eslatmalar.length && <div className={s.bosh}>Hali eslatma yo&apos;q. Birinchi vazifani bering!</div>}
           {ofis.eslatmalar.map((e) => (
             <div key={e.id} className={s.eslatma}>
