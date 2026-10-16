@@ -7,6 +7,8 @@ import { igAkkaunt } from "./ofis-instagram";
 import { openai, openaiModel } from "./ofis-openai";
 import { cloudshopSozlangan, hujjatlar, kassa, qarzlar, tovarlar } from "./cloudshop";
 import { moliyaRuxsat, pul } from "./ofis-moliya";
+import { githubdaYasash, osilganIshlar, videoNavbat } from "./video-ish";
+import type { VideoSpec } from "./video";
 
 // AI Ofis «Miya» — avtomatik kuzatuvchi. Railway'dagi bot har 10 daqiqada /api/miya/tick ni chaqiradi:
 // belgilangan postlarni joylaydi, Reels vaqti kelsa video yasab joylaydi, CloudShop va Instagram'ni
@@ -269,16 +271,60 @@ export async function reelsYasaVaJoyla(userId: string, s: MiyaSozlama, kalit: st
   if (!akk) throw new Error("Instagram ulanmagan");
   const brend = s.reelsBrend || akk.name || akk.username;
   const ss = await ssenariyYoz(userId, akk.username, brend);
-  const v = await igJson(userId, "instagram_make_video", { slides: ss.slides, theme: ss.theme, brand: brend, ...(s.reelsFooter ? { footer: s.reelsFooter } : {}) });
+  const spec = { slides: ss.slides, theme: ss.theme as VideoSpec["theme"], brand: brend, ...(s.reelsFooter ? { footer: s.reelsFooter } : {}) };
+  // Render'ning bepul serveri videoni ko'tarolmaydi — GitHub Actions yasaydi, tayyor bo'lgach
+  // reelsVideoTayyor joylaydi
+  if (githubdaYasash()) {
+    await videoNavbat(userId, spec, { tur: "miya-reels", kalit, caption: ss.caption });
+    const eski = await prisma.miyaXabar.findUnique({ where: { userId_kalit: { userId, kalit } } });
+    await prisma.miyaXabar.update({
+      where: { userId_kalit: { userId, kalit } },
+      data: { matn: `${eski?.matn.replace(/…$/, "") ?? "🎬 Reels tayyorlanmoqda"} — «${ss.slides[0].title}», video GitHub'da yasalmoqda…` },
+    });
+    return;
+  }
+  const v = await igJson(userId, "instagram_make_video", spec);
   if (!v.upload_id) throw new Error("Video yasalmadi");
-  const res = await joyla(userId, akk.id, "publish_reel", v.upload_id, ss.caption);
+  await reelsVideoTayyor(userId, kalit, v.upload_id, ss.caption);
+}
+
+// Video tayyor: Reels qilib joylaydi va Miya xabarini yangilaydi
+export async function reelsVideoTayyor(userId: string, kalit: string, uploadId: string, caption: string) {
+  const akk = await igAkkaunt(userId);
+  if (!akk) return reelsVideoXato(userId, kalit, "Instagram ulanmagan");
+  try {
+    const res = await joyla(userId, akk.id, "publish_reel", uploadId, caption);
+    await prisma.miyaXabar.update({
+      where: { userId_kalit: { userId, kalit } },
+      data: {
+        daraja: "info",
+        telegram: false,
+        matn: `🎬 Miya Reels joyladi (@${akk.username}).\nMatn: ${caption.slice(0, 300)}${res.id ? `\nID: ${res.id}` : ""}`,
+      },
+    });
+  } catch (e) {
+    await reelsVideoXato(userId, kalit, e instanceof Error ? e.message : "joylanmadi");
+  }
+}
+
+export async function reelsVideoXato(userId: string, kalit: string, m: string) {
+  const eski = await prisma.miyaXabar.findUnique({ where: { userId_kalit: { userId, kalit } } });
+  const vaqt = kalit.split(":").slice(-2).join(":");
+  const ikkinchi = eski?.matn.includes("2-urinish");
   await prisma.miyaXabar.update({
     where: { userId_kalit: { userId, kalit } },
     data: {
-      daraja: "info",
-      matn: `🎬 Miya Reels joyladi (@${akk.username}): «${ss.slides[0].title}». ${ss.slides.length} slayd.\nMatn: ${ss.caption.slice(0, 300)}${res.id ? `\nID: ${res.id}` : ""}`,
+      daraja: "xavf",
+      telegram: false,
+      matn: ikkinchi
+        ? `⚠️ ${vaqt} dagi Reels ikkinchi urinishda ham joylanmadi: ${m}. O'zingiz joylashingiz kerak.`
+        : `⚠️ ${vaqt} dagi Reels joylanmadi: ${m}. 10 daqiqadan keyin yana bir bor urinib ko'raman.`,
     },
   });
+}
+
+export async function videoXabar(userId: string, matn: string, kalit: string, daraja: Daraja = "info") {
+  await xabar(userId, "video", daraja, matn, kalit);
 }
 
 // shu server jarayonida hozir yasalayotgan Reels'lar (qayta ishga tushgandan keyin bo'sh)
@@ -303,6 +349,8 @@ async function reelsVaqti(userId: string, s: MiyaSozlama): Promise<boolean> {
     let urinish = 1;
     if (!(await xabar(userId, "reels", "ogoh", `🎬 Reels tayyorlanmoqda (${v})…`, kalit))) {
       if (jarayonda.has(kalit)) continue; // shu jarayonda hali ishlayapti
+      // video GitHub'da yasalayotgan bo'lsa — kutamiz (osilganini osilganIshlar() yopadi)
+      if (await prisma.videoIsh.count({ where: { userId, holat: { in: ["kutmoqda", "ishlanmoqda"] }, meta: { contains: `"${kalit}"` } } })) continue;
       // «tayyorlanmoqda» qolib ketgan bo'lsa — server ish o'rtasida qayta ishga tushgan
       const eski = await prisma.miyaXabar.findUnique({ where: { userId_kalit: { userId, kalit } } });
       if (eski?.matn.startsWith("🎬 Reels tayyorlanmoqda") && eski.matn.includes("2-urinish")) {
@@ -387,6 +435,7 @@ async function band(userId: string, maydon: "oxirgiMoliya" | "oxirgiInstagram", 
 }
 
 export async function tick() {
+  await osilganIshlar();
   await rejaPostlar();
 
   // moliya ruxsati bor foydalanuvchilarga Miya avtomatik yoqiladi

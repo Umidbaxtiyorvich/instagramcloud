@@ -33,8 +33,9 @@ export const THEME_NAMES = Object.keys(THEMES) as (keyof typeof THEMES)[];
 // accepted by Reels) — a full-HD frame pipeline didn't fit in the free server's 512 MB
 const W = 1080;
 const H = 1920;
-const OW = 720;
-const OH = 1280;
+// GitHub Actions runner sets VIDEO_HD=1 (full 1080×1920); a small server renders 720×1280
+const OW = process.env.VIDEO_HD ? 1080 : 720;
+const OH = process.env.VIDEO_HD ? 1920 : 1280;
 
 function tuval() {
   const c = createCanvas(OW, OH);
@@ -187,7 +188,7 @@ export async function renderVideo(input: VideoSpec) {
         `[2:v]format=rgba,fade=t=in:st=0:d=0.4:alpha=1,fade=t=out:st=${(s.seconds - 0.3).toFixed(2)}:d=0.3:alpha=1[l];` +
         `[b][l]overlay=x=0:y='27*max(0,1-t/0.4)':format=auto,format=yuv420p[v]`;
       await run([
-        "-y", "-loglevel", "error", "-threads", "1", "-filter_threads", "1",
+        "-y", "-loglevel", "error", "-threads", process.env.VIDEO_HD ? "0" : "1", "-filter_threads", process.env.VIDEO_HD ? "0" : "1",
         "-f", "lavfi", "-i", `gradients=s=${OW}x${OH}:c0=${t.c0}:c1=${t.c1}:x0=0:y0=0:x1=${OW}:y1=${OH}:speed=0.008:seed=${i * 7 + 1}:d=${d}:r=30`,
         "-loop", "1", "-framerate", "30", "-t", d, "-i", doimiy,
         "-loop", "1", "-framerate", "30", "-t", d, "-i", qatlam,

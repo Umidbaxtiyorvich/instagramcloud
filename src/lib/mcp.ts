@@ -5,6 +5,7 @@ import { freshToken, mediaWithInsights, safeInsights, syncIfStale } from "./ig-d
 import { createUploadToken, listUploads, mediaUrl, saveBytes } from "./uploads";
 import { configuredUrl } from "./url";
 import { renderVideo, THEME_NAMES, type VideoSpec } from "./video";
+import { githubdaYasash, videoNavbat } from "./video-ish";
 import { accountTotals, followerDemographics, listComments, listMedia, profile, type IgComment } from "./instagram";
 
 type Json = Record<string, unknown>;
@@ -693,6 +694,14 @@ async function readTool(userId: string, name: string, args: Json, base: string) 
         say: "Shu havolani oching, video (MP4/MOV, 100 MB gacha) yoki JPEG rasmni yuklang va menga «yukladim» deb yozing.",
       };
     case "instagram_make_video": {
+      if (githubdaYasash()) {
+        const ish = await videoNavbat(userId, args as unknown as VideoSpec, { tur: "agent" });
+        return {
+          navbatda: true,
+          ish_id: ish.id,
+          say: "Video GitHub'da yasalmoqda, 2-4 daqiqada tayyor bo'ladi. Tayyor bo'lgach instagram_list_uploads da ko'rinadi va ofisdagi Miya xabar beradi — keyin joylash yoki vaqtga qo'yish mumkin.",
+        };
+      }
       const { bytes, seconds } = await renderVideo(args as unknown as VideoSpec);
       const u = await saveBytes(userId, bytes, `claude-${Date.now()}.mp4`, "video/mp4");
       return {

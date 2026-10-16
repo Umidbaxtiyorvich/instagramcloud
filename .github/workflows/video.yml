@@ -1,0 +1,46 @@
+# AI Ofis videolari shu yerda yasaladi: Render'ning bepul serveri ffmpeg'ni ko'tarolmaydi.
+# Sayt (Render) bu workflow'ni ishga tushiradi; runner ssenariyni GitHub OIDC tokeni bilan
+# oladi va tayyor MP4 ni qaytaradi — hech qanday parol yoki secret kerak emas.
+name: video
+
+on:
+  workflow_dispatch:
+    inputs:
+      ish:
+        description: Video ish ID (sayt bazasidagi)
+        required: true
+      sayt:
+        description: Sayt manzili
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: video-${{ inputs.ish }}
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Kutubxonalar
+        run: |
+          mkdir -p /tmp/r
+          cp src/lib/video.ts /tmp/r/
+          cp -r assets /tmp/r/
+          cd /tmp/r
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund @napi-rs/canvas@1.0.11 ffmpeg-static@5.3.0
+      - name: Video
+        working-directory: /tmp/r
+        env:
+          ISH: ${{ inputs.ish }}
+          SAYT: ${{ inputs.sayt }}
+          VIDEO_HD: "1"
+        run: node --experimental-strip-types "$GITHUB_WORKSPACE/scripts/video-render.mts"

@@ -28,6 +28,25 @@ model User {
   miyaXabarlar MiyaXabar[]
   rejaPostlar RejaPost[]
   xotira      Xotira?
+  videoIshlar VideoIsh[]
+}
+
+// Video GitHub Actions'da yasaladi (Render'ning bepul serveri ko'tara olmaydi).
+// Runner GitHub OIDC tokeni bilan ssenariyni oladi va tayyor MP4 ni qaytaradi.
+model VideoIsh {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  spec      String // VideoSpec JSON
+  maqsad    String // "agent" | "miya-reels"
+  meta      String   @default("{}") // miya-reels: { kalit, caption }
+  holat     String   @default("kutmoqda") // kutmoqda | ishlanmoqda | tayyor | xato
+  uploadId  String?
+  xato      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([holat, createdAt])
 }
 
 // AI Ofis «Miya»: avtomatik kuzatuv sozlamalari (CloudShop, Instagram, Reels)
