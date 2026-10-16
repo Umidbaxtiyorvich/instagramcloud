@@ -7,6 +7,8 @@ import { JAMOALAR, lokalTaqsimot, type JamoaId, type Taqsimot } from "@/lib/ofis
 import { MOLIYA_NOMLARI, MOLIYA_VOSITALAR, lokalMoliya, moliyaHolati, moliyaRuxsat, moliyaVosita, type Davr } from "@/lib/ofis-moliya";
 import { IG_VOSITALAR, amalNomi, igAkkaunt, igVosita, lokalInstagram, yangiTasdiqlar } from "@/lib/ofis-instagram";
 import { agentMcp, type McpSorov } from "@/lib/mcp-ulanish";
+import OpenAI from "openai";
+import { javobSxemasi, openai, openaiModel, openaiVazifa } from "@/lib/ofis-openai";
 
 const JAMOA_IDLAR = JAMOALAR.map((j) => j.id) as [JamoaId, ...JamoaId[]];
 
@@ -146,8 +148,9 @@ export async function POST(req: Request) {
   };
 
   const client = claude();
-  if (!client || !user) {
-    return NextResponse.json({ taqsimot: await lokal(), eslatma: client ? "Claude uchun tizimga kiring" : undefined });
+  const oai = openai();
+  if ((!client && !oai) || !user) {
+    return NextResponse.json({ taqsimot: await lokal(), eslatma: client || oai ? "AI agentlar uchun tizimga kiring" : undefined });
   }
 
   const akk = await igAkkaunt(user.id);
@@ -178,6 +181,74 @@ export async function POST(req: Request) {
   const boshlandi = new Date();
   let amallar: string[] = [];
   let messages: Anthropic.Beta.BetaMessageParam[] = [];
+
+  // Ofis vositasini bajaradi (ikkala dvigatel uchun umumiy). Instagram'ga yozish tasdiq navbatiga tushadi.
+  const vositaBajar = async (nom: string, kirish: Record<string, unknown>) => {
+    if (nom.startsWith("moliya_")) {
+      if (!moliyaBor) throw new Error("Moliya ma'lumotiga ruxsat yo'q");
+      const n = await moliyaVosita(nom, { davr: kirish.davr as Davr | undefined, qidiruv: kirish.qidiruv as string | undefined });
+      amallar.push(MOLIYA_NOMLARI[nom] ?? nom);
+      return n;
+    }
+    const n = await igVosita(user.id, nom, kirish);
+    amallar.push(!nom.startsWith("list_") && !NOMLAR_OQISH.has(nom) ? `Tasdiqqa qo'yildi: ${nom.replace("instagram_", "")}` : amalNomi(nom));
+    return n;
+  };
+
+  const yakunla = async (p: z.infer<typeof Javob>, manba: Taqsimot["manba"]) => {
+    const tasdiqlar = await yangiTasdiqlar(user.id, boshlandi);
+    const borAgent = p.agentId && agentlar.some((a) => a.id === p.agentId) ? p.agentId : null;
+    const taqsimot: Taqsimot = {
+      ...p,
+      tasdiqKerak: p.tasdiqKerak || tasdiqlar.length > 0,
+      agentId: borAgent,
+      yangiAgent: borAgent ? null : p.yangiAgent ?? (await lokal()).yangiAgent,
+      manba,
+      instagram: amallar.length || tasdiqlar.length ? { amallar, tasdiqlar } : undefined,
+    };
+    return NextResponse.json({ taqsimot });
+  };
+
+  // ---------- ChatGPT (OPENAI_API_KEY bo'lsa — birinchi) ----------
+  let oaiEslatma: string | null = null;
+  if (oai) {
+    const urinish = async (mcpBilan: boolean) => {
+      amallar = [];
+      return openaiVazifa({
+        client: oai,
+        tizim: TIZIM,
+        kontekst,
+        vositalar: [...(akk ? IG_VOSITALAR : []), ...(moliyaBor ? MOLIYA_VOSITALAR : [])],
+        mcp: mcpBilan ? mcp : null,
+        sxema: javobSxemasi(JAMOA_IDLAR),
+        bajar: vositaBajar,
+        amallar,
+      });
+    };
+    try {
+      let xom: unknown;
+      try {
+        xom = await urinish(mcp.servers.length > 0);
+      } catch (e) {
+        // MCP serveri so'rovni buzsa — ulanishlarsiz yana bir bor
+        if (!(mcp.servers.length && e instanceof OpenAI.BadRequestError)) throw e;
+        console.error("ofis: ChatGPT MCP bilan xato, ulanishlarsiz qayta urinish", e.message);
+        xom = await urinish(false);
+      }
+      const p = Javob.safeParse(xom);
+      if (p.success) return yakunla(p.data, "chatgpt");
+      console.error("ofis: ChatGPT javobi sxemaga mos emas", p.error.message);
+    } catch (e) {
+      if (e instanceof OpenAI.AuthenticationError) oaiEslatma = "OPENAI_API_KEY noto'g'ri";
+      else if (e instanceof OpenAI.RateLimitError) oaiEslatma = /quota/i.test(e.message) ? "OpenAI hisobida mablag' tugagan" : "ChatGPT limiti tugadi";
+      else if (e instanceof OpenAI.NotFoundError) oaiEslatma = `OpenAI modeli topilmadi (${openaiModel()}) — OPENAI_MODEL ni tekshiring`;
+      console.error("ofis: ChatGPT xatosi", e instanceof Error ? e.message : e);
+    }
+  }
+  // ---------- Claude (ChatGPT yo'q yoki ishlamadi) ----------
+  if (!client) {
+    return NextResponse.json({ taqsimot: await lokal(), eslatma: `${oaiEslatma ?? "ChatGPT javob bermadi"} — hozircha lokal rejim` });
+  }
 
   // MCP serveri ishlamasa (o'chgan, token eskirgan) — vazifa ulanishlarsiz qayta bajariladi
   let mcpBilan = mcp.servers.length > 0;
@@ -217,20 +288,7 @@ export async function POST(req: Request) {
           for (const b of res.content) {
             if (b.type !== "tool_use") continue;
             try {
-              const kirish = (b.input ?? {}) as Record<string, unknown>;
-              if (b.name.startsWith("moliya_")) {
-                if (!moliyaBor) throw new Error("Moliya ma'lumotiga ruxsat yo'q");
-                const matnNatija = await moliyaVosita(b.name, { davr: kirish.davr as Davr | undefined, qidiruv: kirish.qidiruv as string | undefined });
-                amallar.push(MOLIYA_NOMLARI[b.name] ?? b.name);
-                natijalar.push({ type: "tool_result", tool_use_id: b.id, content: matnNatija.slice(0, 20000) });
-                continue;
-              }
-              const matnNatija = await igVosita(user.id, b.name, kirish);
-              if (!b.name.startsWith("list_") && !NOMLAR_OQISH.has(b.name)) {
-                amallar.push(`Tasdiqqa qo'yildi: ${b.name.replace("instagram_", "")}`);
-              } else {
-                amallar.push(amalNomi(b.name));
-              }
+              const matnNatija = await vositaBajar(b.name, (b.input ?? {}) as Record<string, unknown>);
               natijalar.push({ type: "tool_result", tool_use_id: b.id, content: matnNatija.slice(0, 20000) });
             } catch (e) {
               natijalar.push({
@@ -248,18 +306,7 @@ export async function POST(req: Request) {
         if (res.stop_reason === "refusal" || !res.parsed_output) {
           return NextResponse.json({ taqsimot: await lokal() });
         }
-        const p = res.parsed_output;
-        const tasdiqlar = await yangiTasdiqlar(user.id, boshlandi);
-        const borAgent = p.agentId && agentlar.some((a) => a.id === p.agentId) ? p.agentId : null;
-        const taqsimot: Taqsimot = {
-          ...p,
-          tasdiqKerak: p.tasdiqKerak || tasdiqlar.length > 0,
-          agentId: borAgent,
-          yangiAgent: borAgent ? null : p.yangiAgent ?? (await lokal()).yangiAgent,
-          manba: "claude",
-          instagram: amallar.length || tasdiqlar.length ? { amallar, tasdiqlar } : undefined,
-        };
-        return NextResponse.json({ taqsimot });
+        return yakunla(res.parsed_output, "claude");
       }
       return NextResponse.json({ taqsimot: await lokal(), eslatma: "Vazifa juda uzun bo'lib ketdi, lokal rejim" });
     } catch (e) {

@@ -794,7 +794,7 @@ export default function OfisSahifa() {
                         <small>
                           {a?.avatar} {a?.ism ?? "Agent"} · {j.nom}
                           {holat === "jarayonda" && ` · ${v.bosqich + 1}/${v.qadamlar.length}`}
-                          {v.manba === "claude" ? " · Claude" : ""}
+                          {v.manba === "claude" ? " · Claude" : v.manba === "chatgpt" ? " · ChatGPT" : ""}
                         </small>
                         {!!v.amallar?.length && <small className={s.igAmal}>🔗 {v.amallar.join(" · ")}</small>}
                         {!!v.tasdiqlar?.length && holat === "tasdiq" && (

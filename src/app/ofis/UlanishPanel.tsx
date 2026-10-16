@@ -98,7 +98,7 @@ export default function UlanishPanel({ yop, kirgan, xabar }: { yop: () => void; 
       {!kirgan && <div className="o_bosh">Ulanishlarni boshqarish uchun tizimga kiring.</div>}
       {kirgan && !claude && (
         <div className="o_natija" style={{ marginBottom: 10 }}>
-          ○ Agentlar hozir oddiy rejimda: ulanishlar Claude rejimida ishlaydi. Serverga ANTHROPIC_API_KEY qo&apos;shilgach yoqiladi.
+          ○ Agentlar hozir oddiy rejimda: ulanishlar AI rejimida ishlaydi. Serverga OPENAI_API_KEY (ChatGPT) yoki ANTHROPIC_API_KEY (Claude) qo&apos;shilgach yoqiladi.
         </div>
       )}
       {xabar && <div className="o_natija" style={{ marginBottom: 10 }}>🔌 {xabar}</div>}

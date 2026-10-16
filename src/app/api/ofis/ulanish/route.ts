@@ -32,7 +32,7 @@ export async function GET() {
   return NextResponse.json({
     ulanishlar: rows.map(korinish),
     tayyor: TAYYOR_MCP,
-    claude: Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
+    claude: Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || process.env.OPENAI_API_KEY),
   });
 }
 

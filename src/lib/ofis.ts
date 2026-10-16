@@ -47,7 +47,7 @@ export type Vazifa = {
   bosqich: number;
   natija: string;
   tasdiqKerak: boolean;
-  manba: "claude" | "lokal";
+  manba: "claude" | "chatgpt" | "lokal";
   vaqt: number;
   tugadi?: number;
   amallar?: string[];
@@ -70,7 +70,7 @@ export type Taqsimot = {
   javob: string;
   natija: string;
   tasdiqKerak: boolean;
-  manba: "claude" | "lokal";
+  manba: "claude" | "chatgpt" | "lokal";
   // Instagram Cloud bilan bajarilgan amallar va tasdiq navbatidagi harakatlar
   instagram?: { amallar: string[]; tasdiqlar: { id: string; summary: string }[] };
 };
