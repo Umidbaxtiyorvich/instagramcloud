@@ -281,6 +281,9 @@ export async function reelsYasaVaJoyla(userId: string, s: MiyaSozlama, kalit: st
   });
 }
 
+// shu server jarayonida hozir yasalayotgan Reels'lar (qayta ishga tushgandan keyin bo'sh)
+const jarayonda = new Set<string>();
+
 async function reelsVaqti(userId: string, s: MiyaSozlama): Promise<boolean> {
   // Instagram'i ulanmagan foydalanuvchida Reels yo'q (navbatni boshqalardan olmasin)
   if (!(await igAkkaunt(userId))) return false;
@@ -299,13 +302,31 @@ async function reelsVaqti(userId: string, s: MiyaSozlama): Promise<boolean> {
     // Xato bilan tugagan urinish vaqt oynasi ichida bir marta qayta urinadi.
     let urinish = 1;
     if (!(await xabar(userId, "reels", "ogoh", `🎬 Reels tayyorlanmoqda (${v})…`, kalit))) {
+      if (jarayonda.has(kalit)) continue; // shu jarayonda hali ishlayapti
+      // «tayyorlanmoqda» qolib ketgan bo'lsa — server ish o'rtasida qayta ishga tushgan
+      const eski = await prisma.miyaXabar.findUnique({ where: { userId_kalit: { userId, kalit } } });
+      if (eski?.matn.startsWith("🎬 Reels tayyorlanmoqda") && eski.matn.includes("2-urinish")) {
+        await prisma.miyaXabar.update({
+          where: { id: eski.id },
+          data: { daraja: "xavf", telegram: false, matn: `⚠️ ${v} dagi Reels ikkinchi urinishda ham joylanmadi: server ish o'rtasida to'xtadi. O'zingiz joylashingiz kerak.` },
+        });
+        continue;
+      }
       const qayta = await prisma.miyaXabar.updateMany({
-        where: { userId, kalit, daraja: "xavf", matn: { contains: "joylanmadi" }, NOT: { matn: { contains: "ikkinchi urinishda" } } },
+        where: {
+          userId,
+          kalit,
+          OR: [
+            { daraja: "xavf", matn: { contains: "joylanmadi" }, NOT: { matn: { contains: "ikkinchi urinishda" } } },
+            { matn: { startsWith: "🎬 Reels tayyorlanmoqda" }, NOT: { matn: { contains: "2-urinish" } } },
+          ],
+        },
         data: { daraja: "ogoh", telegram: true, matn: `🎬 Reels tayyorlanmoqda (${v}, 2-urinish)…` },
       });
       if (!qayta.count) continue;
       urinish = 2;
     }
+    jarayonda.add(kalit);
     try {
       await reelsYasaVaJoyla(userId, s, kalit);
     } catch (e) {
@@ -321,6 +342,8 @@ async function reelsVaqti(userId: string, s: MiyaSozlama): Promise<boolean> {
               : `⚠️ ${v} dagi Reels ikkinchi urinishda ham joylanmadi: ${m}. O'zingiz joylashingiz kerak.`,
         },
       });
+    } finally {
+      jarayonda.delete(kalit);
     }
     return true;
   }

@@ -157,53 +157,40 @@ export async function renderVideo(input: VideoSpec) {
   shrift();
   const dir = await mkdtemp(path.join(tmpdir(), "igv-"));
   try {
-    const args = [
-      "-y", "-loglevel", "error",
-      "-f", "lavfi", "-i", `gradients=s=${W}x${H}:c0=${t.c0}:c1=${t.c1}:x0=0:y0=0:x1=${W}:y1=${H}:speed=0.008:d=${total.toFixed(2)}:r=30`,
-      "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-    ];
-    const graph: string[] = [];
-    let last = "0:v";
-    let n = 2; // next input index
-
-    if (spec.brand || spec.footer) {
-      const f = path.join(dir, "doimiy.png");
-      await writeFile(f, await doimiyQatlam(t, spec.brand, spec.footer));
-      args.push("-loop", "1", "-framerate", "30", "-t", total.toFixed(2), "-i", f);
-      graph.push(`[${last}][${n}:v]overlay=0:0:format=auto[b${n}]`);
-      last = `b${n}`;
-      n++;
-    }
-
-    let start = 0;
+    // Render's free instance has 512 MB: one ffmpeg holding every full-HD layer at once got
+    // the server killed, so each slide is its own short clip (gradient + 2 layers) and the
+    // clips are joined without re-encoding.
+    const doimiy = path.join(dir, "doimiy.png");
+    await writeFile(doimiy, await doimiyQatlam(t, spec.brand, spec.footer));
+    const kliplar: string[] = [];
     for (const [i, s] of spec.slides.entries()) {
-      const a = start;
-      const d = s.seconds;
-      const f = path.join(dir, `s${i}.png`);
-      await writeFile(f, await slaydQatlam(t, s.title, s.subtitle));
-      args.push("-loop", "1", "-framerate", "30", "-t", d.toFixed(2), "-i", f);
+      const d = s.seconds.toFixed(2);
+      const qatlam = path.join(dir, `s${i}.png`);
+      await writeFile(qatlam, await slaydQatlam(t, s.title, s.subtitle));
+      const klip = path.join(dir, `k${i}.mp4`);
       // fade in over 0.4 s, fade out over the last 0.3 s, rise 40 px while appearing
-      graph.push(
-        `[${n}:v]format=rgba,fade=t=in:st=0:d=0.4:alpha=1,fade=t=out:st=${(d - 0.3).toFixed(2)}:d=0.3:alpha=1,setpts=PTS-STARTPTS+${a.toFixed(2)}/TB[l${n}]`,
-        `[${last}][l${n}]overlay=x=0:y='40*max(0,1-(t-${a.toFixed(2)})/0.4)':eof_action=pass:format=auto[b${n}]`,
-      );
-      last = `b${n}`;
-      n++;
-      start += d;
+      const graph =
+        `[0:v][1:v]overlay=0:0:format=auto[b];` +
+        `[2:v]format=rgba,fade=t=in:st=0:d=0.4:alpha=1,fade=t=out:st=${(s.seconds - 0.3).toFixed(2)}:d=0.3:alpha=1[l];` +
+        `[b][l]overlay=x=0:y='40*max(0,1-t/0.4)':format=auto,format=yuv420p[v]`;
+      await run([
+        "-y", "-loglevel", "error", "-threads", "2",
+        "-f", "lavfi", "-i", `gradients=s=${W}x${H}:c0=${t.c0}:c1=${t.c1}:x0=0:y0=0:x1=${W}:y1=${H}:speed=0.008:seed=${i * 7 + 1}:d=${d}:r=30`,
+        "-loop", "1", "-framerate", "30", "-t", d, "-i", doimiy,
+        "-loop", "1", "-framerate", "30", "-t", d, "-i", qatlam,
+        "-f", "lavfi", "-t", d, "-i", "anullsrc=r=44100:cl=stereo",
+        "-filter_complex", graph,
+        "-map", "[v]", "-map", "3:a", "-t", d,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p", "-profile:v", "high", "-r", "30",
+        "-c:a", "aac", "-b:a", "96k", "-ar", "44100",
+        klip,
+      ]);
+      kliplar.push(klip);
     }
-
+    const royxat = path.join(dir, "list.txt");
+    await writeFile(royxat, kliplar.map((k) => `file '${k.replace(/\\/g, "/")}'`).join("\n"), "utf8");
     const out = path.join(dir, "out.mp4");
-    const script = path.join(dir, "graph.txt");
-    await writeFile(script, `${graph.join(";\n")};\n[${last}]format=yuv420p[v]`, "utf8");
-    args.push(
-      "-filter_complex_script", script,
-      "-map", "[v]", "-map", "1:a",
-      "-t", total.toFixed(2),
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p", "-profile:v", "high",
-      "-c:a", "aac", "-b:a", "96k", "-shortest", "-movflags", "+faststart",
-      out,
-    );
-    await run(args);
+    await run(["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", royxat, "-c", "copy", "-movflags", "+faststart", out]);
     return { bytes: new Uint8Array(await readFile(out)), seconds: total };
   } finally {
     await rm(dir, { recursive: true, force: true });
