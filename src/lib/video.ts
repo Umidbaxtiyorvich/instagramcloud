@@ -29,8 +29,19 @@ const THEMES = {
 
 export const THEME_NAMES = Object.keys(THEMES) as (keyof typeof THEMES)[];
 
+// layout is designed on a 1080×1920 grid; the video itself is 720×1280 (still 9:16,
+// accepted by Reels) — a full-HD frame pipeline didn't fit in the free server's 512 MB
 const W = 1080;
 const H = 1920;
+const OW = 720;
+const OH = 1280;
+
+function tuval() {
+  const c = createCanvas(OW, OH);
+  const ctx = c.getContext("2d");
+  ctx.scale(OW / W, OH / H);
+  return { c, ctx };
+}
 const FONT_BOLD = path.join(process.cwd(), "assets/fonts/Montserrat-ExtraBold.ttf");
 const FONT_SEMI = path.join(process.cwd(), "assets/fonts/Montserrat-SemiBold.ttf");
 
@@ -93,8 +104,7 @@ type Theme = (typeof THEMES)[keyof typeof THEMES];
 
 // brand at the top and the footer band — the same on every slide
 async function doimiyQatlam(theme: Theme, brand: string, footer: string) {
-  const c = createCanvas(W, H);
-  const ctx = c.getContext("2d");
+  const { c, ctx } = tuval();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   if (brand) {
@@ -116,8 +126,7 @@ async function doimiyQatlam(theme: Theme, brand: string, footer: string) {
 
 // one slide's title, accent bar and subtitle on a transparent layer
 async function slaydQatlam(theme: Theme, title: string, subtitle: string) {
-  const c = createCanvas(W, H);
-  const ctx = c.getContext("2d");
+  const { c, ctx } = tuval();
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   ctx.font = "104px MontserratXB";
@@ -154,6 +163,8 @@ export async function renderVideo(input: VideoSpec) {
   const spec = validateSpec(input);
   const t = THEMES[spec.theme];
   const total = spec.slides.reduce((a, s) => a + s.seconds, 0);
+  const mb = () => `${Math.round(process.memoryUsage().rss / 1048576)} MB`;
+  console.log(`video: boshlandi, ${spec.slides.length} slayd, ${total.toFixed(1)} s, node ${mb()}`);
   shrift();
   const dir = await mkdtemp(path.join(tmpdir(), "igv-"));
   try {
@@ -162,26 +173,28 @@ export async function renderVideo(input: VideoSpec) {
     // clips are joined without re-encoding.
     const doimiy = path.join(dir, "doimiy.png");
     await writeFile(doimiy, await doimiyQatlam(t, spec.brand, spec.footer));
+    console.log(`video: doimiy qatlam chizildi, node ${mb()}`);
     const kliplar: string[] = [];
     for (const [i, s] of spec.slides.entries()) {
       const d = s.seconds.toFixed(2);
       const qatlam = path.join(dir, `s${i}.png`);
       await writeFile(qatlam, await slaydQatlam(t, s.title, s.subtitle));
+      console.log(`video: slayd ${i + 1} chizildi, ffmpeg boshlanmoqda, node ${mb()}`);
       const klip = path.join(dir, `k${i}.mp4`);
       // fade in over 0.4 s, fade out over the last 0.3 s, rise 40 px while appearing
       const graph =
         `[0:v][1:v]overlay=0:0:format=auto[b];` +
         `[2:v]format=rgba,fade=t=in:st=0:d=0.4:alpha=1,fade=t=out:st=${(s.seconds - 0.3).toFixed(2)}:d=0.3:alpha=1[l];` +
-        `[b][l]overlay=x=0:y='40*max(0,1-t/0.4)':format=auto,format=yuv420p[v]`;
+        `[b][l]overlay=x=0:y='27*max(0,1-t/0.4)':format=auto,format=yuv420p[v]`;
       await run([
-        "-y", "-loglevel", "error", "-threads", "2",
-        "-f", "lavfi", "-i", `gradients=s=${W}x${H}:c0=${t.c0}:c1=${t.c1}:x0=0:y0=0:x1=${W}:y1=${H}:speed=0.008:seed=${i * 7 + 1}:d=${d}:r=30`,
+        "-y", "-loglevel", "error", "-threads", "1", "-filter_threads", "1",
+        "-f", "lavfi", "-i", `gradients=s=${OW}x${OH}:c0=${t.c0}:c1=${t.c1}:x0=0:y0=0:x1=${OW}:y1=${OH}:speed=0.008:seed=${i * 7 + 1}:d=${d}:r=30`,
         "-loop", "1", "-framerate", "30", "-t", d, "-i", doimiy,
         "-loop", "1", "-framerate", "30", "-t", d, "-i", qatlam,
         "-f", "lavfi", "-t", d, "-i", "anullsrc=r=44100:cl=stereo",
         "-filter_complex", graph,
         "-map", "[v]", "-map", "3:a", "-t", d,
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p", "-profile:v", "high", "-r", "30",
+        "-c:v", "libx264", "-preset", "veryfast", "-x264-params", "rc-lookahead=8:ref=2", "-crf", "21", "-pix_fmt", "yuv420p", "-profile:v", "high", "-r", "30",
         "-c:a", "aac", "-b:a", "96k", "-ar", "44100",
         klip,
       ]);
@@ -191,7 +204,9 @@ export async function renderVideo(input: VideoSpec) {
     await writeFile(royxat, kliplar.map((k) => `file '${k.replace(/\\/g, "/")}'`).join("\n"), "utf8");
     const out = path.join(dir, "out.mp4");
     await run(["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", royxat, "-c", "copy", "-movflags", "+faststart", out]);
-    return { bytes: new Uint8Array(await readFile(out)), seconds: total };
+    const bytes = new Uint8Array(await readFile(out));
+    console.log(`video: tayyor, ${Math.round(bytes.length / 1024)} KB, node ${mb()}`);
+    return { bytes, seconds: total };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
