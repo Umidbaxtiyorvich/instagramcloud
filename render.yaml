@@ -1,0 +1,55 @@
+# Render Blueprint: Dashboard → New → Blueprint → this repository.
+# Creates the web service and a PostgreSQL database; secrets are generated.
+services:
+  - type: web
+    name: instagramcloud
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: instagramcloud-db
+          property: connectionString
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: TOKEN_ENCRYPTION_KEY
+        generateValue: true
+      - key: INSTAGRAM_OAUTH_MODE
+        value: instagram
+      - key: INSTAGRAM_WEBHOOK_VERIFY_TOKEN
+        generateValue: true
+      - key: GRAPH_API_VERSION
+        value: v23.0
+      # From developers.facebook.com → your app → Instagram → API setup with Instagram login
+      - key: INSTAGRAM_APP_ID
+        sync: false
+      - key: INSTAGRAM_APP_SECRET
+        sync: false
+      # Miya'ning Telegram akkaunti (haqiqiy qo'ng'iroqlar): my.telegram.org → API development tools
+      - key: TG_API_ID
+        sync: false
+      - key: TG_API_HASH
+        sync: false
+      # Miya'ning Telegram boti: @BotFather → /newbot → token
+      - key: MIYA_BOT_TOKEN
+        sync: false
+      # Miya telefonda: console.twilio.com → Account SID, Auth Token va sotib olingan raqam
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_NUMBER
+        sync: false
+
+databases:
+  - name: instagramcloud-db
+    plan: free
+    region: frankfurt
+    databaseName: instagramcloud
+    user: instagramcloud

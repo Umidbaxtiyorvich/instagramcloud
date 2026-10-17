@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
+import { instagramAppConfigured } from "@/lib/instagram";
+import { baseUrl } from "@/lib/url";
 
-export async function GET() {
+export async function GET(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ user: null });
   return NextResponse.json({
@@ -11,6 +13,9 @@ export async function GET() {
       name: user.name,
       locale: user.locale,
       mcpToken: user.mcpToken,
+      aiApproval: user.aiApproval,
+      mcpUrl: `${baseUrl(req)}/mcp`,
+      igConfigured: instagramAppConfigured(),
       accounts: user.accounts.map((a) => ({
         id: a.id,
         username: a.username,
@@ -22,6 +27,7 @@ export async function GET() {
         defaultDmMode: a.defaultDmMode,
         commentRepliesOn: a.commentRepliesOn,
         followersCount: a.followersCount,
+        lastWebhookAt: a.lastWebhookAt,
       })),
     },
   });
