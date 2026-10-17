@@ -21,10 +21,9 @@ async function ishla(req: Request) {
   if (ishlayapti) return NextResponse.json({ xabarlar: [], band: true });
   ishlayapti = true;
   try {
-    const xabarlar = await tick();
-    // muhim gap bo'lsa — egasiga telefon qilish
+    // muhim gap bo'lsa — egasiga qo'ng'iroq (havolali qo'ng'iroq xabari shu tick'da Telegram'ga ketadi)
     await qongiroqlar().catch((e) => console.error("miya telefon:", e));
-    return NextResponse.json({ xabarlar });
+    return NextResponse.json({ xabarlar: await tick() });
   } catch (e) {
     console.error("miya tick:", e);
     return NextResponse.json({ xabarlar: [], error: e instanceof Error ? e.message : "xato" }, { status: 500 });

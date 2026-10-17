@@ -1,0 +1,142 @@
+.q_ekran {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(circle at 50% 0%, #1d2350, #0b0d1c 70%);
+  color: #e9ecff;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  padding: 16px;
+  box-sizing: border-box;
+}
+.q_markaz {
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+}
+.q_tepa {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 24px;
+}
+.q_tepa h1 {
+  margin: 10px 0 2px;
+  font-size: 26px;
+}
+.q_holat {
+  min-height: 20px;
+  font-size: 14px;
+  color: #9aa2d6;
+}
+.q_avatar {
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 54px;
+  background: linear-gradient(145deg, #7b5cff, #3dd6ff);
+  box-shadow: 0 0 0 0 rgba(123, 92, 255, 0.6);
+}
+.q_puls {
+  animation: q_puls 1.4s infinite;
+}
+.q_tinglash {
+  box-shadow: 0 0 0 6px rgba(61, 255, 154, 0.5);
+}
+@keyframes q_puls {
+  0% { box-shadow: 0 0 0 0 rgba(123, 92, 255, 0.6); }
+  70% { box-shadow: 0 0 0 22px rgba(123, 92, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(123, 92, 255, 0); }
+}
+.q_suhbat {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 0;
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+}
+.q_miya,
+.q_men,
+.q_xato {
+  max-width: 85%;
+  padding: 10px 13px;
+  border-radius: 16px;
+  font-size: 15px;
+  line-height: 1.4;
+}
+.q_miya {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.08);
+  border-bottom-left-radius: 4px;
+}
+.q_men {
+  align-self: flex-end;
+  background: #3a46a8;
+  border-bottom-right-radius: 4px;
+}
+.q_xato {
+  align-self: center;
+  background: rgba(255, 107, 90, 0.15);
+  color: #ffb3a8;
+}
+.q_past {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+.q_qator {
+  display: flex;
+  gap: 28px;
+  justify-content: center;
+  align-items: center;
+}
+.q_yashil,
+.q_qizil,
+.q_tugma,
+.q_mikrofon {
+  border: none;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+.q_yashil {
+  background: #22c55e;
+  padding: 14px 26px;
+  border-radius: 999px;
+  font-size: 17px;
+  font-weight: 600;
+}
+.q_qizil {
+  background: #ef4444;
+}
+.q_dumaloq {
+  width: 68px;
+  height: 68px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 28px;
+  display: grid;
+  place-items: center;
+}
+.q_mikrofon {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  font-size: 28px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.q_tugma {
+  background: rgba(255, 255, 255, 0.12);
+  padding: 12px 20px;
+  border-radius: 999px;
+  font-size: 15px;
+}

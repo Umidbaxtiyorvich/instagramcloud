@@ -73,11 +73,11 @@ export async function ovozYasa(kalit: string, matn: string) {
   return b;
 }
 
-async function matngaOgir(mp3: Uint8Array) {
+async function matngaOgir(ovoz: Uint8Array, nom = "javob.mp3", tur = "audio/mpeg") {
   const client = openai();
   if (!client) throw new Error("OPENAI_API_KEY yo'q");
   const r = await client.audio.transcriptions.create({
-    file: await toFile(mp3, "javob.mp3", { type: "audio/mpeg" }),
+    file: await toFile(ovoz, nom, { type: tur }),
     model: process.env.TELEFON_STT_MODEL?.trim() || "gpt-4o-transcribe",
     language: "uz",
     prompt: "Miya bilan telefon suhbati. Instagram, Reels, Direct, komment, qoida, CloudShop, kassa, qarz, tovar, ha, yo'q.",
@@ -198,24 +198,29 @@ async function javobBer(q: Qongiroq): Promise<{ javob: string; tugat: boolean }>
   return { javob: String(j.javob || "Tushunmadim, qaytadan ayting.").slice(0, 1200), tugat: j.tugat === true };
 }
 
+// Egasining gapini (ovoz) matnga o'giradi, Miya javob beradi; ikkalasi suhbatga yoziladi
+export async function gapniIshla(id: string, ovoz: Uint8Array, nom?: string, tur?: string) {
+  const matn = await matngaOgir(ovoz, nom, tur);
+  if (!matn) return gapQosh(id, [{ kim: "miya", matn: STATIK.takrorla }]);
+  const q = await gapQosh(id, [{ kim: "men", matn }]);
+  const j = await javobBer(q);
+  return gapQosh(id, [{ kim: "miya", matn: j.javob }], { tugat: j.tugat });
+}
+
+export const xatoGap = (e: unknown): Gap => ({
+  kim: "miya",
+  matn: `Kechirasiz, xatolik bo'ldi: ${e instanceof Error ? e.message.slice(0, 120) : "noma'lum"}. Yana bir bor ayting.`,
+});
+
 // Twilio yozib olgan gapni eshitib, javob tayyorlaydi (javob qaytgandan keyin, fonda ishlaydi)
 export async function tingla(id: string, yozuvUrl: string, yozuvSid: string) {
   try {
     const mp3 = await yozuvniOl(yozuvUrl);
     await yozuvniOchir(yozuvSid);
-    const matn = await matngaOgir(mp3);
-    if (!matn) {
-      await gapQosh(id, [{ kim: "miya", matn: STATIK.takrorla }]);
-      return;
-    }
-    let q = await gapQosh(id, [{ kim: "men", matn }]);
-    const j = await javobBer(q);
-    q = await gapQosh(id, [{ kim: "miya", matn: j.javob }], { tugat: j.tugat });
-    await oldindanOvoz(q);
+    await oldindanOvoz(await gapniIshla(id, mp3));
   } catch (e) {
     console.error("telefon:", e);
-    const q = await gapQosh(id, [{ kim: "miya", matn: `Kechirasiz, xatolik bo'ldi: ${e instanceof Error ? e.message.slice(0, 120) : "noma'lum"}. Yana bir bor ayting.` }]);
-    await oldindanOvoz(q);
+    await oldindanOvoz(await gapQosh(id, [xatoGap(e)]));
   } finally {
     await prisma.qongiroq.update({ where: { id }, data: { kutish: false } });
   }
@@ -223,13 +228,14 @@ export async function tingla(id: string, yozuvUrl: string, yozuvSid: string) {
 
 // Tugma bilan javob (1 — ha, 2 — yo'q) — taklif bo'yicha
 export async function tugmaJavob(q: Qongiroq, raqam: string) {
+  if (!q.fikrId) throw new Error("Bu qo'ng'iroqda javob kutayotgan taklif yo'q");
   let matn: string;
   try {
     if (raqam === "1") {
-      const f = await qaror(q.userId, q.fikrId!, true);
+      const f = await qaror(q.userId, q.fikrId, true);
       matn = f.holat === "bajarildi" ? "Bajardim. Yana biror gap bormi?" : "Bo'lmadi.";
     } else {
-      await qaror(q.userId, q.fikrId!, false, "telefonda rad etdi");
+      await qaror(q.userId, q.fikrId, false, "telefonda rad etdi");
       matn = "Xo'p, qilmayman. Yana biror gap bormi?";
     }
   } catch (e) {
@@ -242,8 +248,52 @@ export async function tugmaJavob(q: Qongiroq, raqam: string) {
 
 // ---------- qo'ng'iroq qilish ----------
 
+// Telefon (Twilio) sozlanmagan bo'lsa — bepul yo'l: Telegram'ga «Miya qo'ng'iroq qilyapti» havolasi,
+// egasi bosib, telefon brauzerida ovoz bilan gaplashadi
+export const webMi = () => !twilioSozlangan();
+
+export async function salomMatni(userId: string) {
+  const [muhim, kutayotgan] = await Promise.all([
+    prisma.miyaXabar.count({ where: { userId, oqildi: false, daraja: { in: ["ogoh", "xavf"] } } }),
+    prisma.miyaFikr.count({ where: { userId, holat: "kutmoqda" } }),
+  ]);
+  return (
+    "Salom! Miya eshitadi." +
+    (muhim ? ` ${muhim} ta o'qilmagan ogohlantirish bor.` : "") +
+    (kutayotgan ? ` ${kutayotgan} ta taklifim javobingizni kutyapti.` : "") +
+    " Nima qilay?"
+  );
+}
+
+async function webQongiroq(userId: string, sabab: string, fikrId?: string) {
+  if (!openai()) throw new Error("OPENAI_API_KEY yo'q — Miya ovoz bilan gaplasha olmaydi");
+  const ochilish = `Assalomu alaykum, men Miya. ${sabab} ${fikrId ? "Rozi bo'lsangiz «ha» deng yoki pastdagi tugmani bosing." : "Biror buyruq berasizmi?"}`;
+  const q = await prisma.qongiroq.create({
+    data: {
+      userId,
+      yonalish: "chiquvchi",
+      kanal: "web",
+      kalit: randomToken(16),
+      sabab: sabab.slice(0, 2000),
+      fikrId: fikrId ?? null,
+      suhbat: JSON.stringify([{ kim: "miya", matn: ochilish }]),
+    },
+  });
+  // Telegram'ga boradi (tick); o'zi qo'ng'iroqqa sabab bo'lmasin — qongiroq: true
+  await prisma.miyaXabar.create({
+    data: { userId, tur: "qongiroq", daraja: "xavf", qongiroq: true, kalit: `qongiroq:${q.id}`, matn: `📞 Miya sizga qo'ng'iroq qilyapti: ${sabab.slice(0, 300)}
+Javob berish: ${sayt()}/qongiroq?q=${q.id}` },
+  });
+  await prisma.miyaSozlama.update({ where: { userId }, data: { oxirgiQongiroq: new Date() } });
+  await oldindanOvoz(q);
+  return q;
+}
+
 export async function miyaQongiroq(userId: string, sabab: string, o: { fikrId?: string; yonalish?: "chiquvchi" | "tasdiq"; telefon?: string } = {}) {
-  if (!twilioSozlangan()) throw new Error("Telefon sozlanmagan (Twilio)");
+  if (webMi()) {
+    if (o.yonalish === "tasdiq") throw new Error("Telefon sozlanmagan (Twilio)");
+    return webQongiroq(userId, sabab, o.fikrId);
+  }
   const s = await prisma.miyaSozlama.findUnique({ where: { userId } });
   const telefon = o.telefon ?? (s?.telefonTasdiq ? s.telefon : null);
   if (!telefon) throw new Error("Telefon raqami tasdiqlanmagan");
@@ -326,10 +376,18 @@ async function ogzaki(matnlar: string[], taklif: string | null) {
 
 // Miya tick'idan: tasdiqlangan raqamli egalarga muhim yangi gap bo'lsa — qo'ng'iroq (kunduzi, 30 daqiqada ko'pi bilan bir marta)
 export async function qongiroqlar() {
-  if (!twilioSozlangan()) return;
+  // javob berilmagan havolali qo'ng'iroqlar
+  await prisma.qongiroq.updateMany({
+    where: { kanal: "web", holat: "boshlandi", createdAt: { lt: new Date(Date.now() - 30 * 60_000) } },
+    data: { holat: "javobsiz", tugadi: new Date() },
+  });
+  const web = webMi();
+  if (web && !openai()) return;
   const { daqiqa } = soat();
   if (daqiqa < 8 * 60 || daqiqa >= 22 * 60) return;
-  const egalar = await prisma.miyaSozlama.findMany({ where: { telefonTasdiq: true, telefon: { not: null }, qongiroqRejim: { not: "off" } } });
+  const egalar = await prisma.miyaSozlama.findMany({
+    where: { qongiroqRejim: { not: "off" }, ...(web ? {} : { telefonTasdiq: true, telefon: { not: null } }) },
+  });
   for (const s of egalar) {
     try {
       if (s.oxirgiQongiroq && Date.now() - s.oxirgiQongiroq.getTime() < 30 * 60_000) continue;

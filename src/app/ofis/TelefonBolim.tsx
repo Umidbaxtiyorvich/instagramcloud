@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Gap = { kim: "miya" | "men"; matn: string };
-type Qongiroq = { id: string; yonalish: string; holat: string; sabab: string; suhbat: Gap[]; createdAt: string };
+type Qongiroq = { id: string; kanal: string; yonalish: string; holat: string; sabab: string; suhbat: Gap[]; createdAt: string };
 type Holat = {
   twilio: boolean;
   openai: boolean;
@@ -33,6 +34,7 @@ const vaqt = (s: string) =>
 
 // Miya → 📞 Telefon: raqamni ulash, qachon qo'ng'iroq qilishi, suhbatlar tarixi
 export default function TelefonBolim() {
+  const router = useRouter();
   const [d, setD] = useState<Holat | null>(null);
   const [telefon, setTelefon] = useState("");
   const [kod, setKod] = useState("");
@@ -61,8 +63,13 @@ export default function TelefonBolim() {
     setOk(null);
     try {
       const r = await fetch("/api/telefon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const j = (await r.json().catch(() => ({}))) as { error?: string };
+      const j = (await r.json().catch(() => ({}))) as { error?: string; qongiroq?: string };
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      // bepul rejimdagi sinov — qo'ng'iroq ekranini darhol ochamiz (Telegram xabari Miya'ning navbatdagi tekshiruvida boradi)
+      if (j.qongiroq) {
+        router.push(`/qongiroq?q=${j.qongiroq}`);
+        return true;
+      }
       if (xabar) setOk(xabar);
       await yukla();
       return true;
@@ -85,10 +92,17 @@ export default function TelefonBolim() {
         Qo&apos;ng&apos;iroqlar kunduzi (08:00–22:00) va 30 daqiqada ko&apos;pi bilan bir marta bo&apos;ladi.
       </div>
       {!d.twilio && (
-        <div className="o_natija" style={{ marginBottom: 10 }}>
-          ⚠️ Telefon hali ulanmagan: Render&apos;da TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN va TWILIO_NUMBER qo&apos;yilishi kerak.
+        <div className="o_telefonRaqam">
+          🆓 <b>Bepul rejim.</b> Miya Telegram&apos;ga «📞 Miya sizga qo&apos;ng&apos;iroq qilyapti» deb yozadi — havolani bossangiz, telefon
+          brauzerida qo&apos;ng&apos;iroq ekrani ochiladi va Miya bilan ovoz orqali gaplashasiz. Siz ham istalgan payt quyidagi tugma bilan
+          Miya&apos;ni chaqirasiz (saytga kirgan bo&apos;lsangiz, PIN kerak emas). Haqiqiy telefon qo&apos;ng&apos;irog&apos;i kerak bo&apos;lsa — Twilio
+          (pullik) ulanadi.
+          {!d.openai && " ⚠️ OPENAI_API_KEY yo'q — ovozli suhbat ishlamaydi."}
         </div>
       )}
+      <a className="o_tugma" href="/qongiroq" style={{ display: "inline-block", textDecoration: "none", marginBottom: 6 }}>
+        🎙 Miya bilan ovozli gaplashish
+      </a>
       {d.twilio && !d.openai && (
         <div className="o_natija" style={{ marginBottom: 10 }}>
           ⚠️ OPENAI_API_KEY yo&apos;q — Miya faqat xabarni o&apos;qib beradi, gapingizni eshita olmaydi (taklifga 1/2 tugmasi bilan javob berasiz).
@@ -97,14 +111,14 @@ export default function TelefonBolim() {
       {xato && <div className="o_natija" style={{ marginBottom: 10 }}>⚠️ {xato}</div>}
       {ok && <div className="o_natija" style={{ marginBottom: 10 }}>✅ {ok}</div>}
 
-      {d.miyaRaqami && (
+      {d.twilio && d.miyaRaqami && (
         <div className="o_telefonRaqam">
           Miya raqami: <a href={`tel:${d.miyaRaqami}`}>{d.miyaRaqami}</a>
         </div>
       )}
 
-      <h3 className="o_ulanishSarlavha">1. Sizning raqamingiz</h3>
-      {d.tasdiq ? (
+      {d.twilio && <h3 className="o_ulanishSarlavha">1. Sizning raqamingiz</h3>}
+      {!d.twilio ? null : d.tasdiq ? (
         <div className="o_miyaQator">
           ✅ {d.telefon} ulangan
           <button className="o_misol" disabled={!!band} onClick={() => confirm("Raqamni o'chiraymi?") && void amal("ochir", { amal: "ochir" }, "Raqam o'chirildi")}>
@@ -134,7 +148,7 @@ export default function TelefonBolim() {
         </>
       )}
 
-      {d.tasdiq && (
+      {d.twilio && d.tasdiq && (
         <>
           <h3 className="o_ulanishSarlavha">2. PIN — Miya&apos;ga o&apos;zingiz qo&apos;ng&apos;iroq qilganda</h3>
           <div className="o_ulanishMatn" style={{ marginTop: 0 }}>
@@ -153,8 +167,12 @@ export default function TelefonBolim() {
           <button className="o_tugma" disabled={!!band || pin.length < 4} onClick={() => void amal("pin", { amal: "pin", pin }, "PIN saqlandi").then((x) => x && setPin(""))}>
             {d.pinBor ? "PIN'ni almashtirish" : "PIN o'rnatish"}
           </button>
+        </>
+      )}
 
-          <h3 className="o_ulanishSarlavha">3. Miya qachon qo&apos;ng&apos;iroq qilsin</h3>
+      {(!d.twilio || d.tasdiq) && (
+        <>
+          <h3 className="o_ulanishSarlavha">Miya qachon qo&apos;ng&apos;iroq qilsin</h3>
           {REJIMLAR.map(([k, nom, izoh]) => (
             <label key={k} className="o_miyaQator" style={{ alignItems: "flex-start" }}>
               <input type="radio" name="rejim" checked={d.rejim === k} disabled={!!band} onChange={() => void amal("rejim", { amal: "rejim", rejim: k })} />
@@ -164,7 +182,7 @@ export default function TelefonBolim() {
             </label>
           ))}
           <button className="o_misol" disabled={!!band} onClick={() => void amal("sinov", { amal: "sinov" }, "Miya hozir qo'ng'iroq qiladi")}>
-            {band === "sinov" ? "Qo'ng'iroq qilinmoqda…" : "📞 Hozir menga qo'ng'iroq qil (sinov)"}
+            {band === "sinov" ? "Qo'ng'iroq qilinmoqda…" : d.twilio ? "📞 Hozir menga qo'ng'iroq qil (sinov)" : "📞 Sinov: Telegram'ga qo'ng'iroq havolasini yubor"}
           </button>
         </>
       )}
@@ -175,6 +193,12 @@ export default function TelefonBolim() {
         <div key={q.id} className="o_telefonSuhbat">
           <small>
             {vaqt(q.createdAt)} · {q.yonalish === "kiruvchi" ? "siz qo'ng'iroq qildingiz" : "Miya qo'ng'iroq qildi"} · {HOLAT_NOMI[q.holat] ?? q.holat}
+            {q.kanal === "web" && q.yonalish === "chiquvchi" && ["boshlandi", "javobsiz"].includes(q.holat) && (
+              <>
+                {" · "}
+                <a href={`/qongiroq?q=${q.id}`}>javob berish</a>
+              </>
+            )}
           </small>
           {q.suhbat.map((g, i) => (
             <div key={i} className={g.kim === "miya" ? "o_telefonMiya" : "o_telefonMen"}>

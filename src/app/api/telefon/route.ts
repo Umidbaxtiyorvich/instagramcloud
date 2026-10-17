@@ -24,6 +24,7 @@ export async function GET() {
     rejim: s.qongiroqRejim,
     qongiroqlar: qongiroqlar.map((q) => ({
       id: q.id,
+      kanal: q.kanal,
       yonalish: q.yonalish,
       holat: q.holat,
       sabab: q.sabab,
@@ -65,7 +66,13 @@ export async function POST(req: Request) {
     else {
       const oxirgi = await prisma.qongiroq.findFirst({ where: { userId: user.id }, orderBy: { createdAt: "desc" } });
       if (oxirgi && Date.now() - oxirgi.createdAt.getTime() < 60_000) throw new Error("Bir daqiqadan keyin qayta urinib ko'ring");
-      await miyaQongiroq(user.id, "Bu sinov qo'ng'irog'i: telefon ulandi, muhim gap bo'lsa shu raqamga qo'ng'iroq qilaman.");
+      const q = await miyaQongiroq(
+        user.id,
+        twilioSozlangan()
+          ? "Bu sinov qo'ng'irog'i: telefon ulandi, muhim gap bo'lsa shu raqamga qo'ng'iroq qilaman."
+          : "Bu sinov qo'ng'irog'i: muhim gap bo'lsa shunday chaqiraman.",
+      );
+      return NextResponse.json({ ok: true, qongiroq: q.kanal === "web" ? q.id : undefined });
     }
     return NextResponse.json({ ok: true });
   } catch (e) {

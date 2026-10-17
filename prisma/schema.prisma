@@ -386,6 +386,7 @@ model Qongiroq {
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   yonalish  String // chiquvchi | kiruvchi | tasdiq
+  kanal     String    @default("telefon") // telefon (Twilio) | web (bepul: Telegram havolasi + brauzerda ovoz)
   // ovoz havolalari uchun maxfiy kalit (Twilio audio'ni GET bilan oladi)
   kalit     String
   sid       String?

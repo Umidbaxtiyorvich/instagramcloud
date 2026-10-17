@@ -2,7 +2,7 @@ import { after } from "next/server";
 import { prisma } from "@/lib/db";
 import { openai } from "@/lib/ofis-openai";
 import { imzoTogri, maydonlar, tw, twiml } from "@/lib/twilio";
-import { STATIK, gapir, gapirStatik, suhbatOl, tingla, tugmaJavob, twimlUrl, xesh } from "@/lib/miya-telefon";
+import { STATIK, gapir, salomMatni, gapirStatik, suhbatOl, tingla, tugmaJavob, twimlUrl, xesh } from "@/lib/miya-telefon";
 
 // Twilio qo'ng'iroq davomida shu yerga keladi. b — bosqich:
 // boshla (Miya gapiradi) → eshit (yozuv keldi) → kut (javob tayyorlanmoqda) → yana eshit … ; pin, tasdiq
@@ -40,13 +40,7 @@ export async function POST(req: Request) {
       await prisma.qongiroq.update({ where: { id: q.id }, data: { holat: "xato", sabab: "⚠️ PIN noto'g'ri terildi" } });
       return twiml(gapirStatik(q, "pinXato"), tw.hangup());
     }
-    const muhim = await prisma.miyaXabar.count({ where: { userId: q.userId, oqildi: false, daraja: { in: ["ogoh", "xavf"] } } });
-    const kutayotgan = await prisma.miyaFikr.count({ where: { userId: q.userId, holat: "kutmoqda" } });
-    const salom =
-      "Salom! Miya eshitadi." +
-      (muhim ? ` ${muhim} ta o'qilmagan ogohlantirish bor.` : "") +
-      (kutayotgan ? ` ${kutayotgan} ta taklifim javobingizni kutyapti.` : "") +
-      " Nima qilay?";
+    const salom = await salomMatni(q.userId);
     const yangi = await prisma.qongiroq.update({ where: { id: q.id }, data: { pinOtdi: true, holat: "gaplashmoqda", suhbat: JSON.stringify([{ kim: "miya", matn: salom }]) } });
     return twiml(gapir(yangi, 0, salom), ...tingla_());
   }
