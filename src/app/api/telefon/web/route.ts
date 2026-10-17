@@ -4,7 +4,7 @@ import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { randomToken } from "@/lib/crypto";
 import { openai } from "@/lib/ofis-openai";
-import { gapniIshla, salomMatni, suhbatOl, tokenEgasi, tugmaJavob, xatoGap } from "@/lib/miya-telefon";
+import { gapniIshla, matnniIshla, salomMatni, suhbatOl, tokenEgasi, tugmaJavob, xatoGap } from "@/lib/miya-telefon";
 import { botOtkazildi } from "@/lib/miya-bot";
 import type { Qongiroq } from "@prisma/client";
 
@@ -55,6 +55,7 @@ const Amal = z.discriminatedUnion("amal", [
   z.object({ amal: z.literal("boshla") }),
   z.object({ amal: z.literal("javob"), q: z.string().max(64) }),
   z.object({ amal: z.literal("tugma"), q: z.string().max(64), ha: z.boolean() }),
+  z.object({ amal: z.literal("matn"), q: z.string().max(64), matn: z.string().trim().min(1).max(1000) }),
   z.object({ amal: z.literal("tugat"), q: z.string().max(64), rad: z.boolean().optional() }),
 ]);
 
@@ -99,6 +100,17 @@ export async function POST(req: Request) {
       // o'tkazib yuborilgan qo'ng'iroqqa keyinroq ham javob berish mumkin
       const yangi =
         q.holat === "boshlandi" || q.holat === "javobsiz" ? await prisma.qongiroq.update({ where: { id: q.id }, data: { holat: "gaplashmoqda", tugadi: null } }) : q;
+      return NextResponse.json({ qongiroq: korinish(yangi) });
+    }
+    if (a.amal === "matn") {
+      let yangi: Qongiroq;
+      try {
+        yangi = await matnniIshla(q.id, a.matn);
+      } catch (e) {
+        console.error("telefon web:", e);
+        yangi = await prisma.qongiroq.update({ where: { id: q.id }, data: { suhbat: JSON.stringify([...suhbatOl(q), { kim: "men", matn: a.matn }, xatoGap(e)]) } });
+      }
+      if (yangi.tugat) yangi = await prisma.qongiroq.update({ where: { id: q.id }, data: { holat: "tugadi", tugadi: new Date() } });
       return NextResponse.json({ qongiroq: korinish(yangi) });
     }
     if (a.amal === "tugma") return NextResponse.json({ qongiroq: korinish(await tugmaJavob(q, a.ha ? "1" : "2")) });

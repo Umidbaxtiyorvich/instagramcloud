@@ -140,3 +140,31 @@
   border-radius: 999px;
   font-size: 15px;
 }
+.q_yozma {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 520px;
+}
+.q_yozma input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  font-size: 16px;
+}
+.q_yozma button {
+  width: 44px;
+  border: none;
+  border-radius: 50%;
+  background: #3a46a8;
+  color: #fff;
+  font-size: 18px;
+}
+.q_yozma button:disabled {
+  opacity: 0.4;
+}

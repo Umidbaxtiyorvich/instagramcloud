@@ -46,6 +46,8 @@ export default function Qongiroq() {
   const [q, setQ] = useState<Q | null>(null);
   const [holat, setHolat] = useState<Holat>("yuklanmoqda");
   const [xato, setXato] = useState<string | null>(null);
+  const [baland, setBaland] = useState(0);
+  const [yozma, setYozma] = useState("");
   const audio = useRef<HTMLAudioElement | null>(null);
   const oqim = useRef<MediaStream | null>(null);
   const yozish = useRef<{ stop: (yubor: boolean) => void } | null>(null);
@@ -118,7 +120,8 @@ export default function Qongiroq() {
       ctx.createMediaStreamSource(stream).connect(an);
       const buf = new Float32Array(an.fftSize);
       const boshi = Date.now();
-      let shovqin = 0.01;
+      // shovqin darajasi jim paytlardan sekin o'rganiladi — darrov gapira boshlasangiz ham sezadi
+      let shovqin = 0.003;
       let gapirdi = false;
       let oxirgiOvoz = 0;
       let yuborilsin = true;
@@ -128,13 +131,18 @@ export default function Qongiroq() {
         for (const v of buf) s += v * v;
         const rms = Math.sqrt(s / buf.length);
         const t = Date.now() - boshi;
-        if (t < 400) shovqin = Math.max(shovqin, rms);
-        else if (rms > Math.max(0.02, shovqin * 2.5)) {
+        const chegara = Math.max(0.008, shovqin * 3);
+        setBaland(Math.min(1, rms / 0.08));
+        if (rms < chegara) shovqin = shovqin * 0.95 + rms * 0.05;
+        else if (t > 150) {
           gapirdi = true;
           oxirgiOvoz = Date.now();
         }
         if ((gapirdi && Date.now() - oxirgiOvoz > 1300) || t > 45_000) stop(true);
-        else if (!gapirdi && t > 12_000) stop(false);
+        else if (!gapirdi && t > 15_000) {
+          setXato("Ovozingiz kelmadi — mikrofon yoqilganini tekshiring yoki pastga yozing");
+          stop(false);
+        }
       }, 100);
       const stop = (yubor: boolean) => {
         clearInterval(tekshir);
@@ -144,6 +152,7 @@ export default function Qongiroq() {
       };
       rec.ondataavailable = (e) => e.data.size && bolaklar.push(e.data);
       rec.onstop = () => {
+        setBaland(0);
         void ctx.close();
         ok(yuborilsin && bolaklar.length ? new Blob(bolaklar, { type: rec.mimeType || tur || "audio/webm" }) : null);
       };
@@ -235,6 +244,25 @@ export default function Qongiroq() {
     }
   };
 
+  // ovoz tanilmasa — yozib yuborish ham mumkin
+  const yozibYubor = async () => {
+    const matn = yozma.trim();
+    if (!q || !matn) return;
+    yozish.current?.stop(false);
+    setYozma("");
+    setXato(null);
+    setHolat("oylayapti");
+    try {
+      const x = await api({ amal: "matn", q: q.id, matn }, t);
+      setQ(x);
+      tugadi.current = false;
+      await aylana(x, true);
+    } catch (e) {
+      setXato((e as Error).message);
+      setHolat("kutish");
+    }
+  };
+
   const qoy = async (rad = false) => {
     tugadi.current = true;
     yozish.current?.stop(false);
@@ -265,7 +293,12 @@ export default function Qongiroq() {
   return (
     <div className="q_ekran">
       <div className="q_tepa">
-        <div className={`q_avatar ${holat === "gapiryapti" || holat === "kelyapti" ? "q_puls" : ""} ${holat === "eshityapti" ? "q_tinglash" : ""}`}>🧠</div>
+        <div
+          className={`q_avatar ${holat === "gapiryapti" || holat === "kelyapti" ? "q_puls" : ""}`}
+          style={holat === "eshityapti" ? { boxShadow: `0 0 0 ${4 + Math.round(baland * 26)}px rgba(61, 255, 154, ${0.35 + baland * 0.4})` } : undefined}
+        >
+          🧠
+        </div>
         <h1>Miya</h1>
         <div className="q_holat">{holat === "kelyapti" ? "📞 sizga qo'ng'iroq qilyapti…" : (HOLAT_MATN[holat] ?? "")}</div>
       </div>
@@ -322,6 +355,20 @@ export default function Qongiroq() {
               ✕
             </button>
           </div>
+        )}
+        {suhbatda && (
+          <form
+            className="q_yozma"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void yozibYubor();
+            }}
+          >
+            <input value={yozma} onChange={(e) => setYozma(e.target.value)} placeholder="yoki shu yerga yozing…" />
+            <button type="submit" disabled={!yozma.trim() || holat === "oylayapti"} aria-label="Yuborish">
+              ➤
+            </button>
+          </form>
         )}
         {holat === "tugadi" && (
           <a className="q_tugma" href="/ofis">

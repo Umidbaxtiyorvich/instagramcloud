@@ -103,8 +103,8 @@ async function matngaOgir(ovoz: Uint8Array, nom = "javob.mp3", tur = "audio/mpeg
   const r = await client.audio.transcriptions.create({
     file: await toFile(ovoz, nom, { type: tur }),
     model: process.env.TELEFON_STT_MODEL?.trim() || "gpt-4o-transcribe",
+    // prompt berilmaydi: ovoz noaniq bo'lsa, model prompt so'zlarini «eshitib» qo'yadi
     language: "uz",
-    prompt: "Miya bilan telefon suhbati. Instagram, Reels, Direct, komment, qoida, CloudShop, kassa, qarz, tovar, ha, yo'q.",
   });
   return r.text.trim();
 }
