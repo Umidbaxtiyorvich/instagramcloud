@@ -73,6 +73,7 @@ export async function openaiVazifa(o: {
   sxema: Record<string, unknown>;
   bajar: (nom: string, kirish: Record<string, unknown>) => Promise<string>;
   amallar: string[];
+  model?: string;
 }): Promise<unknown> {
   const tools: OpenAI.Responses.Tool[] = [
     ...o.vositalar.map((v) => ({
@@ -89,7 +90,7 @@ export async function openaiVazifa(o: {
   let oldingi: string | undefined;
   for (let qadam = 0; qadam < 8; qadam++) {
     const r: OpenAI.Responses.Response = await o.client.responses.create({
-      model: openaiModel(),
+      model: o.model || openaiModel(),
       instructions: o.tizim,
       input,
       ...(tools.length ? { tools } : {}),

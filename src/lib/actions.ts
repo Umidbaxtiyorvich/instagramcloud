@@ -182,3 +182,25 @@ export async function executeApprovedAction(toolName: string, payload: ActionPay
       throw new Error(`Noma'lum harakat: ${toolName}`);
   }
 }
+
+// Navbatdagi tasdiqni hal qiladi: «ha» — bajaradi, «yo'q» — rad etadi (sayt va telefon uchun umumiy)
+export async function tasdiqHal(userId: string, id: string, ha: boolean) {
+  const row = await prisma.approval.findFirst({ where: { id, userId } });
+  if (!row) throw new Error("Tasdiq topilmadi");
+  if (row.status !== "pending") throw new Error("Allaqachon qaror qilingan");
+  if (!ha) {
+    await prisma.approval.update({ where: { id }, data: { status: "rejected", decidedAt: new Date() } });
+    return { status: "rejected" as const };
+  }
+  try {
+    const result = await executeApprovedAction(row.toolName, JSON.parse(row.payload));
+    await prisma.approval.update({ where: { id }, data: { status: "executed", result: JSON.stringify(result), decidedAt: new Date() } });
+    return { status: "executed" as const, result };
+  } catch (e) {
+    await prisma.approval.update({
+      where: { id },
+      data: { status: "error", result: JSON.stringify({ error: e instanceof Error ? e.message : "xato" }), decidedAt: new Date() },
+    });
+    throw e;
+  }
+}

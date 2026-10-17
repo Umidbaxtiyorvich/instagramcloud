@@ -28,6 +28,7 @@ model User {
   miyaXabarlar MiyaXabar[]
   miyaFikrlar MiyaFikr[]
   ofisFayllar OfisFayl[]
+  qongiroqlar Qongiroq[]
   rejaPostlar RejaPost[]
   xotira      Xotira?
   videoIshlar VideoIsh[]
@@ -71,6 +72,17 @@ model MiyaSozlama {
   oxirgiInstagram DateTime?
   // oldingi tekshiruvdagi jami qarz — o'sishni sezish uchun
   oxirgiQarz      Int?
+  // Telefon: Miya muhim gapni shu raqamga qo'ng'iroq qilib aytadi; egasi ham Miya raqamiga qo'ng'iroq qiladi
+  telefon         String?
+  telefonTasdiq   Boolean   @default(false)
+  telefonKod      String?
+  telefonKodVaqt  DateTime?
+  telefonUrinish  Int       @default(0)
+  // kiruvchi qo'ng'iroqda so'raladigan PIN (raqamni soxtalashtirib qo'ng'iroq qilishdan himoya)
+  telefonPin      String?
+  // off | xavf — faqat jiddiy muammo | muhim — muammo va Miya takliflari
+  qongiroqRejim   String    @default("xavf")
+  oxirgiQongiroq  DateTime?
   createdAt       DateTime  @default(now())
 }
 
@@ -85,6 +97,7 @@ model MiyaXabar {
   kalit     String
   oqildi    Boolean  @default(false)
   telegram  Boolean  @default(false) // Telegram'ga yuborildi
+  qongiroq  Boolean  @default(false) // telefon qo'ng'irog'i uchun ko'rib chiqildi
   createdAt DateTime @default(now())
 
   @@unique([userId, kalit])
@@ -365,4 +378,27 @@ model OfisFayl {
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+// Miya va egasi o'rtasidagi telefon qo'ng'iroqlari (Twilio). suhbat — [{kim: "miya" | "men", matn}]
+model Qongiroq {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  yonalish  String // chiquvchi | kiruvchi | tasdiq
+  // ovoz havolalari uchun maxfiy kalit (Twilio audio'ni GET bilan oladi)
+  kalit     String
+  sid       String?
+  sabab     String    @default("")
+  holat     String    @default("boshlandi") // boshlandi | gaplashmoqda | tugadi | javobsiz | xato
+  suhbat    String    @default("[]")
+  kutish    Boolean   @default(false) // javob tayyorlanmoqda
+  tugat     Boolean   @default(false) // oxirgi javobdan keyin go'shakni qo'yish
+  pinOtdi   Boolean   @default(false)
+  fikrId    String?
+  createdAt DateTime  @default(now())
+  tugadi    DateTime?
+
+  @@index([userId, createdAt])
+  @@index([sid])
 }

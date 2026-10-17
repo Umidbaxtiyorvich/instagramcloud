@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import TelefonBolim from "./TelefonBolim";
 
 // «Miya» boshqaruvi: Miya o'zi topgan ogohlantirishlar, avtomatik Reels, rejadagi postlar
 // va ChatGPT xotirasidan olingan profil.
@@ -45,10 +46,11 @@ type Javob = {
   ishonch: Record<string, { ha: number; yoq: number }>;
 };
 
-type Bolim = "fikrlar" | "xabarlar" | "reels" | "reja" | "xotira";
+type Bolim = "fikrlar" | "xabarlar" | "telefon" | "reels" | "reja" | "xotira";
 const BOLIMLAR: [Bolim, string][] = [
   ["fikrlar", "💭 Fikrlar"],
   ["xabarlar", "🔔 Ogohlantirishlar"],
+  ["telefon", "📞 Telefon"],
   ["reels", "🎬 Avtomatik Reels"],
   ["reja", "🗓 Rejadagi postlar"],
   ["xotira", "🧩 Men haqimda"],
@@ -170,6 +172,8 @@ export default function MiyaBoshqaruv({ kirgan }: { kirgan: boolean }) {
           </div>
         </>
       )}
+
+      {bolim === "telefon" && <TelefonBolim />}
 
       {bolim === "reels" && <ReelsSozlama s={d.sozlama} chatgpt={d.chatgpt} band={!!band} saqla={(b) => sorov("sozla", "/api/miya", "PATCH", b).then((j) => j && setOk("Saqlandi"))} />}
 

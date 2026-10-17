@@ -1333,3 +1333,40 @@ a.o_vosita {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Miya → Telefon */
+.o_telefonRaqam {
+  margin: 4px 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(61, 255, 154, 0.08);
+  border: 1px solid rgba(61, 255, 154, 0.3);
+  font-size: 15px;
+}
+.o_telefonRaqam a {
+  color: #3dff9a;
+  font-weight: 700;
+  text-decoration: none;
+}
+.o_telefonSuhbat {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.o_telefonSuhbat small {
+  display: block;
+  opacity: 0.6;
+  margin-bottom: 6px;
+}
+.o_telefonMiya,
+.o_telefonMen {
+  margin-top: 4px;
+}
+.o_telefonMen {
+  padding-left: 14px;
+  opacity: 0.85;
+}

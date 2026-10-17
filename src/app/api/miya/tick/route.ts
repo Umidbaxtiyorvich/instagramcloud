@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { tick } from "@/lib/miya";
+import { qongiroqlar } from "@/lib/miya-telefon";
 
 // Railway'dagi bot har 10 daqiqada chaqiradi (serverni uyg'otib turadi). Kalit — bot bilan
 // allaqachon umumiy bo'lgan TOLOV_BOT_API_KEY (botdagi API_KEY). Javob — Telegram'ga yuboriladigan xabarlar.
@@ -20,7 +21,10 @@ async function ishla(req: Request) {
   if (ishlayapti) return NextResponse.json({ xabarlar: [], band: true });
   ishlayapti = true;
   try {
-    return NextResponse.json({ xabarlar: await tick() });
+    const xabarlar = await tick();
+    // muhim gap bo'lsa — egasiga telefon qilish
+    await qongiroqlar().catch((e) => console.error("miya telefon:", e));
+    return NextResponse.json({ xabarlar });
   } catch (e) {
     console.error("miya tick:", e);
     return NextResponse.json({ xabarlar: [], error: e instanceof Error ? e.message : "xato" }, { status: 500 });
