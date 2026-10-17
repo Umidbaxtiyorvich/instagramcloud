@@ -1223,3 +1223,12 @@ a.o_vosita {
   white-space: pre-wrap;
   color: #c9cdea;
 }
+
+/* Miya fikrlari */
+.o_miyaMustaqil { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin: 8px 0 12px; }
+.o_miyaKarta { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); color: inherit; cursor: pointer; font: inherit; }
+.o_miyaKarta span { font-size: 12px; opacity: 0.75; line-height: 1.35; }
+.o_miyaKartaFaol { border-color: #3dff9a; background: rgba(61,255,154,0.08); }
+.o_miyaFikr { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; margin-bottom: 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); }
+.o_miyaFikr small { opacity: 0.7; }
+.o_miyaArgs { white-space: pre-wrap; font-size: 12px; margin: 4px 0 0; padding: 8px; border-radius: 8px; background: rgba(0,0,0,0.3); }

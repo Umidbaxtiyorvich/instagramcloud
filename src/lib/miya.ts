@@ -9,6 +9,7 @@ import { cloudshopSozlangan, hujjatlar, kassa, qarzlar, tovarlar } from "./cloud
 import { moliyaRuxsat, pul } from "./ofis-moliya";
 import { githubdaYasash, osilganIshlar, videoNavbat } from "./video-ish";
 import type { VideoSpec } from "./video";
+import { fikrla } from "./miya-fikr";
 
 // AI Ofis «Miya» — avtomatik kuzatuvchi. Railway'dagi bot har 10 daqiqada /api/miya/tick ni chaqiradi:
 // belgilangan postlarni joylaydi, Reels vaqti kelsa video yasab joylaydi, CloudShop va Instagram'ni
@@ -36,6 +37,10 @@ export async function sozlama(userId: string) {
 }
 
 type Daraja = "info" | "ogoh" | "xavf";
+
+export async function miyaXabar(userId: string, tur: string, daraja: Daraja, matn: string, kalit: string) {
+  return xabar(userId, tur, daraja, matn, kalit);
+}
 
 async function xabar(userId: string, tur: string, daraja: Daraja, matn: string, kalit: string) {
   const r = await prisma.miyaXabar.createMany({ data: [{ userId, tur, daraja, matn: matn.slice(0, 4000), kalit }], skipDuplicates: true });
@@ -425,7 +430,7 @@ async function rejaPostlar() {
 
 // ---------- tick ----------
 
-async function band(userId: string, maydon: "oxirgiMoliya" | "oxirgiInstagram", soat: number) {
+async function band(userId: string, maydon: "oxirgiMoliya" | "oxirgiInstagram" | "oxirgiFikr", soat: number) {
   const chegara = new Date(Date.now() - soat * 3600_000);
   const r = await prisma.miyaSozlama.updateMany({
     where: { userId, OR: [{ [maydon]: null }, { [maydon]: { lt: chegara } }] },
@@ -464,12 +469,22 @@ export async function tick() {
     } catch (e) {
       console.error("miya instagram:", e);
     }
+    // o'ylash: kunduzi har 6 soatda, bitta tick'da bitta foydalanuvchi (model chaqiruvi sekin)
+    try {
+      const { daqiqa } = toshkent();
+      if (!ogir && openai() && daqiqa >= 8 * 60 && daqiqa < 22 * 60 && (await igAkkaunt(s.userId)) && (await band(s.userId, "oxirgiFikr", 6))) {
+        ogir = true;
+        await fikrla(s.userId);
+      }
+    } catch (e) {
+      console.error("miya fikr:", e);
+    }
   }
 
   // Telegram'ga: muhim xabarlar va joylangan postlar (faqat moliya egalariga tegishlilari)
   const egaIdlar = sozlamalar.filter((s) => moliyaRuxsat(s.user.email)).map((s) => s.userId);
   const yangi = await prisma.miyaXabar.findMany({
-    where: { userId: { in: egaIdlar }, telegram: false, OR: [{ daraja: { in: ["ogoh", "xavf"] } }, { tur: { in: ["reels", "post"] } }], NOT: { matn: { startsWith: "🎬 Reels tayyorlanmoqda" } } },
+    where: { userId: { in: egaIdlar }, telegram: false, OR: [{ daraja: { in: ["ogoh", "xavf"] } }, { tur: { in: ["reels", "post", "fikr"] } }], NOT: { matn: { startsWith: "🎬 Reels tayyorlanmoqda" } } },
     orderBy: { createdAt: "asc" },
     take: 20,
   });

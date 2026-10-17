@@ -6,6 +6,7 @@ import { instagramTekshir, moliyaTekshir, rejaQosh, sozlama } from "@/lib/miya";
 import { moliyaRuxsat } from "@/lib/ofis-moliya";
 import { cloudshopSozlangan } from "@/lib/cloudshop";
 import { listUploads } from "@/lib/uploads";
+import { MUSTAQILLIK, fikrla, ishonchHisobi, qaror } from "@/lib/miya-fikr";
 
 // AI Ofis «Miya» paneli: ogohlantirishlar, avtomatik Reels sozlamasi, rejadagi postlar, xotira holati
 export const maxDuration = 300;
@@ -13,7 +14,7 @@ export const maxDuration = 300;
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Kirish kerak" }, { status: 401 });
-  const [s, xabarlar, rejalar, xotira, uploads] = await Promise.all([
+  const [s, xabarlar, rejalar, xotira, uploads, fikrlar, ishonch] = await Promise.all([
     sozlama(user.id),
     prisma.miyaXabar.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 60 }),
     prisma.rejaPost.findMany({
@@ -23,6 +24,8 @@ export async function GET() {
     }),
     prisma.xotira.findUnique({ where: { userId: user.id } }),
     listUploads(user.id),
+    prisma.miyaFikr.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 40 }),
+    ishonchHisobi(user.id),
   ]);
   return NextResponse.json({
     sozlama: {
@@ -34,7 +37,11 @@ export async function GET() {
       qarzKunlari: s.qarzKunlari,
       oxirgiMoliya: s.oxirgiMoliya,
       oxirgiInstagram: s.oxirgiInstagram,
+      mustaqillik: s.mustaqillik,
+      oxirgiFikr: s.oxirgiFikr,
     },
+    fikrlar,
+    ishonch,
     moliya: moliyaRuxsat(user.email) && cloudshopSozlangan(),
     chatgpt: Boolean(process.env.OPENAI_API_KEY),
     xabarlar,
@@ -55,6 +62,7 @@ const Sozla = z.object({
   reelsFooter: z.string().trim().max(80).optional(),
   kamQoldiq: z.number().int().min(0).max(100000).optional(),
   qarzKunlari: z.number().int().min(3).max(365).optional(),
+  mustaqillik: z.enum(MUSTAQILLIK).optional(),
 });
 
 export async function PATCH(req: Request) {
@@ -70,6 +78,9 @@ export async function PATCH(req: Request) {
 const Amal = z.discriminatedUnion("amal", [
   z.object({ amal: z.literal("tekshir") }),
   z.object({ amal: z.literal("oqildi") }),
+  z.object({ amal: z.literal("fikrla") }),
+  z.object({ amal: z.literal("fikr_ha"), id: z.string().max(64) }),
+  z.object({ amal: z.literal("fikr_yoq"), id: z.string().max(64), izoh: z.string().max(500).optional() }),
   z.object({
     amal: z.literal("reja"),
     upload_id: z.string().max(64),
@@ -85,7 +96,12 @@ export async function POST(req: Request) {
   const p = Amal.safeParse(await req.json().catch(() => null));
   if (!p.success) return NextResponse.json({ error: "Ma'lumot noto'g'ri" }, { status: 400 });
   try {
-    if (p.data.amal === "oqildi") {
+    if (p.data.amal === "fikrla") {
+      await sozlama(user.id);
+      return NextResponse.json({ ok: true, ...(await fikrla(user.id)) });
+    } else if (p.data.amal === "fikr_ha" || p.data.amal === "fikr_yoq") {
+      await qaror(user.id, p.data.id, p.data.amal === "fikr_ha", p.data.amal === "fikr_yoq" ? p.data.izoh : undefined);
+    } else if (p.data.amal === "oqildi") {
       await prisma.miyaXabar.updateMany({ where: { userId: user.id, oqildi: false }, data: { oqildi: true } });
     } else if (p.data.amal === "tekshir") {
       const s = await sozlama(user.id);

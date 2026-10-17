@@ -26,6 +26,7 @@ model User {
   mcpServers  McpServer[]
   miya        MiyaSozlama?
   miyaXabarlar MiyaXabar[]
+  miyaFikrlar MiyaFikr[]
   rejaPostlar RejaPost[]
   xotira      Xotira?
   videoIshlar VideoIsh[]
@@ -59,6 +60,10 @@ model MiyaSozlama {
   // Reels uchun brend nomi va pastki qator (telefon); bo'sh bo'lsa akkaunt nomi
   reelsBrend      String    @default("")
   reelsFooter     String    @default("")
+  // Miya o'zi qaror qilishi: maslahat — faqat taklif qiladi; ishonchli — siz bir necha marta
+  // tasdiqlagan, xavfi past ishlarni o'zi qiladi; toliq — xavfi yuqori bo'lmaganlarini o'zi qiladi
+  mustaqillik     String    @default("ishonchli")
+  oxirgiFikr      DateTime?
   kamQoldiq       Int       @default(5)
   qarzKunlari     Int       @default(30)
   oxirgiMoliya    DateTime?
@@ -323,4 +328,26 @@ model MediaUpload {
   publishedId String?
   createdAt   DateTime  @default(now())
   expiresAt   DateTime
+}
+
+// Miya o'ylab topgan takliflar: nimani sezdi, nega, nima qilmoqchi. Egasining «ha/yo'q»
+// javoblari keyingi fikrlashda hisobga olinadi va qaysi ishlarni o'zi qilishini belgilaydi.
+model MiyaFikr {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amal      String // save_dm_rule | save_comment_rule | configure_direct | reply_comment | reels_vaqtlari | eslatma
+  sarlavha  String
+  fikr      String
+  payload   String    @default("{}")
+  ishonch   Int
+  xavf      String // past | orta | yuqori
+  holat     String    @default("kutmoqda") // kutmoqda | bajarildi | avtomatik | rad | xato | eskirdi
+  natija    String?
+  izoh      String?
+  createdAt DateTime  @default(now())
+  hal       DateTime?
+
+  @@index([userId, holat])
+  @@index([userId, createdAt])
 }

@@ -759,12 +759,16 @@ export async function callTool(userId: string, name: string, args: Json, base = 
     );
   }
 
-  const res = await executeApprovedAction(write.action, payload);
+  return result(await runWrite(userId, a.id, write.action, payload, summary));
+}
+
+async function runWrite(userId: string, accountId: string, action: string, payload: Json & { accountId: string }, summary: string) {
+  const res = await executeApprovedAction(action, payload);
   await prisma.approval.create({
     data: {
       userId,
-      accountId: a.id,
-      toolName: write.action,
+      accountId,
+      toolName: action,
       summary,
       payload: JSON.stringify(payload),
       status: "executed",
@@ -772,7 +776,17 @@ export async function callTool(userId: string, name: string, args: Json, base = 
       decidedAt: new Date(),
     },
   });
-  return result(res);
+  return res;
+}
+
+// For Miya, which has its own approval flow: runs a write tool now, regardless of the
+// owner's aiApproval setting, and records it in «AI harakatlari».
+export async function writeToolNow(userId: string, name: string, args: Json, base: string, by: string) {
+  const write = WRITE_ACTIONS[name];
+  if (!write) throw new Error(`Noma'lum yozish vositasi: ${name}`);
+  const a = await pickAccount(userId, args.account);
+  const payload = { ...write.payload(args), accountId: a.id, baseUrl: base };
+  return runWrite(userId, a.id, write.action, payload, `${by}: @${a.username}: ${write.summary(args)}`);
 }
 
 const INSTRUCTIONS = `Bu server foydalanuvchining Instagram business akkauntlarini Instagram Cloud orqali boshqaradi: statistika, postlar, kommentlar, Direct va avto-javoblar. Sanalar ISO-8601.

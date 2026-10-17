@@ -7,6 +7,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type Xabar = { id: string; tur: string; daraja: "info" | "ogoh" | "xavf"; matn: string; oqildi: boolean; createdAt: string };
 type Reja = { id: string; tur: string; caption: string; vaqt: string; holat: string; xato: string | null; manba: string };
+type Fikr = {
+  id: string;
+  amal: string;
+  sarlavha: string;
+  fikr: string;
+  payload: string;
+  ishonch: number;
+  xavf: "past" | "orta" | "yuqori";
+  holat: string;
+  natija: string | null;
+  izoh: string | null;
+  createdAt: string;
+};
 type Upload = { id: string; filename: string; kind: "video" | "image" | null; createdAt: string };
 type Sozlama = {
   autoReels: boolean;
@@ -17,6 +30,8 @@ type Sozlama = {
   qarzKunlari: number;
   oxirgiMoliya: string | null;
   oxirgiInstagram: string | null;
+  mustaqillik: "maslahat" | "ishonchli" | "toliq";
+  oxirgiFikr: string | null;
 };
 type Javob = {
   sozlama: Sozlama;
@@ -26,10 +41,13 @@ type Javob = {
   rejalar: Reja[];
   xotira: { yangilandi: string; profil: string } | null;
   uploads: Upload[];
+  fikrlar: Fikr[];
+  ishonch: Record<string, { ha: number; yoq: number }>;
 };
 
-type Bolim = "xabarlar" | "reels" | "reja" | "xotira";
+type Bolim = "fikrlar" | "xabarlar" | "reels" | "reja" | "xotira";
 const BOLIMLAR: [Bolim, string][] = [
+  ["fikrlar", "💭 Fikrlar"],
   ["xabarlar", "🔔 Ogohlantirishlar"],
   ["reels", "🎬 Avtomatik Reels"],
   ["reja", "🗓 Rejadagi postlar"],
@@ -52,7 +70,7 @@ function keyinroq(daqiqa: number) {
 }
 
 export default function MiyaBoshqaruv({ kirgan }: { kirgan: boolean }) {
-  const [bolim, setBolim] = useState<Bolim>("xabarlar");
+  const [bolim, setBolim] = useState<Bolim>("fikrlar");
   const [d, setD] = useState<Javob | null>(null);
   const [band, setBand] = useState<string | null>(null);
   const [xato, setXato] = useState<string | null>(null);
@@ -99,6 +117,7 @@ export default function MiyaBoshqaruv({ kirgan }: { kirgan: boolean }) {
   if (!d) return <div className="o_bosh">Yuklanmoqda…</div>;
 
   const oqilmagan = d.xabarlar.filter((x) => !x.oqildi && x.daraja !== "info").length;
+  const kutayotgan = d.fikrlar.filter((f) => f.holat === "kutmoqda").length;
 
   return (
     <div className="o_miya">
@@ -107,11 +126,21 @@ export default function MiyaBoshqaruv({ kirgan }: { kirgan: boolean }) {
           <button key={k} className={`o_tab ${bolim === k ? "o_tabFaol" : ""}`} onClick={() => setBolim(k)}>
             {nom}
             {k === "xabarlar" && oqilmagan > 0 && <span className="o_miyaSon">{oqilmagan}</span>}
+            {k === "fikrlar" && kutayotgan > 0 && <span className="o_miyaSon">{kutayotgan}</span>}
           </button>
         ))}
       </div>
       {xato && <div className="o_natija" style={{ marginBottom: 10 }}>⚠️ {xato}</div>}
       {ok && <div className="o_natija" style={{ marginBottom: 10 }}>✅ {ok}</div>}
+
+      {bolim === "fikrlar" && (
+        <FikrlarBolim
+          d={d}
+          band={band}
+          sorov={sorov}
+          setOk={setOk}
+        />
+      )}
 
       {bolim === "xabarlar" && (
         <>
@@ -425,6 +454,159 @@ function XotiraBolim({ xotira, chatgpt, yangila }: { xotira: Javob["xotira"]; ch
             Profilni o&apos;chirish
           </button>
         </>
+      )}
+    </div>
+  );
+}
+
+const AMAL_NOMI: Record<string, string> = {
+  save_dm_rule: "Direct qoidasi",
+  save_comment_rule: "Komment qoidasi",
+  configure_direct: "Direct sozlamasi",
+  reply_comment: "Kommentga javob",
+  reels_vaqtlari: "Reels vaqtlari",
+  eslatma: "Eslatma",
+};
+const HOLAT: Record<string, string> = {
+  kutmoqda: "⏳ javobingizni kutyapti",
+  bajarildi: "✅ siz tasdiqladingiz",
+  avtomatik: "🤖 o'zi qildi",
+  rad: "✋ rad etildi",
+  xato: "⚠️ bajarilmadi",
+  eskirdi: "⌛ eskirdi",
+};
+const XAVF: Record<Fikr["xavf"], string> = { past: "xavfi past", orta: "mijozlar ko'radi", yuqori: "xavfi yuqori" };
+const MUSTAQIL: [Sozlama["mustaqillik"], string, string][] = [
+  ["maslahat", "Faqat maslahat", "Miya o'ylaydi va aytadi, lekin hech narsani o'zi qilmaydi — hammasiga siz «Ha» bosasiz."],
+  ["ishonchli", "Ishonchni orttirsin", "Siz bir xil turdagi taklifni bir necha marta tasdiqlasangiz (xavfi past — 2, mijozlar ko'radigan — 5 marta), keyingilarini o'zi qiladi. Bir marta rad etsangiz — yana so'raydi."],
+  ["toliq", "To'liq mustaqil", "Ishonchi 70% dan yuqori bo'lsa o'zi qiladi va sizga xabar beradi. Direct'ni o'chirish kabi xavfli ishlarni baribir so'raydi."],
+];
+
+function argsMatn(f: Fikr) {
+  try {
+    const a = JSON.parse(f.payload) as Record<string, unknown>;
+    return Object.entries(a)
+      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(" | ") : String(v)}`)
+      .join("\n");
+  } catch {
+    return "";
+  }
+}
+
+function FikrlarBolim({
+  d,
+  band,
+  sorov,
+  setOk,
+}: {
+  d: Javob;
+  band: string | null;
+  sorov: (nom: string, url: string, method: string, body?: unknown) => Promise<unknown>;
+  setOk: (s: string | null) => void;
+}) {
+  const [radId, setRadId] = useState<string | null>(null);
+  const [izoh, setIzoh] = useState("");
+  const kutayotgan = d.fikrlar.filter((f) => f.holat === "kutmoqda");
+  const tarix = d.fikrlar.filter((f) => f.holat !== "kutmoqda");
+  return (
+    <div>
+      <div className="o_ulanishMatn" style={{ marginTop: 0 }}>
+        Miya kunduzi har 6 soatda Instagram&apos;ingizni o&apos;rganadi: statistika, Reels, kim nima so&apos;rayapti, qaysi savol javobsiz
+        qolyapti, sizning oldingi qarorlaringiz. Keyin o&apos;z fikrini aytadi va aniq ish taklif qiladi. Rad etsangiz, sababini eslab qoladi.
+        {d.sozlama.oxirgiFikr && <> Oxirgi marta o&apos;yladi: {vaqt(d.sozlama.oxirgiFikr)}.</>}
+        {!d.chatgpt && " ⚠️ OPENAI_API_KEY yo'q — Miya o'ylay olmaydi."}
+      </div>
+
+      <h3 className="o_ulanishSarlavha">Qanchalik mustaqil bo&apos;lsin</h3>
+      <div className="o_miyaMustaqil">
+        {MUSTAQIL.map(([k, nom, izohi]) => (
+          <button
+            key={k}
+            className={`o_miyaKarta ${d.sozlama.mustaqillik === k ? "o_miyaKartaFaol" : ""}`}
+            disabled={!!band}
+            onClick={() => void sorov("mustaqil", "/api/miya", "PATCH", { mustaqillik: k }).then((j) => j && setOk("Saqlandi"))}
+          >
+            <b>{nom}</b>
+            <span>{izohi}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="o_ulanishTugmalar">
+        <button
+          className="o_misol"
+          disabled={!!band || !d.chatgpt}
+          onClick={() =>
+            void sorov("fikrla", "/api/miya", "POST", { amal: "fikrla" }).then((j) => {
+              const r = j as { takliflar?: number; ozi?: number } | null;
+              if (r) setOk(`Miya o'yladi: ${r.takliflar ?? 0} ta taklif${r.ozi ? `, ${r.ozi} tasini o'zi qildi` : ""}`);
+            })
+          }
+        >
+          {band === "fikrla" ? "O'ylayapti… (1 daqiqagacha)" : "🧠 Hozir o'ylab ko'r"}
+        </button>
+      </div>
+
+      {kutayotgan.length > 0 && <h3 className="o_ulanishSarlavha">Javobingizni kutyapti</h3>}
+      {kutayotgan.map((f) => (
+        <div key={f.id} className="o_miyaFikr o_miyaYangi">
+          <small>
+            {vaqt(f.createdAt)} · {AMAL_NOMI[f.amal] ?? f.amal} · ishonchi {f.ishonch}% · {XAVF[f.xavf]}
+          </small>
+          <b>{f.sarlavha}</b>
+          <div>{f.fikr}</div>
+          {argsMatn(f) && <pre className="o_miyaArgs">{argsMatn(f)}</pre>}
+          {radId === f.id ? (
+            <div className="o_ulanishTugmalar">
+              <input className="o_qidiruv" value={izoh} onChange={(e) => setIzoh(e.target.value)} placeholder="Nega yo'q? (Miya buni eslab qoladi)" />
+              <button
+                className="o_misol"
+                disabled={!!band}
+                onClick={() =>
+                  void sorov("yoq", "/api/miya", "POST", { amal: "fikr_yoq", id: f.id, izoh }).then(() => {
+                    setRadId(null);
+                    setIzoh("");
+                  })
+                }
+              >
+                Yuborish
+              </button>
+            </div>
+          ) : (
+            <div className="o_ulanishTugmalar">
+              <button className="o_tugma" disabled={!!band} onClick={() => void sorov("ha", "/api/miya", "POST", { amal: "fikr_ha", id: f.id }).then((j) => j && setOk("Bajarildi"))}>
+                {band === "ha" ? "Bajarilmoqda…" : "Ha, qil"}
+              </button>
+              <button className="o_misol" disabled={!!band} onClick={() => setRadId(f.id)}>
+                Yo&apos;q
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+
+      <h3 className="o_ulanishSarlavha">Oldingi fikrlari</h3>
+      <div className="o_jadval">
+        {!tarix.length && <div className="o_bosh">Hali yo&apos;q. «Hozir o&apos;ylab ko&apos;r» ni bosing yoki Miya o&apos;zi o&apos;ylaguncha kuting.</div>}
+        {tarix.map((f) => (
+          <div key={f.id} className="o_miyaFikr">
+            <small>
+              {vaqt(f.createdAt)} · {AMAL_NOMI[f.amal] ?? f.amal} · {f.amal === "eslatma" ? "📣 sizga aytdi" : HOLAT[f.holat] ?? f.holat}
+            </small>
+            <b>{f.sarlavha}</b>
+            <div>{f.fikr}</div>
+            {f.izoh && <small>Siz: «{f.izoh}»</small>}
+            {f.holat === "xato" && f.natija && <small>⚠️ {f.natija}</small>}
+          </div>
+        ))}
+      </div>
+      {Object.keys(d.ishonch).length > 0 && (
+        <div className="o_ulanishMatn">
+          Ishonch hisobi (60 kun):{" "}
+          {Object.entries(d.ishonch)
+            .map(([k, v]) => `${AMAL_NOMI[k] ?? k} — ${v.ha} ha / ${v.yoq} yo'q`)
+            .join("; ")}
+        </div>
       )}
     </div>
   );
