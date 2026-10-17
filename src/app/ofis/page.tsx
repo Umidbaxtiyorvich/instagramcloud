@@ -110,6 +110,7 @@ function oldinga(o: Ofis): Ofis {
         (v.natija ? v.natija + "\n\n" : "") +
         (holat === "tasdiq" ? "✋ Tayyor. Tasdiqlaysizmi? (Vazifalar bo'limida «Tasdiqlash»)" : "✅ Bajarildi."),
       vaqt: Date.now(),
+      fayllar: v.fayllar,
     });
     eslatmalar.unshift({ id: yangiId(), matn: v.matn, jamoa: v.jamoa, vaqt: Date.now() });
     return { ...v, bosqich, holat, tugadi: Date.now() };
@@ -438,6 +439,7 @@ export default function OfisSahifa() {
           vaqt: hozir,
           chaqiruv,
           boshlash,
+          fayllar: t.fayllar,
         };
         setOfis((o) => ({
           ...o,
@@ -610,6 +612,7 @@ export default function OfisSahifa() {
         bosqich: v.bosqich,
         natija: v.natija,
         chaqiruv: v.chaqiruv,
+        fayllar: v.holat === "jarayonda" ? undefined : v.fayllar,
         faza:
           v.holat === "jarayonda"
             ? v.boshlash && soat < v.boshlash
@@ -743,6 +746,7 @@ export default function OfisSahifa() {
                 <div key={x.id} className={`${s.xabar} ${x.kimdan === "men" ? s.xabarMen : s.xabarAgent}`}>
                   <small>{x.kimdan === "men" ? "Siz" : chatAgentObj.ism}</small>
                   {x.matn}
+                  {x.fayllar?.map((f) => <FaylTugma key={f.id} f={f} />)}
                 </div>
               ))}
             {ofis.vazifalar
@@ -1173,5 +1177,18 @@ function JamoaPaneli({
         </button>
       ))}
     </div>
+  );
+}
+
+const FAYL_BELGI: Record<string, string> = { xlsx: "📊", docx: "📄", pptx: "📽" };
+
+// Agent yasagan faylni yuklab olish tugmasi
+function FaylTugma({ f }: { f: { id: string; nom: string; tur: string } }) {
+  return (
+    <a className={s.faylTugma} href={`/api/ofis/fayl/${encodeURIComponent(f.id)}`} download={f.nom}>
+      <span>{FAYL_BELGI[f.tur] ?? "📎"}</span>
+      <b>{f.nom}</b>
+      <em>⬇ Yuklab olish</em>
+    </a>
   );
 }

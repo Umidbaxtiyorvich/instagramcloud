@@ -55,6 +55,7 @@ export type Vazifa = {
   // agent Miya'ga borib vazifani olgan vaqt va ishni boshlaydigan vaqt (ms)
   chaqiruv?: number;
   boshlash?: number;
+  fayllar?: Fayl[];
 };
 
 export type Xabar = {
@@ -63,6 +64,7 @@ export type Xabar = {
   agentId: string;
   matn: string;
   vaqt: number;
+  fayllar?: Fayl[];
 };
 
 export type Taqsimot = {
@@ -76,7 +78,11 @@ export type Taqsimot = {
   manba: "claude" | "chatgpt" | "lokal";
   // Instagram Cloud bilan bajarilgan amallar va tasdiq navbatidagi harakatlar
   instagram?: { amallar: string[]; tasdiqlar: { id: string; summary: string }[] };
+  // agent yasagan fayllar (Excel, Word, PowerPoint) — chatda yuklab olish tugmasi
+  fayllar?: Fayl[];
 };
+
+export type Fayl = { id: string; nom: string; tur: string };
 
 export const JAMOALAR: Jamoa[] = [
   {

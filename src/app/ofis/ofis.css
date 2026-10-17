@@ -1301,3 +1301,35 @@ a.o_vosita {
 @media (max-width: 720px) {
   .o_ishEkran { width: 180px; font-size: 10.5px; }
 }
+
+/* agent yasagan fayl: chatdagi yuklab olish tugmasi */
+.o_faylTugma {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  text-decoration: none;
+  color: #e9f4ff;
+  background: rgba(61, 255, 154, 0.08);
+  border: 1px solid rgba(61, 255, 154, 0.45);
+  transition: background 0.15s;
+}
+.o_faylTugma:hover { background: rgba(61, 255, 154, 0.18); }
+.o_faylTugma span { font-size: 20px; }
+.o_faylTugma b { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.o_faylTugma em { font-style: normal; font-size: 12px; font-weight: 700; color: #3dff9a; white-space: nowrap; }
+.o_ishEkranFayl {
+  display: block;
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: #3dff9a;
+  text-decoration: none;
+  background: rgba(61, 255, 154, 0.1);
+  border: 1px solid rgba(61, 255, 154, 0.4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

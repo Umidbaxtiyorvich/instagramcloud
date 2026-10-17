@@ -27,6 +27,7 @@ model User {
   miya        MiyaSozlama?
   miyaXabarlar MiyaXabar[]
   miyaFikrlar MiyaFikr[]
+  ofisFayllar OfisFayl[]
   rejaPostlar RejaPost[]
   xotira      Xotira?
   videoIshlar VideoIsh[]
@@ -349,5 +350,19 @@ model MiyaFikr {
   hal       DateTime?
 
   @@index([userId, holat])
+  @@index([userId, createdAt])
+}
+
+// AI Ofis agentlari yasagan fayllar (Excel, Word, PowerPoint) — chatdagi «Yuklab olish» tugmasi shu yerdan beradi
+model OfisFayl {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nom       String
+  tur       String // xlsx | docx | pptx
+  hajm      Int
+  data      Bytes
+  createdAt DateTime @default(now())
+
   @@index([userId, createdAt])
 }

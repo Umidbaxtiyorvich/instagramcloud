@@ -10,6 +10,8 @@ import { agentMcp, type McpSorov } from "@/lib/mcp-ulanish";
 import { MIYA_VOSITALAR, rejaQosh, toshkent } from "@/lib/miya";
 import { prisma } from "@/lib/db";
 import OpenAI from "openai";
+import { HUJJAT_VOSITA, hujjatYarat, matndanHujjat, soralganTur } from "@/lib/ofis-fayl";
+import type { Fayl } from "@/lib/ofis";
 import { javobSxemasi, openai, openaiModel, openaiVazifa } from "@/lib/ofis-openai";
 
 const JAMOA_IDLAR = JAMOALAR.map((j) => j.id) as [JamoaId, ...JamoaId[]];
@@ -81,7 +83,11 @@ shu vositalardan foydalaning va javobni moliya jamoasiga bering. Ular faqat o'qi
 REELS VA REJA: Reels/post/story so'ralsa — ssenariy va matnni o'zingiz yozing, instagram_make_video bilan video yasang, keyin
 instagram_publish_reel / instagram_publish_story bilan joylang. Foydalanuvchi «shu vaqtga qo'y» desa yoki vaqt aytsa —
 instagram_list_uploads dan faylni topib miya_reja_post bilan o'sha vaqtga rejalashtiring (vaqt Toshkent bo'yicha).
-Foydalanuvchi haqidagi ma'lumot berilgan bo'lsa, uning uslubi va biznesiga mos yozing.`;
+Foydalanuvchi haqidagi ma'lumot berilgan bo'lsa, uning uslubi va biznesiga mos yozing.
+
+FAYLLAR: foydalanuvchi natijani Excel, Word yoki PowerPoint qilib so'rasa (hisobot, jadval, taqdimot, slayd) — avval kerakli
+ma'lumotni vositalardan oling, keyin hujjat_yarat bilan fayl yasang (Excel — xlsx, Word — docx, PowerPoint — pptx). Jadvallarga
+faqat haqiqiy raqamlarni yozing. Fayl yasalgach, natija ichida qisqa xulosa yozing — yuklab olish tugmasi chatda o'zi chiqadi.`;
 
 // faqat o'qiydigan Instagram vositalari (qolganlari tasdiq navbatiga tushadi)
 const NOMLAR_OQISH = new Set([
@@ -147,6 +153,11 @@ export async function POST(req: Request) {
       };
       if (t.agentId && !agentlar.some((a) => a.id === t.agentId && a.jamoa === ig.jamoa)) t.agentId = null;
     }
+    const tur = soralganTur(matn);
+    if (tur && user && t.natija) {
+      const f = await hujjatYarat(user.id, matndanHujjat(tur, matn.slice(0, 60), t.natija)).catch(() => null);
+      if (f) t = { ...t, fayllar: [f] };
+    }
     if (agentId && agentlar.some((a) => a.id === agentId)) {
       const a = agentlar.find((x) => x.id === agentId)!;
       return { ...t, jamoa: a.jamoa, agentId, yangiAgent: null };
@@ -186,7 +197,7 @@ export async function POST(req: Request) {
 
   const mh = moliyaHolati();
   const moliyaBor = moliyaRuxsat(user.email) && (mh.cloudshop || mh.bot);
-  const vositalar: Anthropic.Beta.BetaTool[] = [...(akk ? [...IG_VOSITALAR, ...MIYA_VOSITALAR] : []), ...(moliyaBor ? MOLIYA_VOSITALAR : [])].map((v) => ({
+  const vositalar: Anthropic.Beta.BetaTool[] = [...(akk ? [...IG_VOSITALAR, ...MIYA_VOSITALAR] : []), ...(moliyaBor ? MOLIYA_VOSITALAR : []), HUJJAT_VOSITA].map((v) => ({
     name: v.name,
     description: v.description,
     input_schema: v.inputSchema as Anthropic.Beta.BetaTool.InputSchema,
@@ -194,10 +205,17 @@ export async function POST(req: Request) {
 
   const boshlandi = new Date();
   let amallar: string[] = [];
+  let fayllar: Fayl[] = [];
   let messages: Anthropic.Beta.BetaMessageParam[] = [];
 
   // Ofis vositasini bajaradi (ikkala dvigatel uchun umumiy). Instagram'ga yozish tasdiq navbatiga tushadi.
   const vositaBajar = async (nom: string, kirish: Record<string, unknown>) => {
+    if (nom === "hujjat_yarat") {
+      const f = await hujjatYarat(user.id, kirish);
+      fayllar.push(f);
+      amallar.push(`Fayl yasaldi: ${f.nom}`);
+      return `Fayl tayyor: ${f.nom}. Foydalanuvchiga chatda «Yuklab olish» tugmasi ko'rsatiladi — havola yozish shart emas.`;
+    }
     if (nom === "miya_reja_post") {
       const r = await rejaQosh(user.id, kirish as { upload_id: string; tur: string; caption?: string; vaqt: string });
       amallar.push(`Rejaga qo'yildi: ${r.tur} — ${String(kirish.vaqt)}`);
@@ -224,6 +242,7 @@ export async function POST(req: Request) {
       yangiAgent: borAgent ? null : p.yangiAgent ?? (await lokal()).yangiAgent,
       manba,
       instagram: amallar.length || tasdiqlar.length ? { amallar, tasdiqlar } : undefined,
+      fayllar: fayllar.length ? fayllar : undefined,
     };
     return NextResponse.json({ taqsimot });
   };
@@ -233,11 +252,12 @@ export async function POST(req: Request) {
   if (oai) {
     const urinish = async (mcpBilan: boolean) => {
       amallar = [];
+      fayllar = [];
       return openaiVazifa({
         client: oai,
         tizim: TIZIM,
         kontekst,
-        vositalar: [...(akk ? [...IG_VOSITALAR, ...MIYA_VOSITALAR] : []), ...(moliyaBor ? MOLIYA_VOSITALAR : [])],
+        vositalar: [...(akk ? [...IG_VOSITALAR, ...MIYA_VOSITALAR] : []), ...(moliyaBor ? MOLIYA_VOSITALAR : []), HUJJAT_VOSITA],
         mcp: mcpBilan ? mcp : null,
         sxema: javobSxemasi(JAMOA_IDLAR),
         bajar: vositaBajar,
@@ -273,6 +293,7 @@ export async function POST(req: Request) {
   let mcpBilan = mcp.servers.length > 0;
   for (let urinish = 0; urinish < 2; urinish++) {
     amallar = [];
+    fayllar = [];
     messages = [{ role: "user", content: kontekst }];
     const tools: Anthropic.Beta.BetaToolUnion[] = [...vositalar, ...(mcpBilan ? mcp.toolsets : [])];
     try {

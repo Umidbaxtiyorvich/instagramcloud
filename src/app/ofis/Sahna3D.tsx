@@ -36,6 +36,7 @@ export type Ish = {
   faza: "yolda" | "ishlamoqda" | "tayyor" | "tasdiq";
   natija: string;
   chaqiruv?: number; // Miya'ga borish boshlangan vaqt (ms)
+  fayllar?: { id: string; nom: string; tur: string }[];
 };
 
 type Props = {
@@ -789,6 +790,17 @@ function IshEkrani({ ish, a, onClick }: { ish: Ish; a: Agent; onClick: () => voi
           </div>
         </>
       )}
+      {ish.fayllar?.map((f) => (
+        <a
+          key={f.id}
+          className="o_ishEkranFayl"
+          href={`/api/ofis/fayl/${encodeURIComponent(f.id)}`}
+          download={f.nom}
+          onClick={(e) => e.stopPropagation()}
+        >
+          ⬇ {f.nom}
+        </a>
+      ))}
       <div className="o_ishEkranChiziq">
         <span style={{ width: `${foiz}%` }} />
       </div>
