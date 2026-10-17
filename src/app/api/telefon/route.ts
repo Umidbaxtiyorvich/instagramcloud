@@ -4,9 +4,11 @@ import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { sozlama } from "@/lib/miya";
 import { openai } from "@/lib/ofis-openai";
-import { miyaRaqami, raqamniSozla, twilioSozlangan } from "@/lib/twilio";
+import { miyaRaqami, raqamTozala, raqamniSozla, twilioSozlangan } from "@/lib/twilio";
+import { moliyaRuxsat } from "@/lib/ofis-moliya";
 import { botBor, botSozla, ulashHavolasi } from "@/lib/miya-bot";
-import { kodTekshir, kodYubor, miyaQongiroq, suhbatOl, xesh } from "@/lib/miya-telefon";
+import { tgHolat, tgKirish, tgKod } from "@/lib/miya-tg";
+import { kodTekshir, kodYubor, miyaQongiroq, salomMatni, suhbatOl, tgChaqir, xesh } from "@/lib/miya-telefon";
 
 // Miya → Telefon sozlamalari: raqamni qo'ng'iroq bilan tasdiqlash, PIN, qachon qo'ng'iroq qilish, tarix
 export async function GET() {
@@ -17,6 +19,7 @@ export async function GET() {
   // bot webhook'ini birinchi ochilishda o'rnatib qo'yamiz
   const botXato = botBor() ? await botSozla().then(() => null).catch((e: Error) => e.message) : null;
   return NextResponse.json({
+    tg: await tgHolat(),
     bot: botBor(),
     botXato,
     telegram: Boolean(s.telegramChat),
@@ -49,6 +52,9 @@ const Amal = z.discriminatedUnion("amal", [
   z.object({ amal: z.literal("ochir") }),
   z.object({ amal: z.literal("telegram_ulash") }),
   z.object({ amal: z.literal("telegram_uz") }),
+  z.object({ amal: z.literal("tg_kod"), telefon: z.string().max(30) }),
+  z.object({ amal: z.literal("tg_kirish"), kod: z.string().max(12), parol: z.string().max(200).optional() }),
+  z.object({ amal: z.literal("tg_sinov") }),
 ]);
 
 export async function POST(req: Request) {
@@ -65,6 +71,24 @@ export async function POST(req: Request) {
       // Miya raqamiga kelgan qo'ng'iroqlar shu saytga kelsin
       await raqamniSozla().catch((e) => console.error("twilio raqam:", e instanceof Error ? e.message : e));
       return NextResponse.json({ ok: true, telefon });
+    }
+    // Miya'ning Telegram akkaunti — faqat moliya egasi (sayt egasi) ulay oladi
+    if (a.amal === "tg_kod" || a.amal === "tg_kirish") {
+      if (!moliyaRuxsat(user.email)) throw new Error("Miya akkauntini faqat sayt egasi ulaydi");
+      if (a.amal === "tg_kod") {
+        const tel = raqamTozala(a.telefon);
+        if (!tel) throw new Error("Raqam noto'g'ri — masalan +998901234567");
+        await tgKod(tel);
+      } else {
+        const r = await tgKirish(a.kod.replace(/\D/g, ""), a.parol || undefined);
+        return NextResponse.json({ ok: true, men: r.men });
+      }
+      return NextResponse.json({ ok: true });
+    }
+    if (a.amal === "tg_sinov") {
+      const q = await tgChaqir(user.id, await salomMatni(user.id), { yonalish: "kiruvchi" });
+      if (!q) throw new Error("Qo'ng'iroq bo'lmadi: Miya akkaunti ulanganini va botga ulanganingizni tekshiring");
+      return NextResponse.json({ ok: true });
     }
     if (a.amal === "telegram_ulash") {
       if (!botBor()) throw new Error("Miya boti sozlanmagan — Render'ga MIYA_BOT_TOKEN qo'ying");

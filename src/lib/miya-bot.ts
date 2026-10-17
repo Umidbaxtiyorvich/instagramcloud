@@ -4,7 +4,7 @@ import { prisma } from "./db";
 import { randomToken } from "./crypto";
 import { openai } from "./ofis-openai";
 import { sayt } from "./twilio";
-import { gapniIshla, matnniIshla, qongiroqToken, salomMatni, suhbatOl, xatoGap } from "./miya-telefon";
+import { gapniIshla, matnniIshla, qongiroqToken, salomMatni, suhbatOl, tgChaqir, xatoGap } from "./miya-telefon";
 
 // Miya'ning Telegram boti (BotFather'dan olingan MIYA_BOT_TOKEN). Telegram bot orqali oddiy qo'ng'iroq
 // qilib bo'lmaydi, shuning uchun «qo'ng'iroq» — bot xabari + tugma: bosilsa, Telegram ichida qo'ng'iroq
@@ -121,6 +121,8 @@ export async function botOtkazildi(q: Qongiroq) {
   }).catch((e) => console.error("miya bot:", e));
 }
 
+const tg2 = (chat: string, text: string) => tg("sendMessage", { chat_id: chat, text, reply_markup: KLAVIATURA });
+
 async function yangiQongiroq(userId: string, salom: string, sabab = "") {
   return prisma.qongiroq.create({
     data: { userId, yonalish: "kiruvchi", kanal: "web", kalit: randomToken(16), holat: "boshlandi", sabab, suhbat: JSON.stringify([{ kim: "miya", matn: salom }]) },
@@ -214,6 +216,11 @@ export async function botYangilanish(u: Update) {
     const eski = id ? await prisma.qongiroq.findFirst({ where: { id, userId } }) : null;
     if (!eski) return;
     const vaqt = soatMatn(eski.createdAt);
+    const haqiqiy = await tgChaqir(userId, `Salom! Soat ${vaqt} da qo'ng'iroq qilgandim: ${eski.sabab} Nima qilamiz?`, {
+      yonalish: "kiruvchi",
+      sabab: `Egasi soat ${vaqt} dagi javobsiz qo'ng'iroqqa qayta qo'ng'iroq qildi. O'sha qo'ng'iroq sababi: ${eski.sabab}`,
+    });
+    if (haqiqiy) return tg2(chat, "📞 Miya hozir sizga qo'ng'iroq qiladi — telefonni ko'taring.");
     const q = await yangiQongiroq(
       userId,
       `Salom! Soat ${vaqt} da qo'ng'iroq qilgandim: ${eski.sabab} Nima qilamiz?`,
@@ -223,7 +230,10 @@ export async function botYangilanish(u: Update) {
   }
 
   if (text === QONGIROQ || text.startsWith("/qongiroq") || text.startsWith("/start")) {
-    const q = await yangiQongiroq(userId, await salomMatni(userId));
+    const salom = await salomMatni(userId);
+    // Miya akkaunti ulangan bo'lsa — haqiqiy Telegram qo'ng'irog'i (jiringlaydi)
+    if (await tgChaqir(userId, salom, { yonalish: "kiruvchi" })) return tg2(chat, "📞 Miya hozir sizga qo'ng'iroq qiladi — telefonni ko'taring.");
+    const q = await yangiQongiroq(userId, salom);
     return tg("sendMessage", { chat_id: chat, text: "📞 Miya kutyapti — bosing va gapiring:", reply_markup: await tugmalar(userId, q, "📞 Gaplashish") });
   }
   if (text === TARIX || text.startsWith("/tarix")) return tarix(chat, userId);

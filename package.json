@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "prisma generate && next build",
-    "start": "prisma migrate deploy && next start",
+    "start": "prisma migrate deploy && node scripts/start.mjs",
+    "postbuild": "node scripts/tg-orna.mjs",
     "lint": "eslint",
     "db": "prisma migrate dev",
     "postinstall": "prisma generate"

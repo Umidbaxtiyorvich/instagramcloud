@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 type Gap = { kim: "miya" | "men"; matn: string };
 type Qongiroq = { id: string; kanal: string; yonalish: string; holat: string; sabab: string; suhbat: Gap[]; createdAt: string };
 type Holat = {
+  tg: { sozlangan: boolean; ishlayapti: boolean; ulangan: boolean; men: string; kodKutilmoqda: boolean };
   bot: boolean;
   botXato: string | null;
   telegram: boolean;
@@ -42,6 +43,10 @@ export default function TelefonBolim() {
   const [telefon, setTelefon] = useState("");
   const [kod, setKod] = useState("");
   const [pin, setPin] = useState("");
+  const [tgTel, setTgTel] = useState("");
+  const [tgKod, setTgKod] = useState("");
+  const [tgParol, setTgParol] = useState("");
+  const [parolKerak, setParolKerak] = useState(false);
   const [band, setBand] = useState<string | null>(null);
   const [xato, setXato] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -67,7 +72,10 @@ export default function TelefonBolim() {
     try {
       const r = await fetch("/api/telefon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = (await r.json().catch(() => ({}))) as { error?: string; qongiroq?: string; havola?: string };
-      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      if (!r.ok) {
+        if (/parol/i.test(j.error ?? "")) setParolKerak(true);
+        throw new Error(j.error || `HTTP ${r.status}`);
+      }
       if (j.havola) {
         // await'dan keyin window.open bloklanadi — shu oynada ochamiz
         window.location.href = j.havola;
@@ -138,6 +146,81 @@ export default function TelefonBolim() {
         </>
       )}
       {d.botXato && <div className="o_natija" style={{ marginBottom: 10 }}>⚠️ Bot: {d.botXato}</div>}
+
+      <h3 className="o_ulanishSarlavha">Haqiqiy qo&apos;ng&apos;iroq — Miya&apos;ning Telegram akkaunti</h3>
+      {!d.tg.sozlangan ? (
+        <div className="o_ulanishMatn" style={{ marginTop: 0 }}>
+          Telefoningiz haqiqiy qo&apos;ng&apos;iroqdek jiringlashi uchun Miya&apos;ga alohida Telegram akkaunt kerak (masalan, eSIM raqamiga).
+          my.telegram.org → API development tools&apos;dan olingan <b>api_id</b> va <b>api_hash</b>&apos;ni Render → Environment&apos;ga{" "}
+          <b>TG_API_ID</b> va <b>TG_API_HASH</b> nomi bilan qo&apos;ying. Bepul.
+        </div>
+      ) : !d.tg.ishlayapti ? (
+        <div className="o_natija" style={{ marginBottom: 10 }}>
+          ⚠️ Qo&apos;ng&apos;iroq dasturi ishlamayapti. Render&apos;da saytni qayta deploy qiling (Manual Deploy → Clear build cache &amp; deploy) va
+          loglarda «miya-tg» qatorlarini ko&apos;ring.
+        </div>
+      ) : d.tg.ulangan ? (
+        <>
+          <div className="o_miyaQator">
+            ✅ Miya akkaunti ulangan: <b>{d.tg.men}</b>
+          </div>
+          <div className="o_ulanishMatn" style={{ marginTop: 0 }}>
+            Muhim gap bo&apos;lsa Miya shu akkauntdan sizning Telegram&apos;ingizga <b>qo&apos;ng&apos;iroq qiladi</b> — telefon jiringlaydi. Siz ham{" "}
+            {d.tg.men} ga oddiy qo&apos;ng&apos;iroq qilsangiz, Miya ko&apos;taradi; botdagi «📞 Miyaga qo&apos;ng&apos;iroq» bossangiz, Miya darhol sizga
+            qo&apos;ng&apos;iroq qiladi. Birinchi marta asosiy akkauntingizdan {d.tg.men} ga bitta xabar yozing (u sizni tanishi uchun).
+          </div>
+          {d.telegram ? (
+            <button className="o_misol" disabled={!!band} onClick={() => void amal("tg_sinov", { amal: "tg_sinov" }, "Miya hozir Telegram'ingizga qo'ng'iroq qiladi")}>
+              {band === "tg_sinov" ? "Qo'ng'iroq qilinmoqda…" : "📲 Sinov: Miya Telegram'imga qo'ng'iroq qilsin"}
+            </button>
+          ) : (
+            <div className="o_ulanishMatn">Avval yuqorida Telegram botni ulang — Miya sizning Telegram&apos;ingizni shundan biladi.</div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="o_ulanishMatn" style={{ marginTop: 0 }}>
+            Miya uchun ochilgan Telegram akkauntiga bir marta kiring: raqamni yozing, Telegram&apos;ga kelgan kodni kiriting. Kod Miya
+            akkaunti ochilgan telefondagi Telegram&apos;ga keladi.
+          </div>
+          {!d.tg.kodKutilmoqda ? (
+            <>
+              <input className="o_qidiruv" value={tgTel} onChange={(e) => setTgTel(e.target.value)} placeholder="Miya akkaunti raqami: +998…" inputMode="tel" />
+              <button className="o_tugma" disabled={!!band || !tgTel.trim()} onClick={() => void amal("tg_kod", { amal: "tg_kod", telefon: tgTel }, "Kod Telegram'ga yuborildi")}>
+                {band === "tg_kod" ? "Yuborilmoqda…" : "Kod yuborish"}
+              </button>
+            </>
+          ) : (
+            <>
+              <input className="o_qidiruv" value={tgKod} onChange={(e) => setTgKod(e.target.value)} placeholder="Telegram kodi" inputMode="numeric" autoComplete="one-time-code" />
+              {parolKerak && (
+                <input
+                  className="o_qidiruv"
+                  type="password"
+                  value={tgParol}
+                  onChange={(e) => setTgParol(e.target.value)}
+                  placeholder="Ikki bosqichli parol (Cloud password)"
+                  autoComplete="current-password"
+                />
+              )}
+              <button
+                className="o_tugma"
+                disabled={!!band || !tgKod.trim()}
+                onClick={() =>
+                  void amal("tg_kirish", { amal: "tg_kirish", kod: tgKod, ...(tgParol ? { parol: tgParol } : {}) }, "Miya akkaunti ulandi").then(
+                    (x) => x && (setTgKod(""), setTgParol(""), setParolKerak(false)),
+                  )
+                }
+              >
+                {band === "tg_kirish" ? "Kirilmoqda…" : "Kirish"}
+              </button>
+              <button className="o_misol" disabled={!!band || !tgTel.trim()} onClick={() => void amal("tg_kod", { amal: "tg_kod", telefon: tgTel }, "Kod qayta yuborildi")}>
+                Kodni qayta yuborish
+              </button>
+            </>
+          )}
+        </>
+      )}
 
       <a className="o_tugma" href="/qongiroq" style={{ display: "inline-block", textDecoration: "none", marginBottom: 6 }}>
         📞 Miya&apos;ga qo&apos;ng&apos;iroq qilish

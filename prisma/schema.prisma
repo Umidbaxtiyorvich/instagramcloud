@@ -407,3 +407,10 @@ model Qongiroq {
   @@index([userId, createdAt])
   @@index([sid])
 }
+
+// Butun sayt uchun bitta qiymatlar (masalan, Miya Telegram akkauntining shifrlangan sessiyasi)
+model Sozlama {
+  kalit      String   @id
+  qiymat     String
+  yangilandi DateTime @updatedAt
+}
