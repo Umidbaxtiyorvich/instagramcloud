@@ -9,6 +9,8 @@ import dynamic from "next/dynamic";
 import MoliyaPanel, { pul } from "./MoliyaPanel";
 import UlanishPanel from "./UlanishPanel";
 import MiyaBoshqaruv from "./MiyaBoshqaruv";
+import { chaqiruvMuddati } from "./yol";
+import type { Ish } from "./Sahna3D";
 
 const Sahna3D = dynamic(() => import("./Sahna3D"), {
   ssr: false,
@@ -91,8 +93,11 @@ function oldinga(o: Ofis): Ofis {
   const xabarlar = [...o.xabarlar];
   const eslatmalar = [...o.eslatmalar];
   const tugaganAgentlar = new Map<string, "tasdiq" | "bosh">();
+  const hozir = Date.now();
   const vazifalar = o.vazifalar.map((v) => {
     if (v.holat !== "jarayonda") return v;
+    // agent hali Miya'dan vazifani olib kelmagan
+    if (v.boshlash && hozir < v.boshlash) return v;
     const bosqich = v.bosqich + 1;
     if (bosqich < v.qadamlar.length) return { ...v, bosqich };
     const holat = v.tasdiqKerak ? ("tasdiq" as const) : ("bajarildi" as const);
@@ -150,6 +155,13 @@ export default function OfisSahifa() {
   const [buyruq, setBuyruq] = useState("");
   const [chatMatn, setChatMatn] = useState("");
   const [band, setBand] = useState(false);
+  // Miya tepasidagi pufak va monitorlar uchun soat (har soniyada)
+  const [miyaGap, setMiyaGap] = useState<string | null>(null);
+  const [soat, setSoat] = useState(0);
+  useEffect(() => {
+    const i = setInterval(() => setSoat(Date.now()), 1000);
+    return () => clearInterval(i);
+  }, []);
   const [toast, setToast] = useState<string | null>(null);
   const [ochiqNatija, setOchiqNatija] = useState<string | null>(null);
   const [ekran, setEkran] = useState({ w: 1280, h: 800 });
@@ -351,6 +363,7 @@ export default function OfisSahifa() {
       const toza = matn.trim();
       if (toza.length < 2 || band) return;
       setBand(true);
+      setMiyaGap(opts.agentId ? "🧠 Xabarni yetkazyapman…" : "🧠 O'ylayapman: bu kimning ishi…");
       try {
         const tarix = opts.agentId
           ? ofis.xabarlar
@@ -371,6 +384,7 @@ export default function OfisSahifa() {
         });
         const d = (await res.json()) as { taqsimot?: Taqsimot; eslatma?: string; error?: string };
         if (!d.taqsimot) {
+          setMiyaGap(null);
           setToast(d.error || "Xatolik yuz berdi");
           return;
         }
@@ -400,6 +414,14 @@ export default function OfisSahifa() {
           }
         }
         const agentId = aid!;
+        // Miya qaror qildi: agent borib vazifani oladi. Yangi agent avval xonasiga kirib keladi.
+        const hozir = Date.now();
+        const orin = Math.max(0, agentlar.filter((a) => a.jamoa === t.jamoa).findIndex((a) => a.id === agentId));
+        const chaqiruv = hozir + (yangiAgent ? 3200 : 0);
+        const boshlash = chaqiruv + Math.round(chaqiruvMuddati(t.jamoa, orin) * 1000);
+        const kim = yangiAgent ?? agentlar.find((a) => a.id === agentId);
+        setMiyaGap(`🧠 → ${kim ? `${kim.avatar} ${kim.ism}` : "agent"} · ${jamoaById(t.jamoa).nom}`);
+        setTimeout(() => setMiyaGap((g) => (g?.startsWith("🧠 →") ? null : g)), 5000);
         const vazifa: Vazifa = {
           id: yangiId(),
           matn: toza,
@@ -413,7 +435,9 @@ export default function OfisSahifa() {
           amallar: t.instagram?.amallar,
           tasdiqlar: t.instagram?.tasdiqlar,
           manba: t.manba,
-          vaqt: Date.now(),
+          vaqt: hozir,
+          chaqiruv,
+          boshlash,
         };
         setOfis((o) => ({
           ...o,
@@ -450,6 +474,7 @@ export default function OfisSahifa() {
           setToast(d.eslatma);
         }
       } catch {
+        setMiyaGap(null);
         setToast("Server bilan aloqa yo'q");
       } finally {
         setBand(false);
@@ -567,6 +592,36 @@ export default function OfisSahifa() {
     [ofis.agentlar, jonli],
   );
   const ishlayotgan = ofis.agentlar.filter((a) => a.holat === "ishlamoqda").length;
+
+  // har bir agentning eng so'nggi ishi monitorda: yo'lda → ishlayapti → tayyor (10 soniya ko'rinadi)
+  const ishlar = useMemo<Ish[]>(() => {
+    const kordi = new Set<string>();
+    const out: Ish[] = [];
+    for (const v of ofis.vazifalar) {
+      if (kordi.has(v.agentId)) continue;
+      kordi.add(v.agentId);
+      const yaqinda = soat > 0 && !!v.tugadi && soat - v.tugadi < 10_000;
+      if (v.holat === "bajarildi" && !yaqinda) continue;
+      if (v.holat !== "jarayonda" && v.holat !== "tasdiq" && !yaqinda) continue;
+      out.push({
+        agentId: v.agentId,
+        matn: v.matn,
+        qadamlar: v.qadamlar,
+        bosqich: v.bosqich,
+        natija: v.natija,
+        chaqiruv: v.chaqiruv,
+        faza:
+          v.holat === "jarayonda"
+            ? v.boshlash && soat < v.boshlash
+              ? "yolda"
+              : "ishlamoqda"
+            : v.holat === "tasdiq"
+              ? "tasdiq"
+              : "tayyor",
+      });
+    }
+    return out;
+  }, [ofis.vazifalar, soat]);
   const tanlanganJamoa = jamoa ? jamoaById(jamoa) : null;
   const chatAgentObj = ofis.agentlar.find((a) => a.id === chatAgent) ?? null;
 
@@ -575,6 +630,8 @@ export default function OfisSahifa() {
       {/* ---------- 3D ofis (WebGL) ---------- */}
       <Sahna3D
         agentlar={sahnaAgentlari}
+        ishlar={ishlar}
+        miyaGap={miyaGap}
         jamoa={tab === "ofis" ? jamoa : null}
         band={band}
         eslatmaSoni={ofis.eslatmalar.length}

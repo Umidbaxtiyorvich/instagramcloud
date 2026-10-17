@@ -13,39 +13,12 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { JAMOALAR, type Agent, type Jamoa, type JamoaId } from "@/lib/ofis";
 import { OdamTana, Yuruvchi, pozaQollash, useBogin } from "./Odam3D";
 import { qiyofa } from "./qiyofa";
+import { OLISH, ORINLAR, OTIRISH, TEZLIK, TURISH, XONA, miyagaYol, xonaMarkazi, yolNuqtasi, yolUzunligi, type Nuqta } from "./yol";
 
-// ---------- o'lchamlar (metr) ----------
-const XONA = 8;
-const ORALIQ = 2;
-const QADAM = XONA + ORALIQ;
+// ---------- o'lchamlar (metr) — xarita va yo'llar yol.ts da ----------
 const DEVOR_H = 1.7;
 export const MAKS_AGENT = 6;
-
-const JOYLAR: Record<JamoaId, [number, number]> = {
-  tadqiqot: [0, 0],
-  ijtimoiy: [1, 0],
-  dasturlash: [2, 0],
-  savdo: [0, 1],
-  kreativ: [2, 1],
-  moliya: [0, 2],
-  mijozlar: [1, 2],
-  tahlil: [2, 2],
-};
-
-// stol joylari (xona markaziga nisbatan): [x, z] — odam shu nuqtada o'tiradi, stol undan -z da
-const ORINLAR: [number, number][] = [
-  [-1.9, -1.4],
-  [1.6, -1.4],
-  [-1.9, 1.0],
-  [1.6, 1.0],
-  [-1.9, 3.3],
-  [1.6, 3.3],
-];
-
-export function xonaMarkazi(id: JamoaId): [number, number] {
-  const [c, r] = JOYLAR[id];
-  return [(c - 1) * QADAM, (r - 1) * QADAM];
-}
+export { xonaMarkazi };
 
 const YURUVCHILAR = [
   { yarim: 5, muddat: 34, kechik: 0, rang: "#4d8dff" },
@@ -54,8 +27,21 @@ const YURUVCHILAR = [
   { yarim: 15.2, muddat: 70, kechik: 44, rang: "#ffb45a" },
 ];
 
+// Agent ekranidagi ish: vazifa, qadamlar va hozir qayerda ekani
+export type Ish = {
+  agentId: string;
+  matn: string;
+  qadamlar: string[];
+  bosqich: number;
+  faza: "yolda" | "ishlamoqda" | "tayyor" | "tasdiq";
+  natija: string;
+  chaqiruv?: number; // Miya'ga borish boshlangan vaqt (ms)
+};
+
 type Props = {
   agentlar: Agent[];
+  ishlar: Ish[];
+  miyaGap: string | null; // Miya tepasidagi pufak: «o'ylayapti…» yoki «→ kimga berdi»
   jamoa: JamoaId | null;
   band: boolean;
   eslatmaSoni: number;
@@ -246,22 +232,81 @@ function Agent3D({
   rang,
   kod,
   kirish,
+  yol,
+  miyaMarkazi,
+  chaqiruv,
   onClick,
 }: {
   a: Agent;
   rang: string;
   kod: THREE.Texture;
   kirish: boolean;
+  yol: Nuqta[]; // o'rindiqdan Miya oldigacha, shu agentga nisbatan (0,0 — o'rindiq)
+  miyaMarkazi: Nuqta; // Miya markazi shu agentga nisbatan
+  chaqiruv?: number;
   onClick: (e: ThreeEvent<MouseEvent>) => void;
 }) {
   const q = useMemo(() => qiyofa(a.id + a.ism, rang), [a.id, a.ism, rang]);
   const b = useBogin();
   const tana = useRef<THREE.Group>(null);
+  const xat = useRef<THREE.Mesh>(null);
   const holat = useRef({ bosh: kirish ? -1 : 0, urug: (a.id.charCodeAt(0) % 17) * 1.3 });
+  const uzunlik = useMemo(() => yolUzunligi(yol), [yol]);
 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime() + holat.current.urug;
     const h = holat.current;
+    // Miya chaqirdi: turadi, yo'lak bo'ylab Miya'ga boradi, xatni oladi, qaytib o'tiradi
+    const e = chaqiruv ? (Date.now() - chaqiruv) / 1000 : -1;
+    const T = uzunlik / TEZLIK;
+    const t1 = TURISH;
+    const t2 = t1 + T;
+    const t3 = t2 + OLISH;
+    const t4 = t3 + T;
+    const t5 = t4 + OTIRISH;
+    if (e >= 0 && e < t5 && tana.current) {
+      let otir = 0;
+      let yur = 0;
+      let qolKoter = false;
+      let xatBor = false;
+      const g = tana.current;
+      if (e < t1) {
+        g.position.set(0, 0, 0);
+        g.rotation.y = Math.PI;
+        otir = 1 - e / t1;
+      } else if (e < t2) {
+        const p = yolNuqtasi(yol, (e - t1) * TEZLIK);
+        g.position.set(p.x, 0, p.z);
+        g.rotation.y = Math.atan2(p.dx, p.dz);
+        yur = 1;
+      } else if (e < t3) {
+        const [x, z] = yol[yol.length - 1];
+        g.position.set(x, 0, z);
+        // Miya markazi shu agentga nisbatan: o'rindiqning dunyo koordinatasiga teskari
+        g.rotation.y = Math.atan2(-miyaMarkazi[0] - x, -miyaMarkazi[1] - z);
+        qolKoter = e - t2 < OLISH * 0.6;
+        xatBor = e - t2 > OLISH * 0.45;
+      } else if (e < t4) {
+        const p = yolNuqtasi(yol, uzunlik - (e - t3) * TEZLIK);
+        g.position.set(p.x, 0, p.z);
+        g.rotation.y = Math.atan2(-p.dx, -p.dz);
+        yur = 1;
+        xatBor = true;
+      } else {
+        g.position.set(0, 0, 0);
+        g.rotation.y = Math.PI;
+        otir = Math.min(1, (e - t4) / OTIRISH);
+        xatBor = otir < 0.8;
+      }
+      if (xat.current) xat.current.visible = xatBor;
+      pozaQollash(b.current, { otir, yur, yoz: false, qolKoter }, t);
+      return;
+    }
+    if (xat.current) xat.current.visible = false;
+    if (!kirish && tana.current && e >= t5) {
+      tana.current.position.set(0, 0, 0);
+      tana.current.rotation.y = Math.PI;
+    }
     let otir = 1;
     let yur = 0;
     if (h.bosh === -1) h.bosh = clock.getElapsedTime();
@@ -295,7 +340,13 @@ function Agent3D({
       <group ref={tana} rotation={[0, Math.PI, 0]}>
         <OdamTana q={q} kepka={rang} bogin={b} onClick={onClick} />
         <Langar id={`agent:${a.id}`} position={[0, 2.05, 0]} />
+        {/* Miya'dan olingan vazifa — qo'lda nurli xat */}
+        <mesh ref={xat} position={[0.22, 1.2, 0.34]} rotation={[-0.4, 0, 0.15]} visible={false}>
+          <boxGeometry args={[0.36, 0.25, 0.03]} />
+          <meshStandardMaterial color="#fff3c4" emissive="#ffc95a" emissiveIntensity={3} toneMapped={false} />
+        </mesh>
       </group>
+      <Langar id={`ekran:${a.id}`} position={[0, 2.85, -0.9]} />
     </group>
   );
 }
@@ -307,6 +358,7 @@ function Xona({
   tanlangan,
   kod,
   yangi,
+  chaqiruvlar,
   onXona,
   onAgent,
 }: {
@@ -315,6 +367,7 @@ function Xona({
   tanlangan: boolean;
   kod: THREE.Texture;
   yangi: Set<string>;
+  chaqiruvlar: Map<string, number>;
   onXona: (id: JamoaId) => void;
   onAgent: (a: Agent) => void;
 }) {
@@ -392,6 +445,9 @@ function Xona({
                 rang={j.rang}
                 kod={kod}
                 kirish={yangi.has(a.id)}
+                yol={miyagaYol(j.id, i).map(([px, pz]) => [px - cx - x, pz - cz - z] as Nuqta)}
+                miyaMarkazi={[-cx - x, -cz - z]}
+                chaqiruv={chaqiruvlar.get(a.id)}
                 onClick={(e) => {
                   if (bosilmadi(e)) return;
                   e.stopPropagation();
@@ -563,6 +619,7 @@ function Kamera({ jamoa, surish }: { jamoa: JamoaId | null; surish: number }) {
 
 function Sahna(p: Props) {
   const kod = useKodTekstura();
+  const chaqiruvlar = useMemo(() => new Map(p.ishlar.filter((x) => x.chaqiruv).map((x) => [x.agentId, x.chaqiruv!])), [p.ishlar]);
   useFrame((_, dt) => {
     kod.offset.y -= dt * 0.12;
   });
@@ -610,6 +667,7 @@ function Sahna(p: Props) {
           tanlangan={p.jamoa === j.id}
           kod={kod}
           yangi={p.yangiAgentlar}
+          chaqiruvlar={chaqiruvlar}
           onXona={p.onXona}
           onAgent={p.onAgent}
         />
@@ -648,8 +706,11 @@ export default function Sahna3D(p: Props) {
       </Canvas>
       <div className="o_yorliqlar">
         <div ref={ref("miya")} className="o_yorliq">
-          <div className="o_xonaYorliq" style={{ ["--r" as string]: "#7cc4ff", cursor: "pointer" }} onClick={p.onMiya}>
-            🧠 Miya <small>{p.eslatmaSoni} eslatma · umumiy xotira</small>
+          <div className="o_tikIchiHtml">
+            {p.miyaGap && <div className="o_miyaGap">{p.miyaGap}</div>}
+            <div className="o_xonaYorliq" style={{ ["--r" as string]: "#7cc4ff", cursor: "pointer" }} onClick={p.onMiya}>
+              🧠 Miya <small>{p.eslatmaSoni} eslatma · umumiy xotira</small>
+            </div>
           </div>
         </div>
         {JAMOALAR.map((j) => (
@@ -663,6 +724,14 @@ export default function Sahna3D(p: Props) {
             </div>
           </div>
         ))}
+        {p.ishlar.map((ish) => {
+          const a = p.agentlar.find((x) => x.id === ish.agentId);
+          return a ? (
+            <div key={ish.agentId} ref={ref(`ekran:${ish.agentId}`)} className="o_yorliq o_ishEkranYorliq">
+              <IshEkrani ish={ish} a={a} onClick={() => p.onAgent(a)} />
+            </div>
+          ) : null;
+        })}
         {p.agentlar.map((a) => (
           <div key={a.id} ref={ref(`agent:${a.id}`)} className="o_yorliq o_yorliqAgent">
             <div className="o_tikIchiHtml">
@@ -679,5 +748,50 @@ export default function Sahna3D(p: Props) {
         ))}
       </div>
     </YorliqCtx.Provider>
+  );
+}
+
+// ---------- agentning ish monitori: stol tepasida suzib chiqadi ----------
+function IshEkrani({ ish, a, onClick }: { ish: Ish; a: Agent; onClick: () => void }) {
+  const jami = Math.max(1, ish.qadamlar.length);
+  const tayyor = ish.faza === "tayyor" || ish.faza === "tasdiq";
+  const foiz = ish.faza === "yolda" ? 0 : tayyor ? 100 : Math.round((ish.bosqich / jami) * 100);
+  const joriy = ish.qadamlar[Math.min(ish.bosqich, jami - 1)];
+  return (
+    <div className={`o_ishEkran ${tayyor ? "o_ishEkranTayyor" : ""}`} onClick={onClick} title="Agent bilan suhbatni ochish">
+      <div className="o_ishEkranUst">
+        <span>
+          {a.avatar} {a.ism}
+        </span>
+        <i className={ish.faza === "yolda" ? "o_ishEkranHolatYol" : tayyor ? "o_ishEkranHolatTayyor" : "o_ishEkranHolatIsh"} />
+      </div>
+      <div className="o_ishEkranVazifa">«{ish.matn.slice(0, 90)}{ish.matn.length > 90 ? "…" : ""}»</div>
+      {ish.faza === "yolda" ? (
+        <div className="o_ishEkranLog">📨 Miya&apos;dan vazifani olib kelyapti…</div>
+      ) : (
+        <>
+          <ol className="o_ishEkranQadamlar">
+            {ish.qadamlar.slice(0, 6).map((q, i) => (
+              <li key={i} className={tayyor || i < ish.bosqich ? "o_qBitdi" : i === ish.bosqich ? "o_qHozir" : ""}>
+                {tayyor || i < ish.bosqich ? "✓" : i === ish.bosqich ? "▶" : "○"} {q}
+              </li>
+            ))}
+          </ol>
+          <div className="o_ishEkranLog">
+            {ish.faza === "tasdiq"
+              ? "✋ Tayyor — tasdiqingizni kutyapti"
+              : tayyor
+                ? `✅ ${ish.natija.slice(0, 110) || "Bajarildi"}`
+                : <>
+                    &gt; {joriy}
+                    <span className="o_kursor">▋</span>
+                  </>}
+          </div>
+        </>
+      )}
+      <div className="o_ishEkranChiziq">
+        <span style={{ width: `${foiz}%` }} />
+      </div>
+    </div>
   );
 }

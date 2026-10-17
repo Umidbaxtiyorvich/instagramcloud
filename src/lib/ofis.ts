@@ -52,6 +52,9 @@ export type Vazifa = {
   tugadi?: number;
   amallar?: string[];
   tasdiqlar?: { id: string; summary: string }[];
+  // agent Miya'ga borib vazifani olgan vaqt va ishni boshlaydigan vaqt (ms)
+  chaqiruv?: number;
+  boshlash?: number;
 };
 
 export type Xabar = {
