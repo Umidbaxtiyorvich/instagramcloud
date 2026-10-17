@@ -85,23 +85,29 @@ export default function TelefonBolim() {
 
   return (
     <div>
-      <div className="o_ulanishMatn" style={{ marginTop: 0 }}>
-        Muhim gap bo&apos;lsa Miya sizga <b>qo&apos;ng&apos;iroq qiladi</b>: nima bo&apos;lganini aytadi va buyrug&apos;ingizni oladi. Siz ham
-        Miya raqamiga qo&apos;ng&apos;iroq qilib, PIN terasiz va oddiy gapirasiz: «bugun nechta komment keldi?», «kassada qancha pul bor?»,
-        «shu kommentga javob yoz». Instagram&apos;ga yozadigan ishlarni Miya avval o&apos;qib beradi va «ha» deganingizdan keyin bajaradi.
-        Qo&apos;ng&apos;iroqlar kunduzi (08:00–22:00) va 30 daqiqada ko&apos;pi bilan bir marta bo&apos;ladi.
-      </div>
-      {!d.twilio && (
-        <div className="o_telefonRaqam">
-          🆓 <b>Bepul rejim.</b> Miya Telegram&apos;ga «📞 Miya sizga qo&apos;ng&apos;iroq qilyapti» deb yozadi — havolani bossangiz, telefon
-          brauzerida qo&apos;ng&apos;iroq ekrani ochiladi va Miya bilan ovoz orqali gaplashasiz. Siz ham istalgan payt quyidagi tugma bilan
-          Miya&apos;ni chaqirasiz (saytga kirgan bo&apos;lsangiz, PIN kerak emas). Haqiqiy telefon qo&apos;ng&apos;irog&apos;i kerak bo&apos;lsa — Twilio
-          (pullik) ulanadi.
+      {d.twilio ? (
+        <div className="o_ulanishMatn" style={{ marginTop: 0 }}>
+          Muhim gap bo&apos;lsa Miya sizga <b>qo&apos;ng&apos;iroq qiladi</b>: nima bo&apos;lganini aytadi va buyrug&apos;ingizni oladi. Siz ham
+          Miya raqamiga qo&apos;ng&apos;iroq qilib, PIN terasiz va oddiy gapirasiz: «bugun nechta komment keldi?», «kassada qancha pul bor?»,
+          «shu kommentga javob yoz». Instagram&apos;ga yozadigan ishlarni Miya avval o&apos;qib beradi va «ha» deganingizdan keyin bajaradi.
+          Qo&apos;ng&apos;iroqlar kunduzi (08:00–22:00) va 30 daqiqada ko&apos;pi bilan bir marta bo&apos;ladi.
+        </div>
+      ) : (
+        <div className="o_ulanishMatn" style={{ marginTop: 0 }}>
+          <b>Miya sizni chaqiradi:</b> muhim gap bo&apos;lsa, Miya ogohlantirishlari keladigan Telegram botiga «📞 Miya sizga qo&apos;ng&apos;iroq
+          qilyapti» xabari keladi. Havolani bosing — telefonda qo&apos;ng&apos;iroq ekrani ochiladi, yashil 📞 ni bossangiz Miya ovoz chiqarib
+          gapiradi, siz javob berasiz.
+          <br />
+          <b>Siz Miya&apos;ni chaqirasiz:</b> quyidagi tugmani bosing (yoki telefonda <b>/qongiroq</b> sahifasini oching — uni bosh ekranga
+          qo&apos;yib olsangiz, ilovadek bir bosishda ochiladi) va oddiy gapiring: «bugun nechta komment keldi?», «kassada qancha pul bor?».
+          <br />
+          Instagram&apos;ga yozadigan ishlarni Miya avval o&apos;qib beradi va «ha» deganingizdan keyin bajaradi. Chaqiruvlar kunduzi
+          (08:00–22:00) va 30 daqiqada ko&apos;pi bilan bir marta bo&apos;ladi.
           {!d.openai && " ⚠️ OPENAI_API_KEY yo'q — ovozli suhbat ishlamaydi."}
         </div>
       )}
       <a className="o_tugma" href="/qongiroq" style={{ display: "inline-block", textDecoration: "none", marginBottom: 6 }}>
-        🎙 Miya bilan ovozli gaplashish
+        📞 Miya&apos;ga qo&apos;ng&apos;iroq qilish
       </a>
       {d.twilio && !d.openai && (
         <div className="o_natija" style={{ marginBottom: 10 }}>
@@ -182,7 +188,7 @@ export default function TelefonBolim() {
             </label>
           ))}
           <button className="o_misol" disabled={!!band} onClick={() => void amal("sinov", { amal: "sinov" }, "Miya hozir qo'ng'iroq qiladi")}>
-            {band === "sinov" ? "Qo'ng'iroq qilinmoqda…" : d.twilio ? "📞 Hozir menga qo'ng'iroq qil (sinov)" : "📞 Sinov: Telegram'ga qo'ng'iroq havolasini yubor"}
+            {band === "sinov" ? "Qo'ng'iroq qilinmoqda…" : d.twilio ? "📞 Hozir menga qo'ng'iroq qil (sinov)" : "📞 Sinov: Miya meni chaqirsin"}
           </button>
         </>
       )}
