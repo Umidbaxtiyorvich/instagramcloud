@@ -31,6 +31,9 @@ services:
         sync: false
       - key: INSTAGRAM_APP_SECRET
         sync: false
+      # Miya'ning Telegram boti: @BotFather → /newbot → token
+      - key: MIYA_BOT_TOKEN
+        sync: false
       # Miya telefonda: console.twilio.com → Account SID, Auth Token va sotib olingan raqam
       - key: TWILIO_ACCOUNT_SID
         sync: false

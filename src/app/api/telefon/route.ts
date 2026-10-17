@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { sozlama } from "@/lib/miya";
 import { openai } from "@/lib/ofis-openai";
 import { miyaRaqami, raqamniSozla, twilioSozlangan } from "@/lib/twilio";
+import { botBor, botSozla, ulashHavolasi } from "@/lib/miya-bot";
 import { kodTekshir, kodYubor, miyaQongiroq, suhbatOl, xesh } from "@/lib/miya-telefon";
 
 // Miya → Telefon sozlamalari: raqamni qo'ng'iroq bilan tasdiqlash, PIN, qachon qo'ng'iroq qilish, tarix
@@ -13,7 +14,12 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "Kirish kerak" }, { status: 401 });
   const s = await sozlama(user.id);
   const qongiroqlar = await prisma.qongiroq.findMany({ where: { userId: user.id, yonalish: { not: "tasdiq" } }, orderBy: { createdAt: "desc" }, take: 15 });
+  // bot webhook'ini birinchi ochilishda o'rnatib qo'yamiz
+  const botXato = botBor() ? await botSozla().then(() => null).catch((e: Error) => e.message) : null;
   return NextResponse.json({
+    bot: botBor(),
+    botXato,
+    telegram: Boolean(s.telegramChat),
     twilio: twilioSozlangan(),
     openai: Boolean(openai()),
     miyaRaqami: miyaRaqami(),
@@ -41,6 +47,8 @@ const Amal = z.discriminatedUnion("amal", [
   z.object({ amal: z.literal("rejim"), rejim: z.enum(["off", "xavf", "muhim"]) }),
   z.object({ amal: z.literal("sinov") }),
   z.object({ amal: z.literal("ochir") }),
+  z.object({ amal: z.literal("telegram_ulash") }),
+  z.object({ amal: z.literal("telegram_uz") }),
 ]);
 
 export async function POST(req: Request) {
@@ -58,7 +66,12 @@ export async function POST(req: Request) {
       await raqamniSozla().catch((e) => console.error("twilio raqam:", e instanceof Error ? e.message : e));
       return NextResponse.json({ ok: true, telefon });
     }
-    if (a.amal === "kod") await kodTekshir(user.id, a.kod);
+    if (a.amal === "telegram_ulash") {
+      if (!botBor()) throw new Error("Miya boti sozlanmagan — Render'ga MIYA_BOT_TOKEN qo'ying");
+      return NextResponse.json({ ok: true, havola: await ulashHavolasi(user.id) });
+    }
+    if (a.amal === "telegram_uz") await prisma.miyaSozlama.update({ where: { userId: user.id }, data: { telegramChat: null } });
+    else if (a.amal === "kod") await kodTekshir(user.id, a.kod);
     else if (a.amal === "pin") await prisma.miyaSozlama.update({ where: { userId: user.id }, data: { telefonPin: xesh(user.id, `pin:${a.pin}`) } });
     else if (a.amal === "rejim") await prisma.miyaSozlama.update({ where: { userId: user.id }, data: { qongiroqRejim: a.rejim } });
     else if (a.amal === "ochir")

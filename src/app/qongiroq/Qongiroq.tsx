@@ -24,10 +24,15 @@ function ovozTuri() {
   return "";
 }
 
-async function api(body: unknown): Promise<Q> {
+// Telegram botidagi havolada kirish kaliti bo'ladi (t) — saytga kirmasdan ishlaydi
+const sarlavha = (t: string): Record<string, string> => (t ? { "x-qongiroq": t } : {});
+
+async function api(body: unknown, t: string): Promise<Q> {
   const r = await fetch("/api/telefon/web", {
     method: "POST",
-    ...(body instanceof FormData ? { body } : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+    ...(body instanceof FormData
+      ? { body, headers: sarlavha(t) }
+      : { headers: { "Content-Type": "application/json", ...sarlavha(t) }, body: JSON.stringify(body) }),
   });
   const j = (await r.json().catch(() => ({}))) as { qongiroq?: Q; error?: string };
   if (!r.ok || !j.qongiroq) throw new Error(j.error || `HTTP ${r.status}`);
@@ -35,7 +40,9 @@ async function api(body: unknown): Promise<Q> {
 }
 
 export default function Qongiroq() {
-  const qId = useSearchParams().get("q");
+  const params = useSearchParams();
+  const qId = params.get("q");
+  const t = params.get("t") ?? "";
   const [q, setQ] = useState<Q | null>(null);
   const [holat, setHolat] = useState<Holat>("yuklanmoqda");
   const [xato, setXato] = useState<string | null>(null);
@@ -53,7 +60,7 @@ export default function Qongiroq() {
         if (!bekor) setHolat(r?.ok ? "kutish" : "kirish");
         return;
       }
-      const r = await fetch(`/api/telefon/web?q=${encodeURIComponent(qId)}`);
+      const r = await fetch(`/api/telefon/web?q=${encodeURIComponent(qId)}`, { headers: sarlavha(t) });
       if (bekor) return;
       if (r.status === 401) return setHolat("kirish");
       const j = (await r.json().catch(() => ({}))) as { qongiroq?: Q; error?: string };
@@ -67,7 +74,7 @@ export default function Qongiroq() {
     return () => {
       bekor = true;
     };
-  }, [qId]);
+  }, [qId, t]);
 
   useEffect(() => {
     pastki.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -163,7 +170,7 @@ export default function Qongiroq() {
           const f = new FormData();
           f.append("q", joriy.id);
           f.append("audio", ovoz, "gap");
-          joriy = await api(f);
+          joriy = await api(f, t);
           setQ(joriy);
           await oqi(joriy, joriy.suhbat.length - 1);
         }
@@ -175,7 +182,7 @@ export default function Qongiroq() {
         setHolat("kutish");
       }
     },
-    [oqi, tingla],
+    [oqi, tingla, t],
   );
 
   const mikrofon = async () => {
@@ -197,7 +204,7 @@ export default function Qongiroq() {
     if (!(await mikrofon())) return;
     tugadi.current = false;
     try {
-      const x = q ? await api({ amal: "javob", q: q.id }) : await api({ amal: "boshla" });
+      const x = q ? await api({ amal: "javob", q: q.id }, t) : await api({ amal: "boshla" }, t);
       setQ(x);
       await aylana(x, true);
     } catch (e) {
@@ -218,7 +225,7 @@ export default function Qongiroq() {
     yozish.current?.stop(false);
     setHolat("oylayapti");
     try {
-      const x = await api({ amal: "tugma", q: q.id, ha });
+      const x = await api({ amal: "tugma", q: q.id, ha }, t);
       setQ(x);
       tugadi.current = false;
       await aylana(x, true);
@@ -234,7 +241,7 @@ export default function Qongiroq() {
     audio.current?.pause();
     oqim.current?.getTracks().forEach((t) => t.stop());
     oqim.current = null;
-    if (q) setQ(await api({ amal: "tugat", q: q.id, rad }).catch(() => q));
+    if (q) setQ(await api({ amal: "tugat", q: q.id, rad }, t).catch(() => q));
     setHolat("tugadi");
   };
 

@@ -4,7 +4,8 @@ import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { randomToken } from "@/lib/crypto";
 import { openai } from "@/lib/ofis-openai";
-import { gapniIshla, salomMatni, suhbatOl, tugmaJavob, xatoGap } from "@/lib/miya-telefon";
+import { gapniIshla, salomMatni, suhbatOl, tokenEgasi, tugmaJavob, xatoGap } from "@/lib/miya-telefon";
+import { botOtkazildi } from "@/lib/miya-bot";
 import type { Qongiroq } from "@prisma/client";
 
 // Bepul «qo'ng'iroq»: telefon brauzerida Miya bilan ovozli suhbat (Twilio'siz)
@@ -23,6 +24,17 @@ const korinish = (q: Qongiroq) => ({
   suhbat: suhbatOl(q),
 });
 
+// Saytga kirgan bo'lsa — sessiya; Telegram botidagi havoladan kelsa — havoladagi kalit
+async function egasi(req: Request) {
+  const t = req.headers.get("x-qongiroq") ?? "";
+  if (t) {
+    const id = await tokenEgasi(t);
+    if (id) return { id };
+  }
+  const user = await getSessionUser();
+  return user ? { id: user.id } : null;
+}
+
 async function ol(userId: string, id: string) {
   const q = await prisma.qongiroq.findFirst({ where: { id, userId } });
   if (!q) throw new Error("Qo'ng'iroq topilmadi");
@@ -30,7 +42,7 @@ async function ol(userId: string, id: string) {
 }
 
 export async function GET(req: Request) {
-  const user = await getSessionUser();
+  const user = await egasi(req);
   if (!user) return NextResponse.json({ error: "Kirish kerak" }, { status: 401 });
   try {
     return NextResponse.json({ qongiroq: korinish(await ol(user.id, new URL(req.url).searchParams.get("q") ?? "")) });
@@ -47,7 +59,7 @@ const Amal = z.discriminatedUnion("amal", [
 ]);
 
 export async function POST(req: Request) {
-  const user = await getSessionUser();
+  const user = await egasi(req);
   if (!user) return NextResponse.json({ error: "Kirish kerak" }, { status: 401 });
   if (!openai()) return NextResponse.json({ error: "OPENAI_API_KEY yo'q — Miya ovoz bilan gaplasha olmaydi" }, { status: 400 });
   try {
@@ -90,10 +102,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ qongiroq: korinish(yangi) });
     }
     if (a.amal === "tugma") return NextResponse.json({ qongiroq: korinish(await tugmaJavob(q, a.ha ? "1" : "2")) });
-    const yangi = await prisma.qongiroq.update({
-      where: { id: q.id },
-      data: { holat: a.rad && q.holat === "boshlandi" ? "javobsiz" : "tugadi", tugadi: q.tugadi ?? new Date() },
-    });
+    const rad = a.rad && q.holat === "boshlandi";
+    const yangi = await prisma.qongiroq.update({ where: { id: q.id }, data: { holat: rad ? "javobsiz" : "tugadi", tugadi: q.tugadi ?? new Date() } });
+    // rad etilgan qo'ng'iroq botdagi tarixda qoladi
+    if (rad && q.yonalish === "chiquvchi") await botOtkazildi(yangi);
     return NextResponse.json({ qongiroq: korinish(yangi) });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Xato" }, { status: 400 });

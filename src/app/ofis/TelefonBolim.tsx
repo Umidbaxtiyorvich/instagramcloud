@@ -6,6 +6,9 @@ import { useRouter } from "next/navigation";
 type Gap = { kim: "miya" | "men"; matn: string };
 type Qongiroq = { id: string; kanal: string; yonalish: string; holat: string; sabab: string; suhbat: Gap[]; createdAt: string };
 type Holat = {
+  bot: boolean;
+  botXato: string | null;
+  telegram: boolean;
   twilio: boolean;
   openai: boolean;
   miyaRaqami: string;
@@ -63,8 +66,13 @@ export default function TelefonBolim() {
     setOk(null);
     try {
       const r = await fetch("/api/telefon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const j = (await r.json().catch(() => ({}))) as { error?: string; qongiroq?: string };
+      const j = (await r.json().catch(() => ({}))) as { error?: string; qongiroq?: string; havola?: string };
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      if (j.havola) {
+        // await'dan keyin window.open bloklanadi — shu oynada ochamiz
+        window.location.href = j.havola;
+        return true;
+      }
       // bepul rejimdagi sinov — qo'ng'iroq ekranini darhol ochamiz (Telegram xabari Miya'ning navbatdagi tekshiruvida boradi)
       if (j.qongiroq) {
         router.push(`/qongiroq?q=${j.qongiroq}`);
@@ -94,8 +102,7 @@ export default function TelefonBolim() {
         </div>
       ) : (
         <div className="o_ulanishMatn" style={{ marginTop: 0 }}>
-          <b>Miya sizni chaqiradi:</b> muhim gap bo&apos;lsa, Miya ogohlantirishlari keladigan Telegram botiga «📞 Miya sizga qo&apos;ng&apos;iroq
-          qilyapti» xabari keladi. Havolani bosing — telefonda qo&apos;ng&apos;iroq ekrani ochiladi, yashil 📞 ni bossangiz Miya ovoz chiqarib
+          <b>Miya sizni chaqiradi:</b> muhim gap bo&apos;lsa, Telegram botiga «📞 Miya sizga qo&apos;ng&apos;iroq qilyapti» xabari (ovozli) keladi. Havolani bosing — telefonda qo&apos;ng&apos;iroq ekrani ochiladi, yashil 📞 ni bossangiz Miya ovoz chiqarib
           gapiradi, siz javob berasiz.
           <br />
           <b>Siz Miya&apos;ni chaqirasiz:</b> quyidagi tugmani bosing (yoki telefonda <b>/qongiroq</b> sahifasini oching — uni bosh ekranga
@@ -106,6 +113,32 @@ export default function TelefonBolim() {
           {!d.openai && " ⚠️ OPENAI_API_KEY yo'q — ovozli suhbat ishlamaydi."}
         </div>
       )}
+      <h3 className="o_ulanishSarlavha">Telegram bot</h3>
+      {!d.bot ? (
+        <div className="o_ulanishMatn" style={{ marginTop: 0 }}>
+          Miya&apos;ning o&apos;z Telegram boti hali yo&apos;q. Telegram&apos;da <b>@BotFather</b> → <b>/newbot</b> → nom bering (masalan «Miya»)
+          → bergan <b>token</b>ni Render → instagramcloud → Environment&apos;ga <b>MIYA_BOT_TOKEN</b> nomi bilan qo&apos;ying. Bepul.
+        </div>
+      ) : d.telegram ? (
+        <div className="o_miyaQator">
+          ✅ Telegram bot ulangan — Miya shu yerga qo&apos;ng&apos;iroq qiladi, botdagi «📞 Miyaga qo&apos;ng&apos;iroq» bilan siz chaqirasiz
+          <button className="o_misol" disabled={!!band} onClick={() => void amal("telegram_uz", { amal: "telegram_uz" }, "Bot uzildi")}>
+            Uzish
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="o_ulanishMatn" style={{ marginTop: 0 }}>
+            Tugmani bosing — Telegram ochiladi, botda <b>Start</b> ni bosing. Shundan keyin Miya botga qo&apos;ng&apos;iroq qiladi, siz ham bot
+            orqali qo&apos;ng&apos;iroq qilasiz, javob berilmagan qo&apos;ng&apos;iroqlar botda tarix bo&apos;lib qoladi.
+          </div>
+          <button className="o_tugma" disabled={!!band} onClick={() => void amal("telegram_ulash", { amal: "telegram_ulash" })}>
+            ✈️ Telegram&apos;ga ulash
+          </button>
+        </>
+      )}
+      {d.botXato && <div className="o_natija" style={{ marginBottom: 10 }}>⚠️ Bot: {d.botXato}</div>}
+
       <a className="o_tugma" href="/qongiroq" style={{ display: "inline-block", textDecoration: "none", marginBottom: 6 }}>
         📞 Miya&apos;ga qo&apos;ng&apos;iroq qilish
       </a>

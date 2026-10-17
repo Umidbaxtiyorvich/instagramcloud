@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { SignJWT, jwtVerify } from "jose";
 import { toFile } from "openai";
 import type { Qongiroq } from "@prisma/client";
 import { prisma } from "./db";
@@ -8,6 +9,7 @@ import { IG_VOSITALAR, igAkkaunt, igVosita } from "./ofis-instagram";
 import { MOLIYA_VOSITALAR, moliyaHolati, moliyaRuxsat, moliyaVosita, type Davr } from "./ofis-moliya";
 import { qaror } from "./miya-fikr";
 import { tasdiqHal } from "./actions";
+import { botChaqir, botOtkazildi } from "./miya-bot";
 import { qongiroqBoshla, raqamTozala, sayt, tw, twilioSozlangan, yozuvniOchir, yozuvniOl } from "./twilio";
 
 // Miya telefonda: muhim gap bo'lsa egasiga qo'ng'iroq qiladi, egasi ham Miya raqamiga qo'ng'iroq qilib
@@ -26,6 +28,28 @@ export const suhbatOl = (q: Pick<Qongiroq, "suhbat">) => JSON.parse(q.suhbat) as
 
 export function xesh(userId: string, qiymat: string) {
   return createHash("sha256").update(`${process.env.AUTH_SECRET || "dev"}:${userId}:${qiymat}`).digest("hex");
+}
+
+// Bot havolasidagi kirish kaliti: Telegram ichida saytga kirmasdan qo'ng'iroq ekrani ochilsin
+function qongiroqSiri() {
+  return new TextEncoder().encode(`${process.env.AUTH_SECRET || "dev-auth-secret-change-me-please"}:qongiroq`);
+}
+
+export async function qongiroqToken(userId: string) {
+  return new SignJWT({ sub: userId, purpose: "qongiroq" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("12h")
+    .sign(qongiroqSiri());
+}
+
+export async function tokenEgasi(t: string) {
+  try {
+    const { payload } = await jwtVerify(t, qongiroqSiri());
+    return payload.purpose === "qongiroq" && payload.sub ? String(payload.sub) : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------- havolalar ----------
@@ -144,13 +168,18 @@ async function javobBer(q: Qongiroq): Promise<{ javob: string; tugat: boolean }>
   const client = openai();
   if (!client) throw new Error("OPENAI_API_KEY yo'q");
   const userId = q.userId;
-  const [user, akk, xotira, fikrlar, tasdiqlar, xabarlar] = await Promise.all([
+  const [user, akk, xotira, fikrlar, tasdiqlar, xabarlar, qongiroqlar] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
     igAkkaunt(userId),
     prisma.xotira.findUnique({ where: { userId } }),
     prisma.miyaFikr.findMany({ where: { userId, holat: "kutmoqda" }, orderBy: { createdAt: "desc" }, take: 6 }),
     prisma.approval.findMany({ where: { userId, status: "pending" }, orderBy: { createdAt: "desc" }, take: 8 }),
     prisma.miyaXabar.findMany({ where: { userId, daraja: { in: ["ogoh", "xavf"] } }, orderBy: { createdAt: "desc" }, take: 6 }),
+    prisma.qongiroq.findMany({
+      where: { userId, yonalish: "chiquvchi", id: { not: q.id }, createdAt: { gte: new Date(Date.now() - 48 * 3600_000) } },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    }),
   ]);
   const mh = moliyaHolati();
   const moliyaBor = moliyaRuxsat(user?.email) && (mh.cloudshop || mh.bot);
@@ -162,6 +191,11 @@ async function javobBer(q: Qongiroq): Promise<{ javob: string; tugat: boolean }>
     fikrlar.length ? `Javob kutayotgan Miya takliflari:\n${fikrlar.map((f) => `- id=${f.id} | ${f.sarlavha} — ${f.fikr.slice(0, 200)}`).join("\n")}` : "",
     tasdiqlar.length ? `Navbatdagi tasdiqlar:\n${tasdiqlar.map((t) => `- id=${t.id} | ${t.summary}`).join("\n")}` : "Navbatda tasdiq yo'q.",
     xabarlar.length ? `Miya oxirgi topgan muammolar:\n${xabarlar.map((x) => `- ${x.matn.split("\n").slice(0, 3).join(" ").slice(0, 300)}`).join("\n")}` : "",
+    qongiroqlar.length
+      ? `So'nggi 2 kunda siz egasiga qilgan qo'ng'iroqlar («nega qo'ng'iroq qilding?» deb so'rasa — shundan ayting):\n${qongiroqlar
+          .map((c) => `- ${new Date(c.createdAt.getTime() + TZ).toISOString().slice(5, 16).replace("T", " ")} (${c.holat === "javobsiz" ? "javob bermadi" : c.holat}): ${c.sabab}`)
+          .join("\n")}`
+      : "",
     `Suhbat:\n${suhbatOl(q).map((g) => `${g.kim === "miya" ? "Miya" : "Egasi"}: ${g.matn}`).join("\n")}`,
   ]
     .filter(Boolean)
@@ -202,6 +236,10 @@ async function javobBer(q: Qongiroq): Promise<{ javob: string; tugat: boolean }>
 export async function gapniIshla(id: string, ovoz: Uint8Array, nom?: string, tur?: string) {
   const matn = await matngaOgir(ovoz, nom, tur);
   if (!matn) return gapQosh(id, [{ kim: "miya", matn: STATIK.takrorla }]);
+  return matnniIshla(id, matn);
+}
+
+export async function matnniIshla(id: string, matn: string) {
   const q = await gapQosh(id, [{ kim: "men", matn }]);
   const j = await javobBer(q);
   return gapQosh(id, [{ kim: "miya", matn: j.javob }], { tugat: j.tugat });
@@ -279,10 +317,19 @@ async function webQongiroq(userId: string, sabab: string, fikrId?: string) {
       suhbat: JSON.stringify([{ kim: "miya", matn: ochilish }]),
     },
   });
-  // Telegram'ga boradi (tick); o'zi qo'ng'iroqqa sabab bo'lmasin — qongiroq: true
+  // Miya boti ulangan bo'lsa — darhol o'sha yerga; aks holda xabar eski Telegram botiga tick bilan boradi.
+  // O'zi qo'ng'iroqqa sabab bo'lmasin — qongiroq: true
+  const botda = await botChaqir(userId, q).catch((e) => (console.error("miya bot:", e), false));
   await prisma.miyaXabar.create({
-    data: { userId, tur: "qongiroq", daraja: "xavf", qongiroq: true, kalit: `qongiroq:${q.id}`, matn: `📞 Miya sizga qo'ng'iroq qilyapti: ${sabab.slice(0, 300)}
-Javob berish: ${sayt()}/qongiroq?q=${q.id}` },
+    data: {
+      userId,
+      tur: "qongiroq",
+      daraja: "xavf",
+      qongiroq: true,
+      telegram: botda,
+      kalit: `qongiroq:${q.id}`,
+      matn: `📞 Miya sizga qo'ng'iroq qilyapti: ${sabab.slice(0, 300)}\nJavob berish: ${sayt()}/qongiroq?q=${q.id}`,
+    },
   });
   await prisma.miyaSozlama.update({ where: { userId }, data: { oxirgiQongiroq: new Date() } });
   await oldindanOvoz(q);
@@ -376,11 +423,12 @@ async function ogzaki(matnlar: string[], taklif: string | null) {
 
 // Miya tick'idan: tasdiqlangan raqamli egalarga muhim yangi gap bo'lsa — qo'ng'iroq (kunduzi, 30 daqiqada ko'pi bilan bir marta)
 export async function qongiroqlar() {
-  // javob berilmagan havolali qo'ng'iroqlar
-  await prisma.qongiroq.updateMany({
-    where: { kanal: "web", holat: "boshlandi", createdAt: { lt: new Date(Date.now() - 30 * 60_000) } },
-    data: { holat: "javobsiz", tugadi: new Date() },
-  });
+  // javob berilmagan havolali qo'ng'iroqlar — botda «javob bermadingiz» bo'lib qoladi
+  const otkazilgan = await prisma.qongiroq.findMany({ where: { kanal: "web", holat: "boshlandi", createdAt: { lt: new Date(Date.now() - 30 * 60_000) } } });
+  for (const q of otkazilgan) {
+    const r = await prisma.qongiroq.updateMany({ where: { id: q.id, holat: "boshlandi" }, data: { holat: "javobsiz", tugadi: new Date() } });
+    if (r.count && q.yonalish === "chiquvchi") await botOtkazildi(q);
+  }
   const web = webMi();
   if (web && !openai()) return;
   const { daqiqa } = soat();

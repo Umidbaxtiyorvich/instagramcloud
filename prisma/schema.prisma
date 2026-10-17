@@ -83,6 +83,10 @@ model MiyaSozlama {
   // off | xavf — faqat jiddiy muammo | muhim — muammo va Miya takliflari
   qongiroqRejim   String    @default("xavf")
   oxirgiQongiroq  DateTime?
+  // Miya Telegram boti: ulangan chat va ulash kodi (t.me/bot?start=kod)
+  telegramChat    String?   @unique
+  telegramKod     String?   @unique
+  telegramKodVaqt DateTime?
   createdAt       DateTime  @default(now())
 }
 
@@ -386,7 +390,7 @@ model Qongiroq {
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   yonalish  String // chiquvchi | kiruvchi | tasdiq
-  kanal     String    @default("telefon") // telefon (Twilio) | web (bepul: Telegram havolasi + brauzerda ovoz)
+  kanal     String    @default("telefon") // telefon (Twilio) | web (brauzerda ovoz) | telegram (botdagi ovozli/matnli xabarlar)
   // ovoz havolalari uchun maxfiy kalit (Twilio audio'ni GET bilan oladi)
   kalit     String
   sid       String?
