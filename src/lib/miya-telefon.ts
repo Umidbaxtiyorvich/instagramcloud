@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { SignJWT, jwtVerify } from "jose";
-import { toFile } from "openai";
+import OpenAI, { toFile } from "openai";
 import type { Qongiroq } from "@prisma/client";
 import { prisma } from "./db";
 import { randomToken } from "./crypto";
@@ -98,16 +98,29 @@ export async function ovozYasa(kalit: string, matn: string) {
   return b;
 }
 
+// Ovozni matnga o'giradi. OpenAI so'rovni rad etsa (400 — til yoki model qabul qilinmasa),
+// tilsiz, keyin whisper-1 bilan qayta urinadi
 async function matngaOgir(ovoz: Uint8Array, nom = "javob.mp3", tur = "audio/mpeg") {
   const client = openai();
   if (!client) throw new Error("OPENAI_API_KEY yo'q");
-  const r = await client.audio.transcriptions.create({
-    file: await toFile(ovoz, nom, { type: tur }),
-    model: process.env.TELEFON_STT_MODEL?.trim() || "gpt-4o-transcribe",
-    // prompt berilmaydi: ovoz noaniq bo'lsa, model prompt so'zlarini «eshitib» qo'yadi
-    language: "uz",
-  });
-  return r.text.trim();
+  const asosiy = process.env.TELEFON_STT_MODEL?.trim() || "gpt-4o-transcribe";
+  let xato: unknown;
+  for (const [model, til] of [[asosiy, "uz"], [asosiy, undefined], ["whisper-1", "uz"], ["whisper-1", undefined]] as const) {
+    try {
+      const r = await client.audio.transcriptions.create({
+        file: await toFile(ovoz, nom, { type: tur }),
+        model,
+        // prompt berilmaydi: ovoz noaniq bo'lsa, model prompt so'zlarini «eshitib» qo'yadi
+        ...(til ? { language: til } : {}),
+      });
+      return r.text.trim();
+    } catch (e) {
+      xato = e;
+      console.error(`telefon STT (${model}${til ? `/${til}` : ""}):`, e instanceof Error ? e.message : e);
+      if (!(e instanceof OpenAI.BadRequestError)) break;
+    }
+  }
+  throw xato;
 }
 
 // ---------- suhbat ----------

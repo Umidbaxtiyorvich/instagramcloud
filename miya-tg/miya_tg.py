@@ -133,15 +133,25 @@ def wav(pcm: bytes, tezlik: int = TEZLIK) -> bytes:
 
 
 async def matnga(pcm: bytes, tezlik: int = TEZLIK) -> str:
-    f = FormData()
-    f.add_field("file", wav(pcm, tezlik), filename="gap.wav", content_type="audio/wav")
-    f.add_field("model", STT_MODEL)
-    f.add_field("language", "uz")
-    async with H.http.post(f"{OPENAI_URL}/audio/transcriptions", headers={"Authorization": f"Bearer {OPENAI_KEY}"}, data=f) as r:
-        j = await r.json(content_type=None)
-        if r.status >= 400:
-            raise RuntimeError(f"STT: HTTP {r.status}")
-        return str(j.get("text", "")).strip()
+    """Ovozni matnga o'giradi. OpenAI rad etsa (masalan, til yoki model qabul qilinmasa) —
+    tilsiz, keyin whisper-1 bilan qayta urinadi."""
+    audio = wav(pcm, tezlik)
+    xato = ""
+    for model, til in ((STT_MODEL, "uz"), (STT_MODEL, None), ("whisper-1", "uz"), ("whisper-1", None)):
+        f = FormData()
+        f.add_field("file", audio, filename="gap.wav", content_type="audio/wav")
+        f.add_field("model", model)
+        if til:
+            f.add_field("language", til)
+        async with H.http.post(f"{OPENAI_URL}/audio/transcriptions", headers={"Authorization": f"Bearer {OPENAI_KEY}"}, data=f) as r:
+            j = await r.json(content_type=None)
+            if r.status < 400:
+                return str(j.get("text", "")).strip()
+            xato = f"{model}{'/' + til if til else ''}: HTTP {r.status} {str((j.get('error') or {}).get('message', ''))[:160]}"
+            log.info("STT rad etdi — %s", xato)
+            if r.status != 400:
+                break
+    raise RuntimeError(f"STT: {xato}")
 
 
 def rms(pcm: bytes) -> float:
