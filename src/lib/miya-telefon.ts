@@ -87,9 +87,9 @@ export async function ovozYasa(kalit: string, matn: string) {
   if (!client) throw new Error("OPENAI_API_KEY yo'q");
   const r = await client.audio.speech.create({
     model: process.env.TELEFON_TTS_MODEL?.trim() || "gpt-4o-mini-tts",
-    voice: (process.env.TELEFON_OVOZ?.trim() || "coral") as "coral",
+    voice: (process.env.TELEFON_OVOZ?.trim() || "onyx") as "onyx",
     input: matn.slice(0, 1500),
-    instructions: "O'zbek tilida, Toshkent talaffuzida gapiring. Samimiy, xotirjam va aniq — telefonda hamkasbga gapirgandek. Tez gapirmang.",
+    instructions: "Erkak kishi ovozida, o'zbek tilida, Toshkent talaffuzida gapiring. Samimiy, xotirjam va aniq — telefonda hamkasbga gapirgandek. Tez gapirmang.",
     response_format: "mp3",
   });
   const b = new Uint8Array(await r.arrayBuffer());

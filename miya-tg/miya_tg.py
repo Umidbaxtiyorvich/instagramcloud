@@ -46,7 +46,7 @@ OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 TTS_MODEL = os.environ.get("TELEFON_TTS_MODEL", "gpt-4o-mini-tts")
 STT_MODEL = os.environ.get("TELEFON_STT_MODEL", "gpt-4o-transcribe")
-OVOZ = os.environ.get("TELEFON_OVOZ", "coral")
+OVOZ = os.environ.get("TELEFON_OVOZ", "onyx")  # erkak ovozi
 SAYT = f"http://127.0.0.1:{os.environ.get('PORT', '3000')}"
 PORT = int(os.environ.get("MIYA_TG_PORT", "8790"))
 # sayt bilan umumiy kalit (src/lib/miya-tg.ts dagi ichkiKalit bilan bir xil)
@@ -113,7 +113,7 @@ async def ovoz(matn: str) -> bytes:
             "model": TTS_MODEL,
             "voice": OVOZ,
             "input": matn[:1500],
-            "instructions": "O'zbek tilida, Toshkent talaffuzida gapiring. Samimiy, xotirjam va aniq — telefonda gaplashgandek.",
+            "instructions": "Erkak kishi ovozida, o'zbek tilida, Toshkent talaffuzida gapiring. Samimiy, xotirjam va aniq — telefonda gaplashgandek.",
             "response_format": "pcm",
         },
     ) as r:
