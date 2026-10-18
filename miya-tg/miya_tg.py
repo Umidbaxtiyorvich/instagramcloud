@@ -58,6 +58,11 @@ KALIT = hashlib.sha256(f"{os.environ.get('AUTH_SECRET', 'dev-auth-secret-change-
 TEZLIK = 24000
 SIFAT = AudioQuality.LOW  # (24000, 1)
 
+# Gemini — o'zbekcha nutqni OpenAI'dan yaxshi taniydi; kalit bo'lsa «quloq» shu bo'ladi
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.environ.get("GEMINI_STT_MODEL", "gemini-2.5-flash")
+GEMINI_URL = os.environ.get("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
+
 # OpenAI Realtime: eshitish, o'ylash va gapirish bitta jonli ulanishda (odamdek tez). O'chirish: TELEFON_REALTIME=0
 JONLI = os.environ.get("TELEFON_REALTIME", "1") != "0"
 JONLI_MODEL = os.environ.get("TELEFON_REALTIME_MODEL", "gpt-realtime")
@@ -158,6 +163,11 @@ async def matnga(pcm: bytes, tezlik: int = TEZLIK) -> str:
     tilsiz, keyin whisper-1 bilan qayta urinadi."""
     global STT_BOSHI
     audio = wav(pcm, tezlik)
+    if GEMINI_KEY:
+        try:
+            return await gemini_matn(audio)
+        except Exception as e:  # noqa: BLE001
+            log.info("Gemini tanimadi, OpenAI bilan: %s", e)
     xato = ""
     variantlar = ((STT_MODEL, "uz"), (STT_MODEL, None), ("whisper-1", "uz"), ("whisper-1", None))
     # oldin ishlagan variantdan boshlaymiz — har gapda rad etiladigan so'rovga vaqt ketmasin
@@ -199,6 +209,30 @@ def gaplarga(matn: str) -> list[str]:
     if len(gaplar) <= 1:
         return gaplar or [matn]
     return [gaplar[0], " ".join(gaplar[1:])]
+
+
+GEMINI_KORSATMA = (
+    "Bu audio — o'zbek tilidagi telefon suhbatidan parcha (ba'zan ruscha so'zlar aralashgan). "
+    "Aytilgan so'zlarni aynan o'zbek lotin yozuvida yozing. Tarjima qilmang, hech narsa qo'shmang, izoh bermang — faqat matnning o'zi. "
+    "Nutq bo'lmasa yoki umuman tushunarsiz bo'lsa — hech narsa yozmang."
+)
+
+
+async def gemini_matn(audio: bytes, mime: str = "audio/wav") -> str:
+    import base64
+
+    body = {
+        "contents": [{"parts": [{"text": GEMINI_KORSATMA}, {"inline_data": {"mime_type": mime, "data": base64.b64encode(audio).decode()}}]}],
+        "generationConfig": {"temperature": 0, "thinkingConfig": {"thinkingBudget": 0}},
+    }
+    async with H.http.post(
+        f"{GEMINI_URL}/models/{GEMINI_MODEL}:generateContent", headers={"x-goog-api-key": GEMINI_KEY}, json=body
+    ) as r:
+        j = await r.json(content_type=None)
+        if r.status >= 400:
+            raise RuntimeError(f"Gemini HTTP {r.status}: {str((j.get('error') or {}).get('message', ''))[:160]}")
+    parts = (((j.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
+    return " ".join(p.get("text", "") for p in parts).strip()
 
 
 def rms(pcm: bytes) -> float:
@@ -391,12 +425,71 @@ class Jonli:
         self.kadr_bufer = bytearray()
         self.boshlandi = False
         self.salom_aytildi = False
+        # Gemini rejimi: gap tugashini o'zimiz sezamiz, Gemini matnga o'giradi, Realtime'ga matn boradi
+        self.gemini = bool(GEMINI_KEY)
+        self.gaplar: asyncio.Queue[bytes] = asyncio.Queue()
+        self.vad_bufer = bytearray()
+        self.vad_gapirdi = False
+        self.vad_oxirgi = 0.0
+        self.vad_baland = 0
+        self.shovqin = 0.003
+
+    def vad(self, pcm: bytes):
+        """Egasi qachon gapirib, qachon to'xtaganini sezish (Gemini rejimi)."""
+        hozir = time.monotonic()
+        d = rms(pcm)
+        chegara = max(0.01, self.shovqin * 3)
+        if d < chegara:
+            self.shovqin = self.shovqin * 0.97 + d * 0.03
+            self.vad_baland = 0
+        else:
+            self.vad_baland += 1
+            self.vad_oxirgi = hozir
+            # Miya gapirayotganda egasi 0.25 s gapirsa — Miyani to'xtatamiz
+            if self.gapiryapti and self.vad_baland == 25:
+                asyncio.create_task(self.uz())
+            if not self.vad_gapirdi and self.vad_baland >= 3:
+                self.vad_gapirdi = True
+        if self.vad_gapirdi:
+            self.vad_bufer += pcm
+            if hozir - self.vad_oxirgi > 0.8 or len(self.vad_bufer) > TEZLIK * 2 * 30:
+                self.gaplar.put_nowait(bytes(self.vad_bufer))
+                self.vad_bufer = bytearray()
+                self.vad_gapirdi = False
+
+    async def eshit(self):
+        """Gemini rejimi: har bir gapni matnga o'girib, Realtime'ga beradi — u ovoz bilan javob qaytaradi."""
+        while not self.tugadi.is_set():
+            pcm = await self.gaplar.get()
+            if len(pcm) < TEZLIK * 2 * 0.3:
+                continue
+            try:
+                matn = await matnga(pcm)
+            except Exception as e:  # noqa: BLE001
+                await izoh(self.q, f"🔧 ovoz tanilmadi: {str(e)[:150]}")
+                matn = ""
+            if not matn:
+                await self.ws.send_json(
+                    {"type": "response.create", "response": {"instructions": "Egasining gapi eshitilmadi. Qisqa qilib qaytadan aytishini so'rang."}}
+                )
+                continue
+            try:
+                await sayt("yoz", q=self.q, kim="men", matn=matn)
+            except Exception:  # noqa: BLE001
+                pass
+            await self.ws.send_json(
+                {"type": "conversation.item.create", "item": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": matn}]}}
+            )
+            await self.ws.send_json({"type": "response.create"})
 
     # Telegram'dan kelgan ovoz (10 ms kadrlar) — 100 ms dan yig'ib yuboriladi
     def kadrlar(self, pcm: bytes):
         if not self.kadr_soni:
             asyncio.create_task(izoh(self.q, f"🔧 ovozingiz kela boshladi: kadr {len(pcm)} bayt"))
         self.kadr_soni += 1
+        if self.gemini:
+            self.vad(pcm)
+            return
         self.kadr_bufer += pcm
         if len(self.kadr_bufer) >= TEZLIK * 2 // 10:
             self.kirish.put_nowait(bytes(self.kadr_bufer))
@@ -479,12 +572,16 @@ class Jonli:
                     "model": JONLI_MODEL,
                     "instructions": ko,
                     "audio": {
-                        "input": {
-                            "format": {"type": "audio/pcm", "rate": TEZLIK},
-                            "turn_detection": {"type": "server_vad", "silence_duration_ms": 550, "prefix_padding_ms": 300},
-                            "transcription": {"model": "gpt-4o-transcribe"},
-                            "noise_reduction": {"type": "near_field"},
-                        },
+                        "input": (
+                            {"format": {"type": "audio/pcm", "rate": TEZLIK}, "turn_detection": None}
+                            if self.gemini
+                            else {
+                                "format": {"type": "audio/pcm", "rate": TEZLIK},
+                                "turn_detection": {"type": "server_vad", "silence_duration_ms": 550, "prefix_padding_ms": 300},
+                                "transcription": {"model": "gpt-4o-transcribe"},
+                                "noise_reduction": {"type": "near_field"},
+                            }
+                        ),
                         "output": {"format": {"type": "audio/pcm", "rate": TEZLIK}, "voice": OVOZ},
                     },
                     "tools": JONLI_VOSITALAR,
@@ -499,8 +596,8 @@ class Jonli:
                 "voice": OVOZ,
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
-                "input_audio_transcription": {"model": "whisper-1"},
-                "turn_detection": {"type": "server_vad", "silence_duration_ms": 550},
+                "input_audio_transcription": None if self.gemini else {"model": "whisper-1"},
+                "turn_detection": None if self.gemini else {"type": "server_vad", "silence_duration_ms": 550},
                 "tools": JONLI_VOSITALAR,
                 "tool_choice": "auto",
             },
@@ -518,8 +615,8 @@ class Jonli:
             ga = True
             await self.ws.send_json(self.sessiya(kontekst, ga))
             await H.calls.record(self.user_id, RecordStream(audio=True, audio_parameters=SIFAT))
-            vazifalar = [asyncio.create_task(self.yubor()), asyncio.create_task(self.ijrochi())]
-            await izoh(self.q, f"🔧 jonli suhbat ({JONLI_MODEL}) ulandi")
+            vazifalar = [asyncio.create_task(self.eshit() if self.gemini else self.yubor()), asyncio.create_task(self.ijrochi())]
+            await izoh(self.q, f"🔧 jonli suhbat ({JONLI_MODEL}{', quloq: Gemini' if self.gemini else ''}) ulandi")
             await self.ws.send_json(
                 {"type": "response.create", "response": {"instructions": f"Egasiga aynan shu so'zlar bilan, jonli ohangda salom bering: {self.ochilish}"}}
             )

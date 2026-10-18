@@ -98,9 +98,38 @@ export async function ovozYasa(kalit: string, matn: string) {
   return b;
 }
 
-// Ovozni matnga o'giradi. OpenAI so'rovni rad etsa (400 — til yoki model qabul qilinmasa),
+// Gemini o'zbekcha nutqni OpenAI'dan yaxshi taniydi — GEMINI_API_KEY bo'lsa birinchi u eshitadi
+const GEMINI_KORSATMA =
+  "Bu audio — o'zbek tilidagi suhbatdan parcha (ba'zan ruscha so'zlar aralashgan). Aytilgan so'zlarni aynan o'zbek lotin " +
+  "yozuvida yozing. Tarjima qilmang, hech narsa qo'shmang, izoh bermang — faqat matnning o'zi. Nutq bo'lmasa — hech narsa yozmang.";
+
+async function geminiMatn(ovoz: Uint8Array, tur: string) {
+  const kalit = process.env.GEMINI_API_KEY?.trim();
+  if (!kalit) return null;
+  const model = process.env.GEMINI_STT_MODEL?.trim() || "gemini-2.5-flash";
+  const r = await fetch(`${process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta"}/models/${model}:generateContent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": kalit },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: GEMINI_KORSATMA }, { inline_data: { mime_type: tur.split(";")[0], data: Buffer.from(ovoz).toString("base64") } }] }],
+      generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const j = (await r.json().catch(() => ({}))) as { candidates?: { content?: { parts?: { text?: string }[] } }[]; error?: { message?: string } };
+  if (!r.ok) throw new Error(`Gemini HTTP ${r.status}: ${j.error?.message ?? ""}`.slice(0, 200));
+  return (j.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join(" ").trim();
+}
+
+// Ovozni matnga o'giradi: avval Gemini (bo'lsa); OpenAI so'rovni rad etsa (400 — til yoki model qabul qilinmasa),
 // tilsiz, keyin whisper-1 bilan qayta urinadi
 async function matngaOgir(ovoz: Uint8Array, nom = "javob.mp3", tur = "audio/mpeg") {
+  try {
+    const g = await geminiMatn(ovoz, tur);
+    if (g !== null) return g;
+  } catch (e) {
+    console.error("telefon STT (Gemini):", e instanceof Error ? e.message : e);
+  }
   const client = openai();
   if (!client) throw new Error("OPENAI_API_KEY yo'q");
   const asosiy = process.env.TELEFON_STT_MODEL?.trim() || "gpt-4o-transcribe";

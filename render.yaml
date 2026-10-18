@@ -31,6 +31,9 @@ services:
         sync: false
       - key: INSTAGRAM_APP_SECRET
         sync: false
+      # O'zbekcha nutqni tanish: aistudio.google.com → Get API key
+      - key: GEMINI_API_KEY
+        sync: false
       # Miya'ning Telegram akkaunti (haqiqiy qo'ng'iroqlar): my.telegram.org → API development tools
       - key: TG_API_ID
         sync: false
