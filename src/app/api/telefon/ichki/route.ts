@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { randomToken } from "@/lib/crypto";
 import { ichkiKalit, ruxsatRaqam, sessiyaOl, sessiyaSaqla, tgEgasi } from "@/lib/miya-tg";
-import { matnniIshla, salomMatni, suhbatOl, xatoGap } from "@/lib/miya-telefon";
+import { gapYoz, jonliKontekst, matnniIshla, salomMatni, suhbatOl, vositaJavob, xatoGap } from "@/lib/miya-telefon";
 import { botOtkazildi, botXabar } from "@/lib/miya-bot";
 
 // Faqat miya-tg (shu serverdagi Telegram qo'ng'iroq dasturi) uchun
@@ -20,6 +20,9 @@ const Amal = z.discriminatedUnion("amal", [
   z.object({ amal: z.literal("javobsiz"), q: z.string().max(64), xato: z.string().max(300).optional() }),
   z.object({ amal: z.literal("izoh"), q: z.string().max(64), matn: z.string().max(300) }),
   z.object({ amal: z.literal("begona"), ism: z.string().max(200) }),
+  z.object({ amal: z.literal("jonli_boshla"), q: z.string().max(64) }),
+  z.object({ amal: z.literal("jonli_ish"), q: z.string().max(64), sorov: z.string().max(2000) }),
+  z.object({ amal: z.literal("yoz"), q: z.string().max(64), kim: z.enum(["miya", "men"]), matn: z.string().max(2000) }),
 ]);
 
 export async function POST(req: Request) {
@@ -68,6 +71,24 @@ export async function POST(req: Request) {
 
   const q = await prisma.qongiroq.findUnique({ where: { id: a.q } });
   if (!q) return NextResponse.json({ error: "Qo'ng'iroq topilmadi" }, { status: 404 });
+
+  // Realtime (jonli ovoz) suhbati: boshida kontekst, o'rtada ma'lumot/ish so'rovlari, gaplar tarixga
+  if (a.amal === "jonli_boshla") {
+    if (q.holat === "boshlandi") await prisma.qongiroq.update({ where: { id: q.id }, data: { holat: "gaplashmoqda" } });
+    return NextResponse.json({ kontekst: await jonliKontekst(q.id) });
+  }
+  if (a.amal === "jonli_ish") {
+    try {
+      return NextResponse.json({ javob: await vositaJavob(q.id, a.sorov) });
+    } catch (e) {
+      console.error("miya-tg jonli_ish:", e);
+      return NextResponse.json({ javob: `Xatolik: ${e instanceof Error ? e.message.slice(0, 200) : "noma'lum"}` });
+    }
+  }
+  if (a.amal === "yoz") {
+    await gapYoz(q.id, a.kim, a.matn);
+    return NextResponse.json({ ok: true });
+  }
 
   // texnik qayd: Telefon bo'limidagi qo'ng'iroq tarixida ko'rinadi
   if (a.amal === "izoh") {

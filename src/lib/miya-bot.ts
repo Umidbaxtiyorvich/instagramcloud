@@ -4,7 +4,7 @@ import { prisma } from "./db";
 import { randomToken } from "./crypto";
 import { openai } from "./ofis-openai";
 import { sayt } from "./twilio";
-import { gapniIshla, matnniIshla, qongiroqToken, salomMatni, suhbatOl, tgChaqir, xatoGap } from "./miya-telefon";
+import { gapniIshla, matnniIshla, qongiroqToken, sababToza, salomMatni, suhbatOl, tgChaqir, xatoGap } from "./miya-telefon";
 
 // Miya'ning Telegram boti (BotFather'dan olingan MIYA_BOT_TOKEN). Telegram bot orqali oddiy qo'ng'iroq
 // qilib bo'lmaydi, shuning uchun «qo'ng'iroq» — bot xabari + tugma: bosilsa, Telegram ichida qo'ng'iroq
@@ -121,7 +121,7 @@ export async function botOtkazildi(q: Qongiroq) {
   if (!chat) return;
   await tg("sendMessage", {
     chat_id: chat,
-    text: `📵 Miya soat ${soatMatn(q.createdAt)} da qo'ng'iroq qilgandi — javob bermadingiz.\n\nSabab: ${q.sabab}`.slice(0, 1500),
+    text: `📵 Miya soat ${soatMatn(q.createdAt)} da qo'ng'iroq qilgandi — javob bermadingiz.\n\nSabab: ${sababToza(q.sabab)}`.slice(0, 1500),
     reply_markup: { inline_keyboard: [[{ text: "📞 Qayta qo'ng'iroq qilish", callback_data: `qayta:${q.id}` }]] },
   }).catch((e) => console.error("miya bot:", e));
 }

@@ -180,9 +180,16 @@ const JAVOB_SXEMA = {
   properties: { javob: { type: "string" }, tugat: { type: "boolean" } },
 };
 
-async function javobBer(q: Qongiroq): Promise<{ javob: string; tugat: boolean }> {
-  const client = openai();
-  if (!client) throw new Error("OPENAI_API_KEY yo'q");
+// qo'ng'iroq sababi (texnik 🔧/⚠️ qaydlarsiz)
+export const sababToza = (sabab: string) =>
+  sabab
+    .split("\n")
+    .filter((l) => !/^(🔧|⚠️)/.test(l))
+    .join(" ")
+    .trim();
+
+// Miya'ga egasi haqida va biznes holati haqida beriladigan kontekst (suhbatdan tashqari)
+async function kontekstYig(q: Qongiroq) {
   const userId = q.userId;
   const [user, akk, xotira, fikrlar, tasdiqlar, xabarlar, qongiroqlar] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
@@ -201,7 +208,7 @@ async function javobBer(q: Qongiroq): Promise<{ javob: string; tugat: boolean }>
   const moliyaBor = moliyaRuxsat(user?.email) && (mh.cloudshop || mh.bot);
   const kontekst = [
     `Hozir Toshkentda: ${soat().matn}.`,
-    q.yonalish === "chiquvchi" ? `Siz egasiga o'zingiz qo'ng'iroq qildingiz. Sabab: ${q.sabab}` : "Egasi o'zi sizga qo'ng'iroq qildi.",
+    q.yonalish === "chiquvchi" ? `Siz egasiga o'zingiz qo'ng'iroq qildingiz. Sabab: ${sababToza(q.sabab)}` : "Egasi o'zi sizga qo'ng'iroq qildi.",
     xotira ? `Egasi haqida:\n${xotira.profil.slice(0, 1500)}` : "",
     akk ? `Instagram: @${akk.username}, ${akk.followersCount} obunachi.` : "Instagram ulanmagan.",
     fikrlar.length ? `Javob kutayotgan Miya takliflari:\n${fikrlar.map((f) => `- id=${f.id} | ${f.sarlavha} — ${f.fikr.slice(0, 200)}`).join("\n")}` : "",
@@ -209,13 +216,38 @@ async function javobBer(q: Qongiroq): Promise<{ javob: string; tugat: boolean }>
     xabarlar.length ? `Miya oxirgi topgan muammolar:\n${xabarlar.map((x) => `- ${x.matn.split("\n").slice(0, 3).join(" ").slice(0, 300)}`).join("\n")}` : "",
     qongiroqlar.length
       ? `So'nggi 2 kunda siz egasiga qilgan qo'ng'iroqlar («nega qo'ng'iroq qilding?» deb so'rasa — shundan ayting):\n${qongiroqlar
-          .map((c) => `- ${new Date(c.createdAt.getTime() + TZ).toISOString().slice(5, 16).replace("T", " ")} (${c.holat === "javobsiz" ? "javob bermadi" : c.holat}): ${c.sabab}`)
+          .map((c) => `- ${new Date(c.createdAt.getTime() + TZ).toISOString().slice(5, 16).replace("T", " ")} (${c.holat === "javobsiz" ? "javob bermadi" : c.holat}): ${sababToza(c.sabab)}`)
           .join("\n")}`
       : "",
-    `Suhbat:\n${suhbatOl(q).map((g) => `${g.kim === "miya" ? "Miya" : "Egasi"}: ${g.matn}`).join("\n")}`,
   ]
     .filter(Boolean)
     .join("\n\n");
+  return { kontekst, akk, moliyaBor, userId };
+}
+
+// Realtime (jonli ovozli) suhbat boshida modelga beriladigan ko'rsatma
+export async function jonliKontekst(qId: string) {
+  const q = await prisma.qongiroq.findUniqueOrThrow({ where: { id: qId } });
+  const { kontekst } = await kontekstYig(q);
+  return kontekst;
+}
+
+// Realtime model ma'lumot yoki ish so'raganda: saytdagi Miya vositalar bilan bajaradi, natijani matn qilib qaytaradi
+export async function vositaJavob(qId: string, sorov: string) {
+  const q = await prisma.qongiroq.findUniqueOrThrow({ where: { id: qId } });
+  const bilan = { ...q, suhbat: JSON.stringify([...suhbatOl(q), { kim: "men", matn: sorov }]) };
+  return (await javobBer(bilan)).javob;
+}
+
+export async function gapYoz(qId: string, kim: Gap["kim"], matn: string) {
+  if (matn.trim()) await gapQosh(qId, [{ kim, matn: matn.trim().slice(0, 2000) }]);
+}
+
+async function javobBer(q: Qongiroq): Promise<{ javob: string; tugat: boolean }> {
+  const client = openai();
+  if (!client) throw new Error("OPENAI_API_KEY yo'q");
+  const { kontekst: asos, akk, moliyaBor, userId } = await kontekstYig(q);
+  const kontekst = `${asos}\n\nSuhbat:\n${suhbatOl(q).map((g) => `${g.kim === "miya" ? "Miya" : "Egasi"}: ${g.matn}`).join("\n")}`;
 
   const bajar = async (nom: string, k: Record<string, unknown>) => {
     if (nom === "tasdiq_qaror") {

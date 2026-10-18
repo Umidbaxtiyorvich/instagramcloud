@@ -58,6 +58,11 @@ KALIT = hashlib.sha256(f"{os.environ.get('AUTH_SECRET', 'dev-auth-secret-change-
 TEZLIK = 24000
 SIFAT = AudioQuality.LOW  # (24000, 1)
 
+# OpenAI Realtime: eshitish, o'ylash va gapirish bitta jonli ulanishda (odamdek tez). O'chirish: TELEFON_REALTIME=0
+JONLI = os.environ.get("TELEFON_REALTIME", "1") != "0"
+JONLI_MODEL = os.environ.get("TELEFON_REALTIME_MODEL", "gpt-realtime")
+JONLI_URL = OPENAI_URL.replace("https://", "wss://").replace("http://", "ws://") + "/realtime"
+
 MAX_QONGIROQ = 10 * 60
 JAVOB_KUTISH = 40  # chiquvchi qo'ng'iroq shuncha soniya jiringlaydi
 
@@ -342,6 +347,242 @@ class Suhbat:
             await tugat(self.user_id)
 
 
+# ---------- jonli (Realtime) suhbat ----------
+
+JONLI_TIZIM = """Siz «Miya»siz — egasining biznesini (Instagram, CloudShop do'koni) kuzatib boradigan yordamchi. Hozir egasi bilan
+TELEFONDA, jonli gaplashyapsiz. Xuddi tirik odamdek gapiring: o'zbek tilida (lotin talaffuzi, Toshkent shevasi), samimiy, jonli,
+qisqa — 1-2 jumla. Umumiy gaplar yo'q, aniq javob bering. Egasi gapingizni bo'lsa — to'xtab, uni tinglang.
+Biznes ma'lumoti (Instagram statistikasi, kommentlar, Direct, kassa, qarz, tovar) kerak bo'lsa yoki biror ish qilish kerak bo'lsa
+(kommentga javob, qoida, tasdiqlash, Reels) — «miya» vositasini chaqiring, egasining so'rovini aniq yozing, natijasini qisqa ayting.
+O'ylab topmang. Instagram'ga yozadigan ishni bajarishdan oldin nima qilinishini aytib, «ha» oling.
+Egasi xayrlashsa — qisqa xayrlashing va «tugat» vositasini chaqiring."""
+
+JONLI_VOSITALAR = [
+    {
+        "type": "function",
+        "name": "miya",
+        "description": "Biznes ma'lumotini olish yoki ish bajarish (Instagram, kassa, qarz, tovar, qoidalar, tasdiqlar). sorov — egasi nima so'ragani, aniq.",
+        "parameters": {"type": "object", "properties": {"sorov": {"type": "string"}}, "required": ["sorov"]},
+    },
+    {"type": "function", "name": "tugat", "description": "Suhbat tugadi — go'shakni qo'yish.", "parameters": {"type": "object", "properties": {}}},
+]
+
+
+class Jonli:
+    """OpenAI Realtime bilan jonli ovozli suhbat: egasining ovozi uzluksiz yuboriladi, model o'zi gap tugaganini
+    sezadi va darhol ovoz bilan javob beradi; egasi gapini bo'lsa — Miya to'xtaydi."""
+
+    def __init__(self, user_id: int, q: str, ochilish: str):
+        self.user_id = user_id
+        self.q = q
+        self.ochilish = ochilish
+        self.tugadi = asyncio.Event()
+        self.ws = None
+        self.kirish: asyncio.Queue[bytes] = asyncio.Queue()
+        self.navbat: asyncio.Queue[bytes] = asyncio.Queue()
+        self.bolak = bytearray()
+        self.uzildi = asyncio.Event()
+        self.gapiryapti = False
+        self.yopilsin = False
+        self.kadr_soni = 0
+        self.kadr_bufer = bytearray()
+        self.boshlandi = False
+        self.salom_aytildi = False
+
+    # Telegram'dan kelgan ovoz (10 ms kadrlar) — 100 ms dan yig'ib yuboriladi
+    def kadrlar(self, pcm: bytes):
+        if not self.kadr_soni:
+            asyncio.create_task(izoh(self.q, f"🔧 ovozingiz kela boshladi: kadr {len(pcm)} bayt"))
+        self.kadr_soni += 1
+        self.kadr_bufer += pcm
+        if len(self.kadr_bufer) >= TEZLIK * 2 // 10:
+            self.kirish.put_nowait(bytes(self.kadr_bufer))
+            self.kadr_bufer = bytearray()
+
+    async def yubor(self):
+        import base64
+
+        while not self.tugadi.is_set():
+            pcm = await self.kirish.get()
+            if self.ws is not None and not self.ws.closed:
+                await self.ws.send_json({"type": "input_audio_buffer.append", "audio": base64.b64encode(pcm).decode()})
+
+    # Miya ovozi: bo'laklar navbat bilan ijro etiladi
+    async def ijrochi(self):
+        while not self.tugadi.is_set():
+            pcm = await self.navbat.get()
+            oqim, yol = fayl_oqim(pcm)
+            self.gapiryapti = True
+            try:
+                await H.calls.play(self.user_id, oqim)
+                self.uzildi.clear()
+                try:
+                    await asyncio.wait_for(self.uzildi.wait(), timeout=len(pcm) / (TEZLIK * 2))
+                except asyncio.TimeoutError:
+                    pass
+            finally:
+                try:
+                    os.unlink(yol)
+                except OSError:
+                    pass
+                if self.navbat.empty():
+                    self.gapiryapti = False
+
+    def chiqar(self, hammasi: bool = False):
+        # birinchi bo'lak tez chiqsin (0.6 s), keyingilari kattaroq
+        chegara = TEZLIK * 2 * (0.6 if not self.gapiryapti and self.navbat.empty() else 2.0)
+        if self.bolak and (hammasi or len(self.bolak) >= chegara):
+            self.navbat.put_nowait(bytes(self.bolak))
+            self.bolak = bytearray()
+
+    async def uz(self):
+        """Egasi gapira boshladi — Miya darhol jim bo'ladi."""
+        self.bolak = bytearray()
+        while not self.navbat.empty():
+            self.navbat.get_nowait()
+        if self.gapiryapti:
+            self.uzildi.set()
+            oqim, yol = fayl_oqim(b"\0" * 4800)
+            try:
+                await H.calls.play(self.user_id, oqim)
+            finally:
+                asyncio.get_running_loop().call_later(5, lambda: os.path.exists(yol) and os.unlink(yol))
+            if self.ws is not None:
+                await self.ws.send_json({"type": "response.cancel"})
+
+    async def vosita(self, nom: str, call_id: str, argumentlar: str):
+        import json
+
+        if nom == "tugat":
+            natija = "ok"
+        else:
+            try:
+                sorov = json.loads(argumentlar or "{}").get("sorov", "")
+                await izoh(self.q, f"🔧 ma'lumot so'radi: {sorov[:120]}")
+                natija = (await sayt("jonli_ish", q=self.q, sorov=sorov)).get("javob", "")
+            except Exception as e:  # noqa: BLE001
+                natija = f"Xatolik: {e}"
+        await self.ws.send_json({"type": "conversation.item.create", "item": {"type": "function_call_output", "call_id": call_id, "output": natija[:4000]}})
+        if nom != "tugat":
+            await self.ws.send_json({"type": "response.create"})
+
+    def sessiya(self, kontekst: str, ga: bool):
+        ko = f"{JONLI_TIZIM}\n\n{kontekst}"
+        if ga:
+            return {
+                "type": "session.update",
+                "session": {
+                    "type": "realtime",
+                    "model": JONLI_MODEL,
+                    "instructions": ko,
+                    "audio": {
+                        "input": {
+                            "format": {"type": "audio/pcm", "rate": TEZLIK},
+                            "turn_detection": {"type": "server_vad", "silence_duration_ms": 550, "prefix_padding_ms": 300},
+                            "transcription": {"model": "gpt-4o-transcribe"},
+                            "noise_reduction": {"type": "near_field"},
+                        },
+                        "output": {"format": {"type": "audio/pcm", "rate": TEZLIK}, "voice": OVOZ},
+                    },
+                    "tools": JONLI_VOSITALAR,
+                    "tool_choice": "auto",
+                },
+            }
+        return {
+            "type": "session.update",
+            "session": {
+                "modalities": ["audio", "text"],
+                "instructions": ko,
+                "voice": OVOZ,
+                "input_audio_format": "pcm16",
+                "output_audio_format": "pcm16",
+                "input_audio_transcription": {"model": "whisper-1"},
+                "turn_detection": {"type": "server_vad", "silence_duration_ms": 550},
+                "tools": JONLI_VOSITALAR,
+                "tool_choice": "auto",
+            },
+        }
+
+    async def ishla(self):
+        import base64
+
+        vazifalar = []
+        try:
+            kontekst = (await sayt("jonli_boshla", q=self.q)).get("kontekst", "")
+            self.ws = await H.http.ws_connect(
+                f"{JONLI_URL}?model={JONLI_MODEL}", headers={"Authorization": f"Bearer {OPENAI_KEY}"}, heartbeat=20, max_msg_size=0
+            )
+            ga = True
+            await self.ws.send_json(self.sessiya(kontekst, ga))
+            await H.calls.record(self.user_id, RecordStream(audio=True, audio_parameters=SIFAT))
+            vazifalar = [asyncio.create_task(self.yubor()), asyncio.create_task(self.ijrochi())]
+            await izoh(self.q, f"🔧 jonli suhbat ({JONLI_MODEL}) ulandi")
+            await self.ws.send_json(
+                {"type": "response.create", "response": {"instructions": f"Egasiga aynan shu so'zlar bilan, jonli ohangda salom bering: {self.ochilish}"}}
+            )
+            async for msg in self.ws:
+                if self.tugadi.is_set():
+                    break
+                if msg.type != 1:  # TEXT
+                    if msg.type in (8, 256, 257, 258):  # CLOSE / CLOSING / CLOSED / ERROR
+                        break
+                    continue
+                e = msg.json()
+                t = e.get("type", "")
+                if t == "session.updated":
+                    self.boshlandi = True
+                elif t == "error":
+                    xabar = str((e.get("error") or {}).get("message", e))[:200]
+                    await izoh(self.q, f"🔧 Realtime: {xabar}")
+                    # yangi (GA) format qabul qilinmasa — eski (beta) formatda qayta
+                    if ga and not self.boshlandi:
+                        ga = False
+                        await self.ws.send_json(self.sessiya(kontekst, ga))
+                elif t == "input_audio_buffer.speech_started":
+                    await self.uz()
+                elif t in ("response.output_audio.delta", "response.audio.delta"):
+                    self.bolak += base64.b64decode(e.get("delta", ""))
+                    self.chiqar()
+                elif t in ("response.output_audio.done", "response.audio.done"):
+                    self.chiqar(hammasi=True)
+                elif t == "conversation.item.input_audio_transcription.completed":
+                    asyncio.create_task(sayt("yoz", q=self.q, kim="men", matn=e.get("transcript", "")))
+                elif t in ("response.output_audio_transcript.done", "response.audio_transcript.done"):
+                    # salom qo'ng'iroq yaratilganda yozilgan — takrorlamaymiz
+                    if self.salom_aytildi:
+                        asyncio.create_task(sayt("yoz", q=self.q, kim="miya", matn=e.get("transcript", "")))
+                    self.salom_aytildi = True
+                elif t == "response.function_call_arguments.done":
+                    if e.get("name") == "tugat":
+                        self.yopilsin = True  # shu javob tugashi bilan go'shakni qo'yamiz
+                    asyncio.create_task(self.vosita(e.get("name", ""), e.get("call_id", ""), e.get("arguments", "")))
+                elif t == "response.done" and self.yopilsin:
+                    self.chiqar(hammasi=True)
+                    while self.gapiryapti or not self.navbat.empty():
+                        await asyncio.sleep(0.2)
+                    break
+        except NotInCallError:
+            pass
+        except Exception as e:  # noqa: BLE001
+            log.exception("jonli: %s", e)
+            await izoh(self.q, f"🔧 jonli xato: {type(e).__name__}: {str(e)[:200]}")
+            if not self.boshlandi and not self.tugadi.is_set():
+                # Realtime ishlamadi — oddiy usulda davom etamiz
+                for v in vazifalar:
+                    v.cancel()
+                s = Suhbat(self.user_id, self.q, self.ochilish)
+                s.tugadi = self.tugadi
+                H.suhbatlar[self.user_id] = s
+                await s.ishla()
+                return
+        finally:
+            for v in vazifalar:
+                v.cancel()
+            if self.ws is not None and not self.ws.closed:
+                await self.ws.close()
+        await tugat(self.user_id)
+
+
 async def tugat(user_id: int):
     s = H.suhbatlar.pop(user_id, None)
     if not s:
@@ -354,7 +595,7 @@ async def tugat(user_id: int):
     await sayt("tugadi", q=s.q)
 
 
-async def ulan(user_id: int, s: "Suhbat", chiquvchi: bool):
+async def ulan(user_id: int, s, chiquvchi: bool):
     """Qo'ng'iroqni ulaydi (chiquvchida — jiringlatib kutadi), keyin suhbatni boshlaydi."""
     H.suhbatlar[user_id] = s
     oqim, yol = fayl_oqim(JIMLIK)
@@ -380,7 +621,11 @@ async def ulan(user_id: int, s: "Suhbat", chiquvchi: bool):
     asyncio.create_task(muddat(user_id, s))
 
 
-async def muddat(user_id: int, s: Suhbat):
+def yangi_suhbat(user_id: int, q: str, ochilish: str):
+    return Jonli(user_id, q, ochilish) if JONLI else Suhbat(user_id, q, ochilish)
+
+
+async def muddat(user_id: int, s):
     try:
         await asyncio.wait_for(s.tugadi.wait(), timeout=MAX_QONGIROQ)
     except asyncio.TimeoutError:
@@ -438,7 +683,7 @@ async def ishga_tushir(sessiya: str):
             except Exception:  # noqa: BLE001
                 pass
             return
-        await ulan(user_id, Suhbat(user_id, j["q"], j["salom"]), chiquvchi=False)
+        await ulan(user_id, yangi_suhbat(user_id, j["q"], j["salom"]), chiquvchi=False)
 
     @calls.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
     async def tashladi(_, u: ChatUpdate):
@@ -532,7 +777,7 @@ async def qongiroq(req: web.Request):
             {"error": "Miya akkaunti sizni hali tanimaydi — asosiy akkauntingizdan Miya akkauntiga bitta xabar yozing"},
             status=400,
         )
-    asyncio.create_task(ulan(user_id, Suhbat(user_id, b["q"], b["matn"]), chiquvchi=True))
+    asyncio.create_task(ulan(user_id, yangi_suhbat(user_id, b["q"], b["matn"]), chiquvchi=True))
     return web.json_response({"ok": True})
 
 
