@@ -3,9 +3,9 @@ import { timingSafeEqual } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { randomToken } from "@/lib/crypto";
-import { ichkiKalit, sessiyaOl, sessiyaSaqla } from "@/lib/miya-tg";
+import { ichkiKalit, sessiyaOl, sessiyaSaqla, tgEgasi } from "@/lib/miya-tg";
 import { matnniIshla, salomMatni, suhbatOl, xatoGap } from "@/lib/miya-telefon";
-import { botOtkazildi } from "@/lib/miya-bot";
+import { botOtkazildi, botXabar } from "@/lib/miya-bot";
 
 // Faqat miya-tg (shu serverdagi Telegram qo'ng'iroq dasturi) uchun
 export const maxDuration = 120;
@@ -17,6 +17,8 @@ const Amal = z.discriminatedUnion("amal", [
   z.object({ amal: z.literal("gap"), q: z.string().max(64), matn: z.string().max(2000) }),
   z.object({ amal: z.literal("tugadi"), q: z.string().max(64) }),
   z.object({ amal: z.literal("javobsiz"), q: z.string().max(64), xato: z.string().max(300).optional() }),
+  z.object({ amal: z.literal("izoh"), q: z.string().max(64), matn: z.string().max(300) }),
+  z.object({ amal: z.literal("begona"), ism: z.string().max(200) }),
 ]);
 
 export async function POST(req: Request) {
@@ -35,6 +37,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  // begona odam Miya akkauntiga qo'ng'iroq qilyapti — Miya ko'tarmaydi, egasiga aytadi
+  if (a.amal === "begona") {
+    const egasi = await tgEgasi();
+    if (egasi) await botXabar(egasi, `📞 ${a.ism} Miya raqamiga (Telegram) qo'ng'iroq qilyapti — Miya akkaunti ochilgan telefonda ko'tarishingiz mumkin.`);
+    return NextResponse.json({ ok: true });
+  }
+
   // egasi Miya akkauntiga o'zi qo'ng'iroq qildi (shaxsiy chatda chat id = foydalanuvchi id)
   if (a.amal === "kiruvchi") {
     const s = await prisma.miyaSozlama.findUnique({ where: { telegramChat: a.tgId } });
@@ -48,6 +57,12 @@ export async function POST(req: Request) {
 
   const q = await prisma.qongiroq.findUnique({ where: { id: a.q } });
   if (!q) return NextResponse.json({ error: "Qo'ng'iroq topilmadi" }, { status: 404 });
+
+  // texnik qayd: Telefon bo'limidagi qo'ng'iroq tarixida ko'rinadi
+  if (a.amal === "izoh") {
+    await prisma.qongiroq.update({ where: { id: q.id }, data: { sabab: `${q.sabab}\n${a.matn}`.trim().slice(-3000) } });
+    return NextResponse.json({ ok: true });
+  }
 
   if (a.amal === "gap") {
     if (q.holat === "boshlandi") await prisma.qongiroq.update({ where: { id: q.id }, data: { holat: "gaplashmoqda" } });

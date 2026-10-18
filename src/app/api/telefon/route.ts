@@ -7,7 +7,7 @@ import { openai } from "@/lib/ofis-openai";
 import { miyaRaqami, raqamTozala, raqamniSozla, twilioSozlangan } from "@/lib/twilio";
 import { moliyaRuxsat } from "@/lib/ofis-moliya";
 import { botBor, botSozla, ulashHavolasi } from "@/lib/miya-bot";
-import { tgHolat, tgKirish, tgKod } from "@/lib/miya-tg";
+import { tgEgasiSaqla, tgHolat, tgKirish, tgKod } from "@/lib/miya-tg";
 import { kodTekshir, kodYubor, miyaQongiroq, salomMatni, suhbatOl, tgChaqir, xesh } from "@/lib/miya-telefon";
 
 // Miya → Telefon sozlamalari: raqamni qo'ng'iroq bilan tasdiqlash, PIN, qachon qo'ng'iroq qilish, tarix
@@ -81,6 +81,7 @@ export async function POST(req: Request) {
         await tgKod(tel);
       } else {
         const r = await tgKirish(a.kod.replace(/\D/g, ""), a.parol || undefined);
+        await tgEgasiSaqla(user.id);
         return NextResponse.json({ ok: true, men: r.men });
       }
       return NextResponse.json({ ok: true });

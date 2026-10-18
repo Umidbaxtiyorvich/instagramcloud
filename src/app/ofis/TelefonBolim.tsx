@@ -327,7 +327,14 @@ export default function TelefonBolim() {
               <b>{g.kim === "miya" ? "🧠 Miya" : "🙂 Siz"}:</b> {g.matn}
             </div>
           ))}
-          {q.holat === "xato" && q.sabab.includes("⚠️") && <div className="o_telefonMiya">{q.sabab.slice(q.sabab.indexOf("⚠️"))}</div>}
+          {q.sabab
+            .split("\n")
+            .filter((l) => /^(🔧|⚠️)/.test(l))
+            .map((l, i) => (
+              <div key={`t${i}`} className="o_telefonTexnik">
+                {l}
+              </div>
+            ))}
         </div>
       ))}
     </div>

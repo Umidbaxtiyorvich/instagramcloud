@@ -64,3 +64,16 @@ export async function tgTayyor(userId: string) {
   const h = await tgHolat();
   return h.ulangan ? s.telegramChat : null;
 }
+
+// Miya akkauntini kim ulagan — begona qo'ng'iroqlar haqida shunga xabar boradi
+const EGASI = "miya_tg_egasi";
+export async function tgEgasiSaqla(userId: string) {
+  await prisma.sozlama.upsert({ where: { kalit: EGASI }, update: { qiymat: userId }, create: { kalit: EGASI, qiymat: userId } });
+}
+export async function tgEgasi() {
+  const r = await prisma.sozlama.findUnique({ where: { kalit: EGASI } });
+  if (r) return r.qiymat;
+  // eski ulanishlar uchun: botga bog'langan birinchi ega
+  const s = await prisma.miyaSozlama.findFirst({ where: { telegramChat: { not: null } }, select: { userId: true } });
+  return s?.userId ?? null;
+}

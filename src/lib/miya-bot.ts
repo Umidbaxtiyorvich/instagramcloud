@@ -110,6 +110,11 @@ export async function botChaqir(userId: string, q: Qongiroq) {
   return true;
 }
 
+export async function botXabar(userId: string, text: string) {
+  const chat = await chati(userId);
+  if (chat) await tg("sendMessage", { chat_id: chat, text }).catch((e) => console.error("miya bot:", e));
+}
+
 // Javob berilmadi — tarixda qoladi, «qayta qo'ng'iroq» bilan sababini so'rash mumkin
 export async function botOtkazildi(q: Qongiroq) {
   const chat = await chati(q.userId);

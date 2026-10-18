@@ -16,6 +16,7 @@ import logging
 import math
 import os
 import struct
+import tempfile
 import time
 import wave
 
@@ -24,14 +25,13 @@ from pyrogram import Client
 from pyrogram.errors import SessionPasswordNeeded
 from pytgcalls import PyTgCalls, filters
 from pytgcalls.exceptions import CallBusy, CallDeclined, NotInCallError, TimedOutAnswer
+from ntgcalls import MediaSource
+from pytgcalls.types.raw import AudioParameters, AudioStream, Stream
 from pytgcalls.types import (
     AudioQuality,
     CallConfig,
     ChatUpdate,
-    Device,
     Direction,
-    ExternalMedia,
-    MediaStream,
     RecordStream,
     StreamFrames,
 )
@@ -54,7 +54,6 @@ KALIT = hashlib.sha256(f"{os.environ.get('AUTH_SECRET', 'dev-auth-secret-change-
 
 # OpenAI «pcm» — 24 kHz, 16-bit, mono; qo'ng'iroq ham shunday sozlanadi, qayta namunalash kerak emas
 TEZLIK = 24000
-KADR = TEZLIK // 100 * 2  # 10 ms
 SIFAT = AudioQuality.LOW  # (24000, 1)
 
 MAX_QONGIROQ = 10 * 60
@@ -86,6 +85,26 @@ async def sayt(amal: str, **kw):
         return j
 
 
+async def izoh(q: str, matn: str):
+    """Qo'ng'iroq tarixiga texnik qayd (saytdagi Telefon bo'limida ko'rinadi)."""
+    log.info("[%s] %s", q[-6:], matn)
+    try:
+        await sayt("izoh", q=q, matn=matn[:300])
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def fayl_oqim(pcm: bytes) -> tuple[Stream, str]:
+    """Ovozni (24 kHz mono PCM) vaqtinchalik faylga yozadi — qo'ng'iroq uni o'zi o'qiydi."""
+    fd, yol = tempfile.mkstemp(prefix="miya-", suffix=".pcm")
+    with os.fdopen(fd, "wb") as f:
+        f.write(pcm)
+    return Stream(microphone=AudioStream(MediaSource.FILE, yol, AudioParameters(TEZLIK, 1))), yol
+
+
+JIMLIK = b"\0" * (TEZLIK * 2)  # 1 soniya
+
+
 async def ovoz(matn: str) -> bytes:
     async with H.http.post(
         f"{OPENAI_URL}/audio/speech",
@@ -103,19 +122,19 @@ async def ovoz(matn: str) -> bytes:
         return await r.read()
 
 
-def wav(pcm: bytes) -> bytes:
+def wav(pcm: bytes, tezlik: int = TEZLIK) -> bytes:
     b = io.BytesIO()
     with wave.open(b, "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
-        w.setframerate(TEZLIK)
+        w.setframerate(tezlik)
         w.writeframes(pcm)
     return b.getvalue()
 
 
-async def matnga(pcm: bytes) -> str:
+async def matnga(pcm: bytes, tezlik: int = TEZLIK) -> str:
     f = FormData()
-    f.add_field("file", wav(pcm), filename="gap.wav", content_type="audio/wav")
+    f.add_field("file", wav(pcm, tezlik), filename="gap.wav", content_type="audio/wav")
     f.add_field("model", STT_MODEL)
     f.add_field("language", "uz")
     async with H.http.post(f"{OPENAI_URL}/audio/transcriptions", headers={"Authorization": f"Bearer {OPENAI_KEY}"}, data=f) as r:
@@ -151,9 +170,20 @@ class Suhbat:
         self.boshi = 0.0
         self.shovqin = 0.003
         self.gap_tayyor = asyncio.Event()
+        self.kadr_soni = 0
+        self.kadr_hajm = 0
+
+    @property
+    def tezlik(self) -> int:
+        # bitta kadr 10 ms; 16-bit mono deb hisoblab chastotani topamiz (kutilgani 24000 → 480 bayt)
+        return self.kadr_hajm * 50 if self.kadr_hajm else TEZLIK
 
     def kadrlar(self, pcm: bytes):
         """Egasining ovozi (10 ms bo'laklar). Miya gapirayotganda eshitmaydi."""
+        if not self.kadr_hajm and pcm:
+            self.kadr_hajm = len(pcm)
+            asyncio.create_task(izoh(self.q, f"🔧 ovozingiz kela boshladi: kadr {len(pcm)} bayt (~{self.tezlik} Hz)"))
+        self.kadr_soni += 1
         if self.gapiryapti:
             return
         hozir = time.monotonic()
@@ -168,7 +198,7 @@ class Suhbat:
             self.oxirgi_ovoz = hozir
         if self.gapirdi:
             self.bufer += pcm
-        if self.gapirdi and (hozir - self.oxirgi_ovoz > 1.2 or len(self.bufer) > TEZLIK * 2 * 40):
+        if self.gapirdi and (hozir - self.oxirgi_ovoz > 1.2 or len(self.bufer) > self.tezlik * 2 * 40):
             self.gap_tayyor.set()
 
     def tingla_boshla(self):
@@ -179,27 +209,28 @@ class Suhbat:
 
     async def gapir(self, matn: str):
         pcm = await ovoz(matn)
+        oqim, yol = fayl_oqim(pcm)
         self.gapiryapti = True
         try:
-            # 10 ms bo'laklar real vaqtda; kechikish to'planib qolmasin
-            boshlandi = time.monotonic()
-            for i in range(0, len(pcm), KADR):
-                if self.tugadi.is_set():
-                    return
-                bolak = pcm[i : i + KADR]
-                if len(bolak) < KADR:
-                    bolak += b"\0" * (KADR - len(bolak))
-                await H.calls.send_frame(self.user_id, Device.MICROPHONE, bolak)
-                kerak = boshlandi + (i // KADR + 1) * 0.01
-                await asyncio.sleep(max(0, kerak - time.monotonic()))
-            await asyncio.sleep(0.25)
+            # qo'ng'iroq manbasini shu faylga almashtiramiz va u tugaguncha kutamiz
+            await H.calls.play(self.user_id, oqim)
+            davom = len(pcm) / (TEZLIK * 2)
+            try:
+                await asyncio.wait_for(self.tugadi.wait(), timeout=davom + 0.4)
+            except asyncio.TimeoutError:
+                pass
         finally:
             self.gapiryapti = False
             self.tingla_boshla()
+            try:
+                os.unlink(yol)
+            except OSError:
+                pass
 
     async def ishla(self):
         try:
             await H.calls.record(self.user_id, RecordStream(audio=True, audio_parameters=SIFAT))
+            await izoh(self.q, "🔧 ulandi, Miya gapirmoqda")
             await self.gapir(self.ochilish)
             jim = 0
             while not self.tugadi.is_set():
@@ -208,6 +239,8 @@ class Suhbat:
                     await asyncio.wait_for(self.gap_tayyor.wait(), timeout=20)
                 except asyncio.TimeoutError:
                     jim += 1
+                    if not self.kadr_soni:
+                        await izoh(self.q, "🔧 sizning ovozingiz umuman kelmayapti (0 kadr)")
                     if jim >= 2:
                         await self.gapir("Eshitmayapman. Kerak bo'lsam, qayta qo'ng'iroq qiling. Xayr!")
                         break
@@ -216,8 +249,9 @@ class Suhbat:
                 jim = 0
                 pcm = bytes(self.bufer)
                 self.tingla_boshla()
-                matn = await matnga(pcm)
+                matn = await matnga(pcm, self.tezlik)
                 if not matn:
+                    await izoh(self.q, f"🔧 {len(pcm) // (self.tezlik * 2)} soniyalik ovoz matnga o'girilmadi")
                     await self.gapir("Eshitolmadim, qaytadan ayting.")
                     continue
                 j = await sayt("gap", q=self.q, matn=matn)
@@ -228,6 +262,7 @@ class Suhbat:
             pass
         except Exception as e:  # noqa: BLE001
             log.exception("suhbat: %s", e)
+            await izoh(self.q, f"🔧 xato: {type(e).__name__}: {str(e)[:200]}")
         finally:
             await tugat(self.user_id)
 
@@ -247,10 +282,11 @@ async def tugat(user_id: int):
 async def ulan(user_id: int, s: "Suhbat", chiquvchi: bool):
     """Qo'ng'iroqni ulaydi (chiquvchida — jiringlatib kutadi), keyin suhbatni boshlaydi."""
     H.suhbatlar[user_id] = s
+    oqim, yol = fayl_oqim(JIMLIK)
     try:
         await H.calls.play(
             user_id,
-            MediaStream(ExternalMedia.AUDIO, SIFAT),
+            oqim,
             CallConfig(timeout=JAVOB_KUTISH) if chiquvchi else CallConfig(),
         )
     except (TimedOutAnswer, CallDeclined, CallBusy) as e:
@@ -263,6 +299,8 @@ async def ulan(user_id: int, s: "Suhbat", chiquvchi: bool):
         log.exception("ulanmadi: %s", e)
         await sayt("javobsiz", q=s.q, xato=str(e)[:200])
         return
+    finally:
+        asyncio.get_running_loop().call_later(30, lambda: os.path.exists(yol) and os.unlink(yol))
     asyncio.create_task(s.ishla())
     asyncio.create_task(muddat(user_id, s))
 
@@ -289,9 +327,17 @@ async def ishga_tushir(sessiya: str):
         try:
             j = await sayt("kiruvchi", tgId=str(user_id))
         except Exception as e:  # noqa: BLE001
+            # begona odam: ko'tarmaymiz va rad ham etmaymiz — Miya akkaunti ochilgan telefonda oddiy jiringlaydi
             log.info("begona qo'ng'iroq (%s): %s", user_id, e)
+            ism = str(user_id)
             try:
-                await H.calls.leave_call(user_id)
+                u2 = await H.app.get_users(user_id)
+                ism = " ".join(x for x in [u2.first_name, u2.last_name] if x) + (f" (@{u2.username})" if u2.username else "")
+                ism += f", {u2.phone_number}" if getattr(u2, "phone_number", None) else ""
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                await sayt("begona", ism=ism.strip() or str(user_id))
             except Exception:  # noqa: BLE001
                 pass
             return
@@ -302,12 +348,13 @@ async def ishga_tushir(sessiya: str):
         if u.chat_id in H.suhbatlar:
             await tugat(u.chat_id)
 
-    @calls.on_update(filters.stream_frame(Direction.INCOMING, Device.MICROPHONE))
+    @calls.on_update(filters.stream_frame(Direction.INCOMING))
     async def kadr(_, u: StreamFrames):
         s = H.suhbatlar.get(u.chat_id)
         if s:
             for f in u.frames:
-                s.kadrlar(f.frame)
+                if not f.info.width:  # video kadrlar emas
+                    s.kadrlar(f.frame)
 
     await calls.start()
     me = await app.get_me()

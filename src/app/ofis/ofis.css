@@ -1370,3 +1370,8 @@ a.o_vosita {
   padding-left: 14px;
   opacity: 0.85;
 }
+.o_telefonTexnik {
+  margin-top: 3px;
+  font-size: 12px;
+  opacity: 0.65;
+}
