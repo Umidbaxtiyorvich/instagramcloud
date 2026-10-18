@@ -315,6 +315,28 @@ async def muddat(user_id: int, s: Suhbat):
 # ---------- Telegram ----------
 
 
+def raqam(s: str | None) -> str:
+    return "".join(ch for ch in (s or "") if ch.isdigit())
+
+
+async def telefoni(user_id: int) -> str:
+    """Qo'ng'iroq qilganning telefon raqami. Yashirin bo'lsa — ruxsat etilgan raqamni kontaktga qo'shib bilib olamiz."""
+    try:
+        u = await H.app.get_users(user_id)
+        if u.phone_number:
+            return raqam(u.phone_number)
+        ruxsat = (await sayt("ruxsat")).get("telefon")
+        if ruxsat:
+            from pyrogram.types import InputPhoneContact
+
+            await H.app.import_contacts([InputPhoneContact(f"+{raqam(ruxsat)}", "Egasi")])
+            u = await H.app.get_users(user_id)
+            return raqam(u.phone_number)
+    except Exception as e:  # noqa: BLE001
+        log.info("raqam aniqlanmadi (%s): %s", user_id, e)
+    return ""
+
+
 async def ishga_tushir(sessiya: str):
     app = Client("miya", api_id=API_ID, api_hash=API_HASH, session_string=sessiya, in_memory=True, no_updates=False)
     calls = PyTgCalls(app)
@@ -325,7 +347,7 @@ async def ishga_tushir(sessiya: str):
         if user_id in H.suhbatlar:
             return
         try:
-            j = await sayt("kiruvchi", tgId=str(user_id))
+            j = await sayt("kiruvchi", tgId=str(user_id), telefon=await telefoni(user_id))
         except Exception as e:  # noqa: BLE001
             # begona odam: ko'tarmaymiz va rad ham etmaymiz — Miya akkaunti ochilgan telefonda oddiy jiringlaydi
             log.info("begona qo'ng'iroq (%s): %s", user_id, e)

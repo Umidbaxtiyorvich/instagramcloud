@@ -77,3 +77,13 @@ export async function tgEgasi() {
   const s = await prisma.miyaSozlama.findFirst({ where: { telegramChat: { not: null } }, select: { userId: true } });
   return s?.userId ?? null;
 }
+
+// Miya faqat shu raqamdagi Telegram'dan kelgan qo'ng'iroqni ko'taradi (Telefon bo'limida o'zgartiriladi)
+const RUXSAT = "miya_tg_ruxsat";
+export async function ruxsatRaqam() {
+  return (await prisma.sozlama.findUnique({ where: { kalit: RUXSAT } }))?.qiymat ?? "";
+}
+export async function ruxsatSaqla(telefon: string) {
+  if (!telefon) return prisma.sozlama.deleteMany({ where: { kalit: RUXSAT } });
+  await prisma.sozlama.upsert({ where: { kalit: RUXSAT }, update: { qiymat: telefon }, create: { kalit: RUXSAT, qiymat: telefon } });
+}

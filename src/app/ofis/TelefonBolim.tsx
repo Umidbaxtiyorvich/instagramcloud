@@ -7,6 +7,7 @@ type Gap = { kim: "miya" | "men"; matn: string };
 type Qongiroq = { id: string; kanal: string; yonalish: string; holat: string; sabab: string; suhbat: Gap[]; createdAt: string };
 type Holat = {
   tg: { sozlangan: boolean; ishlayapti: boolean; ulangan: boolean; men: string; kodKutilmoqda: boolean };
+  tgRuxsat: string;
   bot: boolean;
   botXato: string | null;
   telegram: boolean;
@@ -47,6 +48,7 @@ export default function TelefonBolim() {
   const [tgKod, setTgKod] = useState("");
   const [tgParol, setTgParol] = useState("");
   const [parolKerak, setParolKerak] = useState(false);
+  const [ruxsat, setRuxsat] = useState<string | null>(null);
   const [band, setBand] = useState<string | null>(null);
   const [xato, setXato] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -168,6 +170,24 @@ export default function TelefonBolim() {
             Muhim gap bo&apos;lsa Miya shu akkauntdan sizning Telegram&apos;ingizga <b>qo&apos;ng&apos;iroq qiladi</b> — telefon jiringlaydi. Siz ham{" "}
             {d.tg.men} ga oddiy qo&apos;ng&apos;iroq qilsangiz, Miya ko&apos;taradi; botdagi «📞 Miyaga qo&apos;ng&apos;iroq» bossangiz, Miya darhol sizga
             qo&apos;ng&apos;iroq qiladi. Birinchi marta asosiy akkauntingizdan {d.tg.men} ga bitta xabar yozing (u sizni tanishi uchun).
+          </div>
+          <label className="o_miyaYorliq">Miya faqat shu raqamdagi Telegram&apos;dan kelgan qo&apos;ng&apos;iroqni ko&apos;taradi</label>
+          <div className="o_miyaQator" style={{ margin: "0 0 8px" }}>
+            <input
+              className="o_qidiruv"
+              style={{ flex: 1 }}
+              value={ruxsat ?? d.tgRuxsat}
+              onChange={(e) => setRuxsat(e.target.value)}
+              placeholder="+998901234567"
+              inputMode="tel"
+            />
+            <button
+              className="o_misol"
+              disabled={!!band || ruxsat === null}
+              onClick={() => void amal("tg_ruxsat", { amal: "tg_ruxsat", telefon: ruxsat ?? "" }, "Saqlandi").then((x) => x && setRuxsat(null))}
+            >
+              Saqlash
+            </button>
           </div>
           {d.telegram ? (
             <button className="o_misol" disabled={!!band} onClick={() => void amal("tg_sinov", { amal: "tg_sinov" }, "Miya hozir Telegram'ingizga qo'ng'iroq qiladi")}>

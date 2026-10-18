@@ -7,7 +7,7 @@ import { openai } from "@/lib/ofis-openai";
 import { miyaRaqami, raqamTozala, raqamniSozla, twilioSozlangan } from "@/lib/twilio";
 import { moliyaRuxsat } from "@/lib/ofis-moliya";
 import { botBor, botSozla, ulashHavolasi } from "@/lib/miya-bot";
-import { tgEgasiSaqla, tgHolat, tgKirish, tgKod } from "@/lib/miya-tg";
+import { ruxsatRaqam, ruxsatSaqla, tgEgasiSaqla, tgHolat, tgKirish, tgKod } from "@/lib/miya-tg";
 import { kodTekshir, kodYubor, miyaQongiroq, salomMatni, suhbatOl, tgChaqir, xesh } from "@/lib/miya-telefon";
 
 // Miya → Telefon sozlamalari: raqamni qo'ng'iroq bilan tasdiqlash, PIN, qachon qo'ng'iroq qilish, tarix
@@ -20,6 +20,7 @@ export async function GET() {
   const botXato = botBor() ? await botSozla().then(() => null).catch((e: Error) => e.message) : null;
   return NextResponse.json({
     tg: await tgHolat(),
+    tgRuxsat: await ruxsatRaqam(),
     bot: botBor(),
     botXato,
     telegram: Boolean(s.telegramChat),
@@ -55,6 +56,7 @@ const Amal = z.discriminatedUnion("amal", [
   z.object({ amal: z.literal("tg_kod"), telefon: z.string().max(30) }),
   z.object({ amal: z.literal("tg_kirish"), kod: z.string().max(12), parol: z.string().max(200).optional() }),
   z.object({ amal: z.literal("tg_sinov") }),
+  z.object({ amal: z.literal("tg_ruxsat"), telefon: z.string().max(30) }),
 ]);
 
 export async function POST(req: Request) {
@@ -84,6 +86,13 @@ export async function POST(req: Request) {
         await tgEgasiSaqla(user.id);
         return NextResponse.json({ ok: true, men: r.men });
       }
+      return NextResponse.json({ ok: true });
+    }
+    if (a.amal === "tg_ruxsat") {
+      if (!moliyaRuxsat(user.email)) throw new Error("Buni faqat sayt egasi o'zgartiradi");
+      const tel = a.telefon.trim() ? raqamTozala(a.telefon) : "";
+      if (tel === null) throw new Error("Raqam noto'g'ri — masalan +998901234567");
+      await ruxsatSaqla(tel);
       return NextResponse.json({ ok: true });
     }
     if (a.amal === "tg_sinov") {

@@ -3,7 +3,7 @@ import { timingSafeEqual } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { randomToken } from "@/lib/crypto";
-import { ichkiKalit, sessiyaOl, sessiyaSaqla, tgEgasi } from "@/lib/miya-tg";
+import { ichkiKalit, ruxsatRaqam, sessiyaOl, sessiyaSaqla, tgEgasi } from "@/lib/miya-tg";
 import { matnniIshla, salomMatni, suhbatOl, xatoGap } from "@/lib/miya-telefon";
 import { botOtkazildi, botXabar } from "@/lib/miya-bot";
 
@@ -13,7 +13,8 @@ export const maxDuration = 120;
 const Amal = z.discriminatedUnion("amal", [
   z.object({ amal: z.literal("sessiya_ol") }),
   z.object({ amal: z.literal("sessiya_saqla"), sessiya: z.string().min(10).max(2000) }),
-  z.object({ amal: z.literal("kiruvchi"), tgId: z.string().max(32) }),
+  z.object({ amal: z.literal("kiruvchi"), tgId: z.string().max(32), telefon: z.string().max(20).optional() }),
+  z.object({ amal: z.literal("ruxsat") }),
   z.object({ amal: z.literal("gap"), q: z.string().max(64), matn: z.string().max(2000) }),
   z.object({ amal: z.literal("tugadi"), q: z.string().max(64) }),
   z.object({ amal: z.literal("javobsiz"), q: z.string().max(64), xato: z.string().max(300).optional() }),
@@ -45,8 +46,18 @@ export async function POST(req: Request) {
   }
 
   // egasi Miya akkauntiga o'zi qo'ng'iroq qildi (shaxsiy chatda chat id = foydalanuvchi id)
+  if (a.amal === "ruxsat") return NextResponse.json({ telefon: await ruxsatRaqam() });
+
   if (a.amal === "kiruvchi") {
-    const s = await prisma.miyaSozlama.findUnique({ where: { telegramChat: a.tgId } });
+    // faqat egasining raqamidan kelgan qo'ng'iroqni ko'taradi (raqam berilgan bo'lsa — qat'iy shu raqam)
+    const ruxsat = (await ruxsatRaqam()).replace(/\D/g, "");
+    let s = null;
+    if (ruxsat) {
+      const egasi = (a.telefon ?? "").replace(/\D/g, "") === ruxsat ? await tgEgasi() : null;
+      s = egasi ? await prisma.miyaSozlama.findUnique({ where: { userId: egasi } }) : null;
+    } else {
+      s = await prisma.miyaSozlama.findUnique({ where: { telegramChat: a.tgId } });
+    }
     if (!s) return NextResponse.json({ error: "Bu odam Miya'ga ulanmagan" }, { status: 404 });
     const salom = await salomMatni(s.userId);
     const q = await prisma.qongiroq.create({
