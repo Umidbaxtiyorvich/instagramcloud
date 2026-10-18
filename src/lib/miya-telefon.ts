@@ -139,7 +139,9 @@ async function oldindanOvoz(q: Qongiroq) {
 }
 
 const TELEFON_TIZIM = `Siz «Miya»siz — egasining biznesini (Instagram, CloudShop do'koni) kuzatib boradigan yordamchi. Hozir egasi bilan TELEFONDA gaplashyapsiz.
-- Javob og'zaki: 1-3 qisqa jumla (60 so'zgacha), o'zbek tilida (lotin). Markdown, emoji, ro'yxat, havola yo'q. Raqamlarni yaxlitlab ayting.
+- Javob og'zaki va jonli, xuddi odam telefonda gaplashgandek: 1-2 qisqa, aniq jumla (40 so'zgacha), o'zbek tilida (lotin).
+  Avval savolga to'g'ridan-to'g'ri javob, keyin kerak bo'lsa bitta qo'shimcha. Umumiy, noaniq gaplar yo'q — aniq raqam, nom, holat.
+  Markdown, emoji, ro'yxat, havola yo'q. Raqamlarni so'z bilan aytish oson bo'ladigan qilib yaxlitlang.
 - Savolga avval vositalar bilan haqiqiy ma'lumotni oling, o'ylab topmang.
 - Instagram'ga yozadigan ishlar (javob, Direct, qoida, joylash) darhol bajarilmaydi — tasdiq navbatiga tushadi. Shunda egasiga aniq nima
   qilinishini (matnini ham) qisqa aytib, «bajaraymi?» deb so'rang. Egasi aniq «ha» desa — tasdiq_qaror(ha=true) chaqiring.
@@ -242,6 +244,7 @@ async function javobBer(q: Qongiroq): Promise<{ javob: string; tugat: boolean }>
     bajar,
     amallar: [],
     model: process.env.TELEFON_MODEL?.trim() || undefined,
+    tez: true,
   })) as { javob?: string; tugat?: boolean };
   return { javob: String(j.javob || "Tushunmadim, qaytadan ayting.").slice(0, 1200), tugat: j.tugat === true };
 }

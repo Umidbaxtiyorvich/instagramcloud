@@ -9,7 +9,9 @@ Sayt (Next.js) bilan bir serverda yonma-yon ishlaydi:
 Muhit: TG_API_ID, TG_API_HASH (my.telegram.org), OPENAI_API_KEY, AUTH_SECRET, PORT (sayt porti).
 """
 
+import array
 import asyncio
+import re
 import hashlib
 import io
 import logging
@@ -94,12 +96,26 @@ async def izoh(q: str, matn: str):
         pass
 
 
+def stereo48(pcm: bytes) -> bytes:
+    """24 kHz mono → 48 kHz stereo (Telegram qo'ng'irog'ining o'z formati — ovoz tiniqroq chiqadi)."""
+    a = array.array("h", pcm[: len(pcm) // 2 * 2])
+    n = len(a)
+    out = array.array("h", bytes(n * 8))
+    for i in range(n):
+        x = a[i]
+        y = (x + a[i + 1]) // 2 if i + 1 < n else x
+        j = i * 4
+        out[j] = out[j + 1] = x
+        out[j + 2] = out[j + 3] = y
+    return out.tobytes()
+
+
 def fayl_oqim(pcm: bytes) -> tuple[Stream, str]:
-    """Ovozni (24 kHz mono PCM) vaqtinchalik faylga yozadi — qo'ng'iroq uni o'zi o'qiydi."""
+    """Ovozni (24 kHz mono PCM) 48 kHz stereo qilib vaqtinchalik faylga yozadi — qo'ng'iroq uni o'zi o'qiydi."""
     fd, yol = tempfile.mkstemp(prefix="miya-", suffix=".pcm")
     with os.fdopen(fd, "wb") as f:
-        f.write(pcm)
-    return Stream(microphone=AudioStream(MediaSource.FILE, yol, AudioParameters(TEZLIK, 1))), yol
+        f.write(stereo48(pcm))
+    return Stream(microphone=AudioStream(MediaSource.FILE, yol, AudioParameters(48000, 2))), yol
 
 
 JIMLIK = b"\0" * (TEZLIK * 2)  # 1 soniya
@@ -113,7 +129,7 @@ async def ovoz(matn: str) -> bytes:
             "model": TTS_MODEL,
             "voice": OVOZ,
             "input": matn[:1500],
-            "instructions": "Yosh erkak kishi ovozida, o'zbek tilida, Toshkent talaffuzida, jonli va quvnoq gapiring. Samimiy, xotirjam va aniq — telefonda gaplashgandek.",
+            "instructions": "Yosh erkak kishi ovozida, o'zbek tilida, Toshkent talaffuzida, jonli va quvnoq gapiring. Har bir so'zni aniq, ravon talaffuz qiling — telefonda gaplashgandek, shoshmasdan.",
             "response_format": "pcm",
         },
     ) as r:
@@ -135,9 +151,12 @@ def wav(pcm: bytes, tezlik: int = TEZLIK) -> bytes:
 async def matnga(pcm: bytes, tezlik: int = TEZLIK) -> str:
     """Ovozni matnga o'giradi. OpenAI rad etsa (masalan, til yoki model qabul qilinmasa) —
     tilsiz, keyin whisper-1 bilan qayta urinadi."""
+    global STT_BOSHI
     audio = wav(pcm, tezlik)
     xato = ""
-    for model, til in ((STT_MODEL, "uz"), (STT_MODEL, None), ("whisper-1", "uz"), ("whisper-1", None)):
+    variantlar = ((STT_MODEL, "uz"), (STT_MODEL, None), ("whisper-1", "uz"), ("whisper-1", None))
+    # oldin ishlagan variantdan boshlaymiz — har gapda rad etiladigan so'rovga vaqt ketmasin
+    for k, (model, til) in list(enumerate(variantlar))[STT_BOSHI:] + list(enumerate(variantlar))[:STT_BOSHI]:
         f = FormData()
         f.add_field("file", audio, filename="gap.wav", content_type="audio/wav")
         f.add_field("model", model)
@@ -146,12 +165,35 @@ async def matnga(pcm: bytes, tezlik: int = TEZLIK) -> str:
         async with H.http.post(f"{OPENAI_URL}/audio/transcriptions", headers={"Authorization": f"Bearer {OPENAI_KEY}"}, data=f) as r:
             j = await r.json(content_type=None)
             if r.status < 400:
+                STT_BOSHI = k
                 return str(j.get("text", "")).strip()
             xato = f"{model}{'/' + til if til else ''}: HTTP {r.status} {str((j.get('error') or {}).get('message', ''))[:160]}"
             log.info("STT rad etdi — %s", xato)
             if r.status != 400:
                 break
     raise RuntimeError(f"STT: {xato}")
+
+
+STT_BOSHI = 0
+
+# Javob kechiksa aytiladigan qisqa gaplar (bir marta ovozga aylantirilib, xotirada turadi)
+OYLASH = ["Hmm, bir soniya.", "Xo'p, hozir qarayman.", "Tushundim, bir daqiqa."]
+oylash_ovoz: dict[str, bytes] = {}
+
+
+async def oylash(i: int) -> bytes:
+    m = OYLASH[i % len(OYLASH)]
+    if m not in oylash_ovoz:
+        oylash_ovoz[m] = await ovoz(m)
+    return oylash_ovoz[m]
+
+
+def gaplarga(matn: str) -> list[str]:
+    """Javobni bo'laklarga: birinchi gap alohida (tezroq boshlanadi), qolgani birga."""
+    gaplar = [g.strip() for g in re.split(r"(?<=[.!?…])\s+", matn.strip()) if g.strip()]
+    if len(gaplar) <= 1:
+        return gaplar or [matn]
+    return [gaplar[0], " ".join(gaplar[1:])]
 
 
 def rms(pcm: bytes) -> float:
@@ -182,6 +224,7 @@ class Suhbat:
         self.gap_tayyor = asyncio.Event()
         self.kadr_soni = 0
         self.kadr_hajm = 0
+        self.oylash_soni = -1
 
     @property
     def tezlik(self) -> int:
@@ -208,7 +251,7 @@ class Suhbat:
             self.oxirgi_ovoz = hozir
         if self.gapirdi:
             self.bufer += pcm
-        if self.gapirdi and (hozir - self.oxirgi_ovoz > 1.2 or len(self.bufer) > self.tezlik * 2 * 40):
+        if self.gapirdi and (hozir - self.oxirgi_ovoz > 0.9 or len(self.bufer) > self.tezlik * 2 * 40):
             self.gap_tayyor.set()
 
     def tingla_boshla(self):
@@ -218,7 +261,15 @@ class Suhbat:
         self.gap_tayyor.clear()
 
     async def gapir(self, matn: str):
-        pcm = await ovoz(matn)
+        # bo'laklarning ovozi parallel tayyorlanadi; birinchisi tayyor bo'lishi bilan gapira boshlaydi
+        vazifalar = [asyncio.create_task(ovoz(b)) for b in gaplarga(matn)]
+        for v in vazifalar:
+            if self.tugadi.is_set():
+                v.cancel()
+                continue
+            await self.ijro(await v)
+
+    async def ijro(self, pcm: bytes):
         oqim, yol = fayl_oqim(pcm)
         self.gapiryapti = True
         try:
@@ -237,10 +288,19 @@ class Suhbat:
             except OSError:
                 pass
 
+    async def tushun(self, pcm: bytes):
+        """Gapni matnga o'giradi va Miya'ning javobini oladi."""
+        matn = await matnga(pcm, self.tezlik)
+        if not matn:
+            return "", {}
+        return matn, await sayt("gap", q=self.q, matn=matn)
+
     async def ishla(self):
         try:
             await H.calls.record(self.user_id, RecordStream(audio=True, audio_parameters=SIFAT))
             await izoh(self.q, "🔧 ulandi, Miya gapirmoqda")
+            for i in range(len(OYLASH)):
+                asyncio.create_task(oylash(i))  # oldindan tayyorlab qo'yamiz
             await self.gapir(self.ochilish)
             jim = 0
             while not self.tugadi.is_set():
@@ -259,12 +319,17 @@ class Suhbat:
                 jim = 0
                 pcm = bytes(self.bufer)
                 self.tingla_boshla()
-                matn = await matnga(pcm, self.tezlik)
+                ish = asyncio.create_task(self.tushun(pcm))
+                # javob tez tayyor bo'lmasa — odamdek «hmm, bir soniya» deydi, jim turib qolmaydi
+                done, _ = await asyncio.wait({ish}, timeout=1.8)
+                if not done:
+                    self.oylash_soni += 1
+                    await self.ijro(await oylash(self.oylash_soni))
+                matn, j = await ish
                 if not matn:
                     await izoh(self.q, f"🔧 {len(pcm) // (self.tezlik * 2)} soniyalik ovoz matnga o'girilmadi")
                     await self.gapir("Eshitolmadim, qaytadan ayting.")
                     continue
-                j = await sayt("gap", q=self.q, matn=matn)
                 await self.gapir(j.get("javob") or "Tushunmadim, qaytadan ayting.")
                 if j.get("tugat"):
                     break

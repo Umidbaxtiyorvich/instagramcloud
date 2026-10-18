@@ -74,6 +74,8 @@ export async function openaiVazifa(o: {
   bajar: (nom: string, kirish: Record<string, unknown>) => Promise<string>;
   amallar: string[];
   model?: string;
+  // telefon suhbati: o'ylash qisqa va javob lo'nda bo'lsin (gpt-5 oilasida)
+  tez?: boolean;
 }): Promise<unknown> {
   const tools: OpenAI.Responses.Tool[] = [
     ...o.vositalar.map((v) => ({
@@ -86,16 +88,19 @@ export async function openaiVazifa(o: {
     ...(o.mcp ? mcpVositalar(o.mcp) : []),
   ];
 
+  const model = o.model || openaiModel();
+  const tez = o.tez && /^gpt-5/.test(model);
   let input: OpenAI.Responses.ResponseInput | string = o.kontekst;
   let oldingi: string | undefined;
   for (let qadam = 0; qadam < 8; qadam++) {
     const r: OpenAI.Responses.Response = await o.client.responses.create({
-      model: o.model || openaiModel(),
+      model,
       instructions: o.tizim,
       input,
       ...(tools.length ? { tools } : {}),
       ...(oldingi ? { previous_response_id: oldingi } : {}),
-      text: { format: { type: "json_schema", name: "ofis_vazifa", schema: o.sxema, strict: true } },
+      ...(tez ? { reasoning: { effort: "minimal" as const } } : {}),
+      text: { format: { type: "json_schema", name: "ofis_vazifa", schema: o.sxema, strict: true }, ...(tez ? { verbosity: "low" as const } : {}) },
     });
 
     for (const it of r.output) {
