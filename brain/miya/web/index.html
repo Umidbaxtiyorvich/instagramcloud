@@ -1,0 +1,539 @@
+<title>Miya</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: to'liq ekranli ilova; tepada nom va hisoblagichlar, ostida uch bo'lim (Suhbat, Graf, O'rganish), eslatma o'ng tomonda ochiladi */
+:root {
+  --bg: #f2f3ef; --surface: #ffffff; --fg: #1d2420; --muted: #5f6b64; --line: #d6dbd4; --accent: #0f6b52; --accent-fg: #ffffff;
+  --you: #e2eee8; --manba: #2f6db5; --tushuncha: #0f6b52; --eslatma: #b0711a; --suhbat: #8a4fa8; --bad: #b3261e;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111613; --surface: #1a211d; --fg: #e4ebe6; --muted: #93a199; --line: #2d3832; --accent: #4fc9a0; --accent-fg: #0c1511;
+  --you: #1f3a30; --manba: #6aa6ee; --tushuncha: #4fc9a0; --eslatma: #e3a64a; --suhbat: #c08ade; --bad: #f2827a; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #111613; --surface: #1a211d; --fg: #e4ebe6; --muted: #93a199; --line: #2d3832; --accent: #4fc9a0; --accent-fg: #0c1511;
+  --you: #1f3a30; --manba: #6aa6ee; --tushuncha: #4fc9a0; --eslatma: #e3a64a; --suhbat: #c08ade; --bad: #f2827a; color-scheme: dark; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); display: flex; flex-direction: column; }
+.pad { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding-block: 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+h1 { margin: 0; font-size: 20px; letter-spacing: .02em; }
+#stats { display: flex; flex-wrap: wrap; gap: 12px; font: 12.5px var(--mono); color: var(--muted); }
+#stats b { color: var(--fg); font-weight: 600; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+nav { display: flex; gap: 4px; margin-left: auto; }
+nav button { font: 500 14px var(--sans); background: transparent; color: var(--muted); border: 1px solid transparent; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+nav button[aria-selected="true"] { color: var(--fg); border-color: var(--line); background: var(--bg); }
+main { flex: 1; min-height: 0; display: flex; position: relative; }
+section { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#chat { max-width: 820px; margin: 0 auto; width: 100%; padding-block: 18px; gap: 14px; }
+#log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-bottom: 8px; }
+.msg { max-width: 88%; padding: 10px 14px; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.me { align-self: flex-end; background: var(--you); }
+.bot { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); }
+details { margin-bottom: 6px; color: var(--muted); font-size: 13.5px; }
+summary { cursor: pointer; font: 500 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+details ol { margin: 6px 0 0; padding-left: 20px; }
+.src { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: 12.5px var(--sans); background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+.chip:hover { border-color: var(--accent); }
+form.ask { display: flex; gap: 8px; }
+input[type=text], textarea { font: 15px var(--sans); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0; width: 100%; }
+textarea { min-height: 140px; resize: vertical; line-height: 1.5; }
+form.ask input { flex: 1; }
+.btn { font: 500 14px var(--sans); background: var(--accent); color: var(--accent-fg); border: 0; border-radius: 8px; padding: 10px 18px; cursor: pointer; white-space: nowrap; }
+.btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+.btn:disabled { opacity: .55; cursor: progress; }
+.hint { color: var(--muted); font-size: 13.5px; margin: 0; max-width: 68ch; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#graphWrap { position: relative; flex: 1; min-height: 0; }
+canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.overlay { position: absolute; top: 12px; left: max(12px, env(safe-area-inset-left, 0px)); right: 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 13px; color: var(--muted); pointer-events: none; }
+.overlay input { pointer-events: auto; padding: 7px 10px; font-size: 14px; width: 220px; }
+aside { width: min(420px, 100%); border-left: 1px solid var(--line); background: var(--surface); overflow-y: auto; padding: 18px max(18px, env(safe-area-inset-right, 0px)) 18px 18px; }
+aside h2 { margin: 4px 0 6px; font-size: 18px; text-wrap: balance; }
+aside .meta { font: 12px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+aside .body { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 12px; }
+aside a { color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+aside .links { margin-top: 14px; font-size: 13.5px; }
+.close { float: right; background: none; border: 0; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; }
+#learn { overflow-y: auto; }
+.learnIn { max-width: 820px; margin: 0 auto; width: 100%; padding-block: 18px 40px; display: grid; gap: 18px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 10px; min-width: 0; }
+.card h3 { margin: 0; font-size: 16px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#jlog { font: 12.5px/1.6 var(--mono); color: var(--muted); max-height: 220px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 22px; text-align: center; color: var(--muted); cursor: pointer; display: block; }
+.drop.on { border-color: var(--accent); color: var(--fg); }
+.banner { font-size: 13.5px; color: var(--muted); border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px 12px; }
+@media (max-width: 760px) { aside { position: absolute; inset: 0; width: 100%; z-index: 5; border-left: 0; } nav { margin-left: 0; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<header class="pad">
+  <h1>Miya</h1>
+  <div id="stats"></div>
+  <nav role="tablist" aria-label="Bo'limlar">
+    <button role="tab" data-tab="chat" aria-selected="true">Suhbat</button>
+    <button role="tab" data-tab="graph" aria-selected="false">Graf</button>
+    <button role="tab" data-tab="learn" aria-selected="false">O'rganish</button>
+  </nav>
+</header>
+<main>
+  <section id="chat" class="pad">
+    <div id="log">
+      <div class="msg bot">Salom! Men o'qigan narsalarimni eslab qolaman va bir-biriga bog'layman. Savol bering, yoki «Eslab qol: ...» deb yozing. Yangi bilim uchun «O'rganish» bo'limida matn yoki kitob bering.</div>
+      <div class="banner" id="emptyBanner" hidden>Xotira hozircha bo'sh. <button class="btn ghost" id="seedBtn" type="button">Namuna bilimni yuklash</button> — O'zbekiston, Toshkent va Samarqand haqida uchta qisqa maqola.</div>
+    </div>
+    <form class="ask" id="askForm">
+      <input type="text" id="q" autocomplete="off" placeholder="Savol yoki «Eslab qol: ...»" aria-label="Savol">
+      <button class="btn" id="askBtn">Yubor</button>
+    </form>
+  </section>
+  <section id="graph" hidden>
+    <div id="graphWrap">
+      <canvas id="cv" aria-label="Bilimlar grafi"></canvas>
+      <div class="overlay">
+        <input type="text" id="gsearch" placeholder="Grafdan qidirish…" aria-label="Grafdan qidirish">
+        <span><i class="dot" style="background:var(--manba)"></i>manba</span>
+        <span><i class="dot" style="background:var(--tushuncha)"></i>tushuncha</span>
+        <span><i class="dot" style="background:var(--eslatma)"></i>eslatma</span>
+        <span><i class="dot" style="background:var(--suhbat)"></i>suhbat</span>
+      </div>
+    </div>
+  </section>
+  <section id="learn" class="pad" hidden>
+    <div class="learnIn">
+      <div class="card">
+        <h3>Matn o'qitish</h3>
+        <p class="hint">Saytdagi maqola yoki istalgan matnni shu yerga qo'ying. Miya uni bo'laklarga ajratadi, asosiy tushunchalarni topadi va grafga bog'laydi.</p>
+        <input type="text" id="tTitle" placeholder="Sarlavha (masalan: Amir Temur)" aria-label="Sarlavha">
+        <input type="text" id="tSrc" placeholder="Manba manzili (ixtiyoriy): https://…" aria-label="Manba manzili">
+        <textarea id="tBody" placeholder="Matnni shu yerga qo'ying…" aria-label="Matn"></textarea>
+        <div class="row"><button class="btn" id="tBtn" type="button">O'qib o'rgan</button></div>
+      </div>
+      <div class="card">
+        <h3>Kitob o'qitish</h3>
+        <label class="drop" id="drop" for="file">Faylni shu yerga tashlang yoki bosib tanlang<br><small>txt, md, html, epub, pdf</small></label>
+        <input type="file" id="file" accept=".txt,.md,.html,.htm,.epub,.pdf" multiple hidden>
+      </div>
+      <div class="card">
+        <h3>Saytlarni o'zi aylanib o'qishi</h3>
+        <p class="hint">Saytga o'zi kirib, havolalar bo'ylab o'qishi va har kuni qaytib yangilarini o'rganishi kompyuter versiyasida ishlaydi: loyihadagi <code>brain\miya.bat</code> faylini ishga tushiring. Bu sahifa brauzer ichida ishlaydi va boshqa saytlarga kira olmaydi.</p>
+      </div>
+      <div class="card">
+        <h3>Xotira</h3>
+        <p class="hint" id="storeInfo">Xotira tekshirilmoqda…</p>
+        <div class="row">
+          <button class="btn ghost" id="exportBtn" type="button">Obsidian uchun yuklab olish (.zip)</button>
+          <button class="btn ghost" id="wipeBtn" type="button">Xotirani tozalash</button>
+        </div>
+        <p class="hint" id="wipeAsk" hidden>Hamma eslatmalar o'chadi va qaytarib bo'lmaydi. <button class="btn" id="wipeYes" type="button" style="background:var(--bad)">Ha, o'chir</button> <button class="btn ghost" id="wipeNo" type="button">Bekor</button></p>
+      </div>
+      <div class="card">
+        <h3>Miya nima qilyapti</h3>
+        <div id="jlog">Hali hech narsa yo'q.</div>
+      </div>
+    </div>
+  </section>
+  <aside id="panel" hidden></aside>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+// ================= Matn =================
+const APOS = /[ʻʼ’‘`´]/g;
+const WORD = /\p{L}(?:[\p{L}\p{N}']*[\p{L}\p{N}])?|\p{N}+/gu;
+const SENT = /(?<=[.!?…])\s+(?=[A-ZА-ЯЁЎҚҒҲ0-9"«(])/u;
+const STOP = new Set(`va bu u ular bilan uchun ham bir deb esa emas edi ekan bo'lib bo'lgan bo'ladi bo'lsa kabi yoki lekin ammo biroq shu shunday
+o'z har qilib qayer qayerga nechta necha nech kimning bormi nimaga mening sening bizning sizning ularning bering qiling yozing ayting yaxshi katta kichik yangi birinchi ikkinchi uchinchi bo'lishi bo'lgani
+qilish qiladi qilgan eng juda ko'p kam men sen biz siz ul nima qanday nega qachon qayerda qaysi kim mi da dan ga ni ning yana hali endi faqat hamda agar chunki keyin oldin orqali bor yo'q kerak mumkin ushbu mana hech
+the and for are but not you all any can her was one our out has have had this that with from they will would there their what which when where who how why been were into than then them these those such only also more most some very just about over after before other its your his she him
+и в во не что он на я с со как а то все она так его но да ты к у же вы за бы по только ее мне было вот от меня еще нет о из ему теперь когда даже ну вдруг ли если уже или ни быть был него до вас нибудь опять уж вам ведь там потом себя это для при под над без`.split(/\s+/));
+const SUFFIXES = `larimizning laringizning larimizga laringizga larimizda larimizdan lardagi laridagi larning larini lariga laridan larida
+lardan larga larda larni lari lar imizning ingizning imiz ingiz ning dagi idagi sidagi dan tan ga ka qa da ta ni ini si im ing ish chi lik siz li cha mi gi ki`.split(/\s+/).sort((a, b) => b.length - a.length);
+const norm = s => s.replace(APOS, "'").toLowerCase();
+const words = s => (norm(s).match(WORD) || []).map(w => w.replace(/^'+|'+$/g, ""));
+function stem(w) {
+  for (let r = 0; r < 2; r++) {
+    const suf = SUFFIXES.find(x => w.endsWith(x) && w.length - x.length >= 3);
+    if (!suf) break;
+    w = w.slice(0, -suf.length);
+  }
+  return w;
+}
+const isNum = w => /^\p{N}+$/u.test(w);
+const terms = s => words(s).filter(w => w.length >= 3 && !STOP.has(w) && !isNum(w)).map(stem);
+function sentences(s) {
+  const out = [];
+  for (const para of s.split("\n")) {
+    if (para.trimStart().startsWith("#")) continue;
+    for (const x of para.split(SENT)) if (x.trim().length > 12) out.push(x.trim());
+  }
+  return out;
+}
+function htmlToText(html) {
+  const d = new DOMParser().parseFromString(html, "text/html");
+  d.querySelectorAll("script,style,noscript,svg,nav,footer,header,aside,form,button,iframe,template").forEach(e => e.remove());
+  d.querySelectorAll("h1,h2,h3").forEach(h => h.prepend("## "));
+  d.querySelectorAll("p,div,li,h1,h2,h3,h4,h5,h6,tr,br,section,article,blockquote,pre,dd,dt,figcaption").forEach(e => { e.before("\n"); e.after("\n"); });
+  const lines = (d.body?.textContent || "").split("\n").map(l => l.replace(/\s+/g, " ").trim());
+  return {title: (d.title || "").trim(), text: lines.filter(l => l.length > 40 || (l.startsWith("## ") && l.length > 5)).join("\n")};
+}
+function chunks(text, size = 1800) {
+  const out = []; let cur = "";
+  for (let para of text.split("\n")) {
+    para = para.trim(); if (!para) continue;
+    if (cur.length + para.length > size && cur) { out.push(cur); cur = ""; }
+    while (para.length > size * 1.5) { out.push(para.slice(0, size)); para = para.slice(size); }
+    cur = (cur + "\n\n" + para).trim();
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+// ================= Saqlash: hisobingizdagi shaxsiy xotira, bo'lmasa shu brauzer =================
+const Store = {
+  mode: "local", col: null,
+  async init() {
+    try {
+      const [db, user] = await Promise.all([window.claude?.use?.("db"), window.claude?.use?.("user")]);
+      const id = db && user ? await user.id() : null;
+      if (db && id) {
+        this.col = db.collection("data/users/" + id);
+        const snap = await this.col.get();
+        this.mode = "db";
+        return snap.docs.map(d => ({...d.data(), _doc: d.id}));
+      }
+    } catch (e) { console.warn("db mavjud emas", e); }
+    try { return JSON.parse(localStorage.getItem("miya.notes") || "[]"); } catch { return []; }
+  },
+  async save(n) {
+    const rec = {type: n.type, title: n.title, nid: n.id, body: n.body, meta: n.meta, ts: Date.now()};
+    if (this.mode === "db") {
+      if (!n._doc) n._doc = "n" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      await this.col.doc(n._doc).set(rec);
+    } else this.flushLocal();
+  },
+  flushLocal() {
+    try { localStorage.setItem("miya.notes", JSON.stringify([...V.notes.values()].map(n => ({type: n.type, title: n.title, nid: n.id, body: n.body, meta: n.meta})))); } catch {}
+  },
+  async wipe() {
+    if (this.mode === "db") for (const n of V.notes.values()) if (n._doc) await this.col.doc(n._doc).delete();
+    try { localStorage.removeItem("miya.notes"); } catch {}
+  },
+};
+
+// ================= Xotira (vault) =================
+const LINK = /\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g;
+const slug = s => (s.replace(/[\\/*"<>:|?#^\[\]\n\r\t]+/g, " ").trim().replace(/^\.+|\.+$/g, "") || "nomsiz").replace(/\s+/g, " ").slice(0, 80).trim();
+const Counter = () => new Map();
+const inc = (m, k, d = 1) => m.set(k, (m.get(k) || 0) + d);
+const V = {
+  notes: new Map(), df: Counter(),
+  index(n) {
+    const old = this.notes.get(n.id);
+    if (old) for (const t of old.tf.keys()) inc(this.df, t, -1);
+    n.tf = Counter(); for (const t of terms(n.body)) inc(n.tf, t);
+    n.len = [...n.tf.values()].reduce((a, b) => a + b, 0);
+    n.links = [...new Set([...n.body.matchAll(LINK)].map(m => m[1]))];
+    for (const t of n.tf.keys()) inc(this.df, t);
+    this.notes.set(n.id, n);
+  },
+  idf(t) { const N = this.notes.size || 1, d = this.df.get(t) || 0; return Math.log(1 + (N - d + 0.5) / (d + 0.5)); },
+  search(q, k = 6, types = ["manba", "eslatma", "suhbat"]) {
+    const qs = [...new Set(terms(q))], notes = [...this.notes.values()].filter(n => types.includes(n.type));
+    const avg = notes.reduce((a, n) => a + n.len, 0) / Math.max(1, notes.length);
+    const res = [];
+    for (const n of notes) {
+      let s = 0;
+      for (const t of qs) { const f = n.tf.get(t) || 0; if (f) s += this.idf(t) * f * 2.5 / (f + 1.5 * (0.25 + 0.75 * n.len / Math.max(avg, 1))); }
+      const tt = new Set(terms(n.title)); s += 0.5 * qs.filter(t => tt.has(t)).length;
+      if (s > 0) res.push([s, n]);
+    }
+    return res.sort((a, b) => b[0] - a[0]).slice(0, k);
+  },
+  conceptNames() { const m = new Map(); for (const n of this.notes.values()) if (n.type === "tushuncha") m.set(stem(norm(n.title)), n.title); return m; },
+  conceptsFor(text, k = 6) {
+    const surface = new Map();
+    for (const w of words(text)) if (w.length >= 4 && !STOP.has(w) && !isNum(w)) { const s = stem(w); if (!surface.has(s)) surface.set(s, Counter()); inc(surface.get(s), w); }
+    const tf = new Map([...surface].map(([s, c]) => [s, [...c.values()].reduce((a, b) => a + b, 0)]));
+    const names = this.conceptNames(), out = [];
+    for (const s of [...tf.keys()].sort((a, b) => tf.get(b) * this.idf(b) - tf.get(a) * this.idf(a))) {
+      if (tf.get(s) < 2 && out.length >= 3) break;
+      out.push(names.get(s) || (s.length >= 4 ? s : [...surface.get(s)].sort((a, b) => b[1] - a[1])[0][0]));
+      if (out.length >= k) break;
+    }
+    return out;
+  },
+  async touchConcepts(cs, nid) {
+    for (const c of cs) {
+      const id = slug(c);
+      let n = this.notes.get(id);
+      if (!n) n = {id, type: "tushuncha", title: c, meta: {title: c, type: "tushuncha"}, body: `# ${c}\n\nBu tushuncha quyidagi eslatmalarda uchraydi:\n`};
+      const line = `- [[${nid}]]`;
+      if (!n.body.includes(line)) { n.body = n.body.trimEnd() + "\n" + line + "\n"; this.index(n); await Store.save(n); }
+    }
+  },
+  async add(type, title, body, meta = {}, concepts = true) {
+    const base = slug(title); let id = base, i = 2;
+    while (this.notes.has(id)) id = `${base} ${i++}`;
+    const cs = concepts ? this.conceptsFor(body) : [];
+    const links = cs.length ? "\n\nTushunchalar: " + cs.map(c => `[[${slug(c)}]]`).join(" ") : "";
+    const n = {id, type, title, meta: {title, type, sana: new Date().toISOString().slice(0, 16), ...meta}, body: `# ${title}\n\n${body.trim()}${links}\n`};
+    this.index(n); await Store.save(n);
+    if (cs.length) await this.touchConcepts(cs, id);
+    return id;
+  },
+  async appendChat(q, a, used) {
+    const day = new Date().toISOString().slice(0, 10), id = `Suhbat ${day}`;
+    let n = this.notes.get(id);
+    if (!n) n = {id, type: "suhbat", title: id, meta: {title: id, type: "suhbat"}, body: `# ${id}\n`};
+    const t = new Date().toTimeString().slice(0, 5);
+    n.body += `\n## ${t} — ${q}\n\n${a}\n` + (used.length ? `\nManbalar: ${used.map(u => `[[${u}]]`).join(" ")}\n` : "");
+    this.index(n); await Store.save(n);
+  },
+  graph() {
+    const deg = Counter(), edges = [];
+    for (const n of this.notes.values()) for (const l of n.links) if (this.notes.has(l) && l !== n.id) { edges.push([n.id, l]); inc(deg, n.id); inc(deg, l); }
+    return {nodes: [...this.notes.values()].map(n => ({id: n.id, title: n.title, type: n.type, deg: deg.get(n.id) || 0})), edges};
+  },
+  stats() { const s = {}; for (const n of this.notes.values()) s[n.type] = (s[n.type] || 0) + 1; return s; },
+};
+
+// ================= Fikrlash =================
+const REMEMBER = /^\s*(eslab qol|yodla|saqla)\s*[:,-]?\s*/i;
+async function ask(q) {
+  const m = q.match(REMEMBER);
+  if (m) {
+    const body = q.slice(m[0].length).trim();
+    if (!body) return {thinking: [], answer: "Nimani eslab qolay? Masalan: «Eslab qol: Toshkent O'zbekiston poytaxti».", sources: []};
+    const title = body.split(".")[0].slice(0, 60), nid = await V.add("eslatma", title, body);
+    return {thinking: [`Bu buyruq: eslab qolish. «${title}» eslatmasini yaratdim.`, "Bog'langan tushunchalar: " + (V.notes.get(nid).links.join(", ") || "yo'q")], answer: "Eslab qoldim.", sources: [{id: nid, title}]};
+  }
+  const steps = [], qt = [...new Set(terms(q))];
+  steps.push("Savoldagi asosiy so'zlar: " + (qt.join(", ") || "topilmadi"));
+  const hits = V.search(q);
+  if (!hits.length) {
+    steps.push("Xotiramda bu so'zlar bilan bog'liq eslatma yo'q.");
+    const ans = "Bu haqda hali hech narsa bilmayman. Menga shu mavzudagi matn yoki kitob bering, o'qib o'rganaman.";
+    await V.appendChat(q, ans, []);
+    return {thinking: steps, answer: ans, sources: []};
+  }
+  steps.push(`${hits.length} ta mos eslatma topdim: ` + hits.slice(0, 4).map(([s, n]) => `«${n.title}» (${s.toFixed(1)})`).join("; "));
+  const qs = new Set(qt); let cand = [];
+  hits.forEach(([, n], rank) => sentences(n.body).forEach((s, i) => {
+    if (/^(Tushunchalar:|Manbalar:|Savol:)/.test(s) || s.endsWith("?")) return;
+    s = s.replace(/^Javob:\s*/, "");
+    const hit = [...new Set(terms(s))].filter(t => qs.has(t)); if (!hit.length) return;
+    const val = hit.reduce((a, t) => a + V.idf(t), 0) * (1 + 0.15 * hit.length) / (1 + 0.3 * rank) - 0.002 * s.length;
+    cand.push({val, rank, i, s, id: n.id});
+  }));
+  cand.sort((a, b) => b.val - a.val);
+  if (cand.length) cand = cand.filter(c => c.val >= 0.6 * cand[0].val);
+  const picked = [], seen = new Set();
+  for (const c of cand) { const k = c.s.slice(0, 60); if (seen.has(k)) continue; seen.add(k); picked.push(c); if (picked.length >= 3) break; }
+  let ans, used;
+  if (!picked.length) { ans = `«${hits[0][1].title}» eslatmasi mavzuga yaqin, lekin aniq javob topa olmadim.`; used = [hits[0][1].id]; }
+  else {
+    steps.push(`Ulardan savolga eng mos ${picked.length} ta gapni tanladim va manba tartibida tizdim.`);
+    picked.sort((a, b) => a.rank - b.rank || a.i - b.i);
+    ans = picked.map(c => c.s).join(" "); used = [...new Set(picked.map(c => c.id))];
+  }
+  const rel = [...new Set(hits.slice(0, 3).flatMap(([, n]) => n.links))].slice(0, 6);
+  if (rel.length) steps.push("Bog'liq tushunchalar: " + rel.join(", "));
+  await V.appendChat(q, ans, used);
+  return {thinking: steps, answer: ans, sources: used.map(u => ({id: u, title: V.notes.get(u).title}))};
+}
+
+// ================= O'rganish =================
+const logLines = [];
+function say(msg) { logLines.unshift(new Date().toTimeString().slice(0, 8) + "  " + msg); $("jlog").textContent = logLines.slice(0, 80).join("\n"); }
+async function ingest(title, text, source, kind) {
+  const parts = chunks(text);
+  for (let i = 0; i < parts.length; i++) await V.add("manba", parts.length === 1 ? title : `${title} (${i + 1}-qism)`, parts[i], {manba: source, tur: kind});
+  return parts.length;
+}
+function loadScript(src) { return new Promise((ok, no) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => no(new Error("kutubxona yuklanmadi")); document.head.append(s); }); }
+async function pdfText(buf) {
+  if (!window.pdfjsLib) {
+    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js");
+    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
+  }
+  const doc = await pdfjsLib.getDocument({data: buf}).promise, out = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const c = await (await doc.getPage(i)).getTextContent();
+    out.push(c.items.map(it => it.str + (it.hasEOL ? "\n" : " ")).join(""));
+  }
+  return out.join("\n");
+}
+async function readBook(f) {
+  const ext = f.name.split(".").pop().toLowerCase(); let title = f.name.replace(/\.[^.]+$/, ""), text;
+  if (ext === "txt" || ext === "md") text = await f.text();
+  else if (ext === "html" || ext === "htm") { const r = htmlToText(await f.text()); text = r.text; title = r.title || title; }
+  else if (ext === "epub") {
+    const z = await JSZip.loadAsync(await f.arrayBuffer());
+    const pages = Object.keys(z.files).filter(n => /\.(x?html?)$/i.test(n)).sort();
+    text = (await Promise.all(pages.map(async p => htmlToText(await z.file(p).async("string")).text))).join("\n");
+  } else if (ext === "pdf") text = await pdfText(await f.arrayBuffer());
+  else throw new Error(`.${ext} formati qo'llab-quvvatlanmaydi`);
+  if (text.trim().length < 50) throw new Error("faylda o'qiladigan matn topilmadi");
+  const n = await ingest(title, text, "kitob:" + f.name, "kitob");
+  say(`kitob o'qildi: ${title} — ${n} ta eslatma`);
+}
+const SAMPLE = [
+  ["O'zbekiston", "O'zbekiston Respublikasi Markaziy Osiyoda joylashgan davlat. Poytaxti Toshkent shahri. Aholisi 37 milliondan ortiq bo'lib, Markaziy Osiyoda eng ko'p aholiga ega davlat hisoblanadi.\nO'zbekiston 1991-yil 31-avgustda mustaqillikka erishgan. Mustaqillik kuni har yili 1-sentabrda nishonlanadi. Davlat tili o'zbek tili.\nMamlakatda qadimiy shaharlar ko'p: Samarqand, Buxoro va Xiva."],
+  ["Samarqand", "Samarqand O'zbekistondagi eng qadimiy shaharlardan biri, uning yoshi 2750 yildan oshadi. Shahar Buyuk Ipak yo'lining markazida joylashgan edi.\nSamarqandda Registon maydoni, Go'ri Amir maqbarasi va Shohi Zinda majmuasi bor. Amir Temur Samarqandni o'z saltanatining poytaxtiga aylantirgan.\nUlug'bek rasadxonasi XV asrda Mirzo Ulug'bek tomonidan qurilgan. Ulug'bek yulduzlar jadvalini tuzgan buyuk astronom edi."],
+  ["Toshkent", "Toshkent O'zbekistonning poytaxti va eng yirik shahri. Aholisi uch million kishidan ortiq. Toshkent Markaziy Osiyodagi eng katta shaharlardan biri.\nToshkent metrosi 1977-yilda ochilgan va Markaziy Osiyodagi birinchi metro hisoblanadi. Shaharda Amir Temur xiyoboni, Chorsu bozori va Toshkent teleminorasi bor."],
+];
+
+// ================= Interfeys =================
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue("--" + n).trim();
+const NAMES = {manba: "manba", tushuncha: "tushuncha", eslatma: "eslatma", suhbat: "suhbat"};
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+let tab = "chat";
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.tab));
+function show(t) {
+  tab = t;
+  document.querySelectorAll("nav button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
+  ["chat", "graph", "learn"].forEach(s => $(s).hidden = s !== t);
+  if (t === "graph") loadGraph();
+}
+function refresh() {
+  const s = V.stats();
+  $("stats").innerHTML = Object.keys(NAMES).map(k => `<span><i class="dot" style="background:var(--${k})"></i><b>${s[k] || 0}</b> ${NAMES[k]}</span>`).join("");
+  $("emptyBanner").hidden = V.notes.size > 0;
+  if (Store.mode === "local") Store.flushLocal();
+  if (tab === "graph") loadGraph();
+}
+async function busy(btn, fn) { btn.disabled = true; try { await fn(); } catch (e) { say("Xato: " + e.message); } btn.disabled = false; refresh(); }
+
+$("askForm").onsubmit = async e => {
+  e.preventDefault();
+  const q = $("q").value.trim(); if (!q) return;
+  $("q").value = ""; $("askBtn").disabled = true;
+  $("log").append(el("div", "msg me", q));
+  const box = el("div", "msg bot", "O'ylayapman…"); $("log").append(box); box.scrollIntoView({block: "end"});
+  try {
+    const r = await ask(q); box.textContent = "";
+    if (r.thinking.length) { const d = el("details"); d.append(el("summary", "", "Fikr qadamlari")); const ol = el("ol"); r.thinking.forEach(s => ol.append(el("li", "", s))); d.append(ol); box.append(d); }
+    box.append(el("div", "", r.answer));
+    if (r.sources.length) { const s = el("div", "src"); r.sources.forEach(x => { const c = el("button", "chip", x.title); c.type = "button"; c.onclick = () => openNote(x.id); s.append(c); }); box.append(s); }
+  } catch (err) { box.textContent = "Xato: " + err.message; }
+  $("askBtn").disabled = false; box.scrollIntoView({block: "end"}); refresh();
+};
+$("seedBtn").onclick = () => busy($("seedBtn"), async () => { for (const [t, b] of SAMPLE) await ingest(t, b, "namuna", "namuna"); say("namuna bilim yuklandi: 3 ta maqola"); });
+$("tBtn").onclick = () => busy($("tBtn"), async () => {
+  const body = $("tBody").value.trim(), title = $("tTitle").value.trim() || body.split(/[.\n]/)[0].slice(0, 60);
+  if (body.length < 50) throw new Error("matn juda qisqa — kamida bir-ikki gap qo'ying");
+  const n = await ingest(title, body, $("tSrc").value.trim() || "matn", "matn");
+  say(`o'qidim: ${title} — ${n} ta eslatma`); $("tBody").value = ""; $("tTitle").value = ""; $("tSrc").value = "";
+});
+async function books(files) { for (const f of files) { say(`«${f.name}» o'qilmoqda…`); try { await readBook(f); } catch (e) { say(`Xato (${f.name}): ${e.message}`); } } refresh(); }
+$("file").onchange = e => books([...e.target.files]);
+const drop = $("drop");
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("on"); };
+drop.ondragleave = () => drop.classList.remove("on");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("on"); books([...e.dataTransfer.files]); };
+$("wipeBtn").onclick = () => $("wipeAsk").hidden = false;
+$("wipeNo").onclick = () => $("wipeAsk").hidden = true;
+$("wipeYes").onclick = () => busy($("wipeYes"), async () => { await Store.wipe(); V.notes.clear(); V.df.clear(); $("wipeAsk").hidden = true; say("xotira tozalandi"); });
+$("exportBtn").onclick = () => busy($("exportBtn"), async () => {
+  const dl = await window.claude?.use?.("downloads");
+  if (!dl) throw new Error("yuklab olish bu ko'rinishda ishlamaydi");
+  const zip = new JSZip(), dir = {manba: "manbalar", tushuncha: "tushunchalar", eslatma: "eslatmalar", suhbat: "suhbatlar"};
+  for (const n of V.notes.values()) {
+    const front = Object.entries(n.meta || {}).map(([k, v]) => `${k}: ${String(v).replace(/\n/g, " ")}`).join("\n");
+    zip.file(`Miya/${dir[n.type]}/${n.id}.md`, `---\n${front}\n---\n${n.body}`);
+  }
+  await dl.save({filename: "miya-vault.zip", data: await zip.generateAsync({type: "blob"})});
+  say("xotira yuklab olindi: miya-vault.zip — Obsidian'da «Open folder as vault» bilan oching");
+});
+
+function openNote(id) {
+  const n = V.notes.get(id), p = $("panel"); p.hidden = false; p.innerHTML = "";
+  const x = el("button", "close", "×"); x.type = "button"; x.title = "Yopish"; x.onclick = () => p.hidden = true; p.append(x);
+  if (!n) { p.append(el("p", "hint", "Eslatma topilmadi.")); return; }
+  p.append(el("div", "meta", [NAMES[n.type], n.meta?.manba, n.meta?.sana].filter(Boolean).join(" · ")));
+  p.append(el("h2", "", n.title));
+  const body = el("div", "body");
+  n.body.replace(/^# .*\n+/, "").split(/(\[\[[^\]]+\]\])/).forEach(part => {
+    const m = part.match(/^\[\[([^\]|#]+)/);
+    if (m) { const a = el("a", "", m[1]); a.tabIndex = 0; a.onclick = () => openNote(m[1]); body.append(a); } else body.append(part);
+  });
+  p.append(body);
+  const back = [...V.notes.values()].filter(m => m.links.includes(id)).map(m => m.id);
+  if (back.length) {
+    const l = el("div", "links"); l.append(el("b", "", "Bu yerga bog'langan: "));
+    back.forEach((b, i) => { const a = el("a", "", b); a.tabIndex = 0; a.onclick = () => openNote(b); l.append(a); if (i < back.length - 1) l.append(", "); });
+    p.append(l);
+  }
+  if (byId[id]) sel = byId[id];
+}
+
+// ================= Graf =================
+const cv = $("cv"), cx = cv.getContext("2d");
+let G = {nodes: [], edges: []}, byId = {}, view = {x: 0, y: 0, k: 1}, hover = null, drag = null, pan = null, alpha = 1, sel = null;
+function loadGraph() {
+  const g = V.graph(), old = byId; byId = {};
+  g.nodes.forEach(n => { const o = old[n.id]; Object.assign(n, o ? {x: o.x, y: o.y} : {x: (Math.random() - .5) * 400, y: (Math.random() - .5) * 400}, {vx: 0, vy: 0}); byId[n.id] = n; });
+  g.edges = g.edges.filter(e => byId[e[0]] && byId[e[1]]).map(e => [byId[e[0]], byId[e[1]]]);
+  G = g; alpha = 1; resize();
+}
+function resize() { const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1; cv.width = r.width * d; cv.height = r.height * d; cx.setTransform(d, 0, 0, d, 0, 0); }
+addEventListener("resize", resize);
+const rad = n => 4 + Math.sqrt(n.deg) * 2.2;
+function tick() {
+  const N = G.nodes;
+  if (alpha > 0.01 && N.length) {
+    for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {
+      const a = N[i], b = N[j], dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy + 0.01;
+      if (d2 > 90000) continue;
+      const f = 900 / d2 * alpha; a.vx += dx * f; a.vy += dy * f; b.vx -= dx * f; b.vy -= dy * f;
+    }
+    for (const [a, b] of G.edges) { const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, f = (d - 60) * 0.02 * alpha; a.vx += dx / d * f; a.vy += dy / d * f; b.vx -= dx / d * f; b.vy -= dy / d * f; }
+    for (const n of N) { n.vx -= n.x * 0.012 * alpha; n.vy -= n.y * 0.012 * alpha; if (n !== drag) { n.x += n.vx; n.y += n.vy; } n.vx *= 0.6; n.vy *= 0.6; }
+    alpha *= 0.995;
+  }
+  draw(); requestAnimationFrame(tick);
+}
+function draw() {
+  if (tab !== "graph") return;
+  const w = cv.clientWidth, h = cv.clientHeight, q = $("gsearch").value.trim().toLowerCase();
+  cx.clearRect(0, 0, w, h); cx.save(); cx.translate(w / 2 + view.x, h / 2 + view.y); cx.scale(view.k, view.k);
+  const focus = hover || sel, near = new Set();
+  if (focus) { near.add(focus); G.edges.forEach(([a, b]) => { if (a === focus) near.add(b); if (b === focus) near.add(a); }); }
+  cx.lineWidth = 1 / view.k;
+  for (const [a, b] of G.edges) { cx.strokeStyle = focus && (a === focus || b === focus) ? css("accent") : css("line"); cx.beginPath(); cx.moveTo(a.x, a.y); cx.lineTo(b.x, b.y); cx.stroke(); }
+  for (const n of G.nodes) {
+    const match = q && n.title.toLowerCase().includes(q), dim = (focus && !near.has(n)) || (q && !match);
+    cx.globalAlpha = dim ? 0.2 : 1; cx.fillStyle = css(n.type); cx.beginPath(); cx.arc(n.x, n.y, rad(n), 0, 7); cx.fill();
+    if (match || n === sel) { cx.strokeStyle = css("fg"); cx.lineWidth = 2 / view.k; cx.stroke(); cx.lineWidth = 1 / view.k; }
+    if (!dim && (view.k > 1.3 || n.deg > 3 || near.has(n) || match)) { cx.fillStyle = css("fg"); cx.font = `${12 / view.k}px system-ui`; cx.fillText(n.title.slice(0, 40), n.x + rad(n) + 3 / view.k, n.y + 4 / view.k); }
+  }
+  cx.globalAlpha = 1; cx.restore();
+  if (!G.nodes.length) { cx.fillStyle = css("muted"); cx.font = "15px system-ui"; cx.textAlign = "center"; cx.fillText("Xotira bo'sh — «O'rganish» bo'limida matn yoki kitob bering.", w / 2, h / 2); cx.textAlign = "start"; }
+}
+const world = e => { const r = cv.getBoundingClientRect(); return {x: (e.clientX - r.left - r.width / 2 - view.x) / view.k, y: (e.clientY - r.top - r.height / 2 - view.y) / view.k}; };
+const pick = p => { let best = null, bd = 1e9; for (const n of G.nodes) { const d = Math.hypot(n.x - p.x, n.y - p.y); if (d < rad(n) + 6 / view.k && d < bd) { best = n; bd = d; } } return best; };
+cv.onpointerdown = e => { cv.setPointerCapture(e.pointerId); const n = pick(world(e)); if (n) { drag = n; drag.moved = false; } else pan = {x: e.clientX - view.x, y: e.clientY - view.y}; };
+cv.onpointermove = e => { const p = world(e); if (drag) { drag.x = p.x; drag.y = p.y; drag.moved = true; alpha = Math.max(alpha, 0.3); } else if (pan) { view.x = e.clientX - pan.x; view.y = e.clientY - pan.y; } else { hover = pick(p); cv.style.cursor = hover ? "pointer" : "grab"; } };
+cv.onpointerup = () => { if (drag && !drag.moved) { sel = drag; openNote(drag.id); } drag = null; pan = null; };
+cv.onpointerleave = () => { hover = null; };
+cv.addEventListener("wheel", e => { e.preventDefault(); const k = Math.min(5, Math.max(0.2, view.k * (e.deltaY < 0 ? 1.12 : 0.89))); view.x *= k / view.k; view.y *= k / view.k; view.k = k; }, {passive: false});
+requestAnimationFrame(tick);
+
+// ================= Boshlash =================
+(async () => {
+  const recs = await Store.init();
+  for (const r of recs) V.index({id: r.nid, type: r.type, title: r.title, body: r.body, meta: r.meta || {}, _doc: r._doc});
+  $("storeInfo").textContent = Store.mode === "db"
+    ? "Xotira claude.ai hisobingizda shaxsiy saqlanadi: faqat siz ko'rasiz, istalgan qurilmadan shu sahifani ochsangiz eslab turadi."
+    : "Xotira faqat shu brauzerda saqlanadi. Hisobingizga kirib ochsangiz, istalgan qurilmada eslab turadi.";
+  say(`xotira yuklandi: ${V.notes.size} ta eslatma`);
+  refresh();
+})();
+</script>
