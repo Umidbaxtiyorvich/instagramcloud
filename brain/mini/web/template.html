@@ -1,0 +1,96 @@
+<title>Mening Miyam</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+/* Layout: bitta ustun, tepada miya haqida ma'lumot, o'rtada yozish maydoni, pastda natija */
+:root {
+  --bg: #f3f4f1; --surface: #ffffff; --fg: #1b2420; --muted: #5d6b64; --line: #d5dad4; --accent: #0f6b52; --accent-fg: #ffffff; --warn: #8a5a00;
+  --display: "Fraunces", Georgia, serif; --body: "IBM Plex Sans", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121815; --surface: #1a221e; --fg: #e5ece7; --muted: #94a39a; --line: #2e3a34; --accent: #4fc9a0; --accent-fg: #0c1511; --warn: #e0b45a; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121815; --surface: #1a221e; --fg: #e5ece7; --muted: #94a39a; --line: #2e3a34; --accent: #4fc9a0; --accent-fg: #0c1511; --warn: #e0b45a; color-scheme: dark; }
+body { background: var(--bg); color: var(--fg); font: 16px/1.55 var(--body); padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 48px; }
+main { max-width: 720px; margin: 0 auto; display: grid; gap: 22px; }
+h1 { font: 600 clamp(2rem, 7vw, 2.8rem)/1.05 var(--display); margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); margin: 6px 0 0; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px; font: 500 12.5px var(--mono); }
+.facts span { border: 1px solid var(--line); background: var(--surface); padding: 4px 9px; border-radius: 4px; }
+label { font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 6px; }
+textarea { width: 100%; min-height: 84px; resize: vertical; font: 16px/1.5 var(--body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px; }
+textarea:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.row { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; }
+.row > div { flex: 1 1 180px; min-width: 0; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.val { font: 500 13px var(--mono); color: var(--fg); float: right; }
+button { font: 500 15px var(--body); background: var(--accent); color: var(--accent-fg); border: 0; border-radius: 6px; padding: 11px 22px; cursor: pointer; }
+button:disabled { opacity: .55; cursor: progress; }
+#out { white-space: pre-wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; min-height: 140px; font-size: 16px; overflow-wrap: anywhere; }
+#out .you { color: var(--accent); font-weight: 500; }
+#out.idle { color: var(--muted); }
+.note { color: var(--warn); font-size: 14px; border-top: 1px solid var(--line); padding-top: 14px; margin: 0; }
+</style>
+
+<main>
+  <header>
+    <h1>Mening Miyam</h1>
+    <p class="sub">Noldan yozilgan kichik neyron tarmoq. Hech qayerga ulanmaydi, brauzeringizda o'zi ishlaydi.</p>
+  </header>
+  <div class="facts" aria-label="Miya haqida">
+    <span>__PARAMS__ parametr</span><span>harf darajasida</span><span>xotira: 32 harf</span><span>o'qitilgan matn: ~2 KB</span>
+  </div>
+  <section>
+    <label for="prompt">Miyaga yozing</label>
+    <textarea id="prompt">Instagramda </textarea>
+  </section>
+  <div class="row">
+    <div><label for="temp">Ijodkorlik <span class="val" id="tv">0.7</span></label><input id="temp" type="range" min="0.2" max="1.4" step="0.05" value="0.7"></div>
+    <div><label for="len">Uzunlik <span class="val" id="lv">240</span></label><input id="len" type="range" min="40" max="600" step="20" value="240"></div>
+    <button id="go" type="button">Davom ettir</button>
+  </div>
+  <div id="out" class="idle" role="status" aria-live="polite">Natija shu yerda chiqadi.</div>
+  <p class="note">Bu miya faqat ikki kilobayt o'zbekcha matndan o'rgangan. Matndagi gaplarni yod olgan, yangi fikr tuzolmaydi. «Ijodkorlik»ni oshirsangiz yangi so'zlar chiqadi, ma'nosi bo'lmaydi. Ko'proq matn bilan o'qitilsa kuchayadi.</p>
+</main>
+
+<script>
+const B = __BRAIN__;
+const {C, E, H} = B, chars = [...B.chars], V = chars.length, idx = Object.fromEntries(chars.map((c, i) => [c, i]));
+function f16(b64) {
+  const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+  const dv = new DataView(u.buffer), o = new Float32Array(u.length / 2);
+  for (let i = 0; i < o.length; i++) {
+    const h = dv.getUint16(i * 2, true), e = (h >> 10) & 31, m = h & 1023, sg = h >> 15 ? -1 : 1;
+    o[i] = e === 0 ? sg * 2 ** -14 * (m / 1024) : e === 31 ? (m ? NaN : sg * Infinity) : sg * 2 ** (e - 15) * (1 + m / 1024);
+  }
+  return o;
+}
+const W = Object.fromEntries(Object.entries(B.weights).map(([k, v]) => [k, f16(v)]));
+function next(ctx, temp) {
+  const x = new Float32Array(C * E);
+  for (let i = 0; i < C; i++) x.set(W.emb.subarray(ctx[i] * E, ctx[i] * E + E), i * E);
+  const h = new Float32Array(W.b1);
+  for (let i = 0; i < C * E; i++) { const xi = x[i], row = i * H; for (let j = 0; j < H; j++) h[j] += xi * W.W1[row + j]; }
+  for (let j = 0; j < H; j++) h[j] = Math.tanh(h[j]);
+  const lg = new Float32Array(W.b2);
+  for (let j = 0; j < H; j++) { const hj = h[j], row = j * V; for (let k = 0; k < V; k++) lg[k] += hj * W.W2[row + k]; }
+  let mx = -Infinity; for (const l of lg) mx = Math.max(mx, l);
+  let s = 0; const p = Array.from(lg, l => { const e = Math.exp((l - mx) / temp); s += e; return e; });
+  let r = Math.random() * s; for (let k = 0; k < V; k++) { r -= p[k]; if (r <= 0) return k; } return V - 1;
+}
+const $ = id => document.getElementById(id), out = $("out");
+$("temp").oninput = e => $("tv").textContent = (+e.target.value).toFixed(2);
+$("len").oninput = e => $("lv").textContent = e.target.value;
+$("go").onclick = async () => {
+  const prompt = $("prompt").value, temp = +$("temp").value, n = +$("len").value;
+  let ctx = [...prompt].map(c => idx[c] ?? 0).slice(-C); while (ctx.length < C) ctx.unshift(0);
+  $("go").disabled = true; out.className = "";
+  out.innerHTML = ""; const you = document.createElement("span"); you.className = "you"; you.textContent = prompt;
+  const gen = document.createElement("span"); out.append(you, gen);
+  for (let i = 0; i < n; i++) {
+    const k = next(ctx, temp); gen.textContent += chars[k]; ctx = ctx.slice(1).concat(k);
+    if (i % 6 === 5) await new Promise(r => setTimeout(r, 0));
+  }
+  $("go").disabled = false;
+};
+</script>
