@@ -190,11 +190,19 @@ export async function tasdiqHal(userId: string, id: string, ha: boolean) {
   if (row.status !== "pending") throw new Error("Allaqachon qaror qilingan");
   if (!ha) {
     await prisma.approval.update({ where: { id }, data: { status: "rejected", decidedAt: new Date() } });
+    const kalit = (JSON.parse(row.payload) as { miyaKalit?: string }).miyaKalit;
+    if (kalit) await (await import("./miya")).reelsRad(userId, kalit);
     return { status: "rejected" as const };
   }
   try {
-    const result = await executeApprovedAction(row.toolName, JSON.parse(row.payload));
+    const payload = JSON.parse(row.payload);
+    const result = await executeApprovedAction(row.toolName, payload);
     await prisma.approval.update({ where: { id }, data: { status: "executed", result: JSON.stringify(result), decidedAt: new Date() } });
+    // Miya yasagan Reels — xabarini yangilaydi va natijasini kuzatishga oladi
+    if (payload.miyaKalit) {
+      const r = result as { id?: string; igMediaId?: string };
+      await (await import("./miya")).reelsJoylandi(userId, String(payload.miyaKalit), String(payload.caption ?? ""), r.id ?? r.igMediaId);
+    }
     return { status: "executed" as const, result };
   } catch (e) {
     await prisma.approval.update({

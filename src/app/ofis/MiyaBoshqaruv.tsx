@@ -24,6 +24,7 @@ type Fikr = {
 type Upload = { id: string; filename: string; kind: "video" | "image" | null; createdAt: string };
 type Sozlama = {
   autoReels: boolean;
+  reelsTasdiq: boolean;
   reelsVaqtlari: string;
   reelsBrend: string;
   reelsFooter: string;
@@ -205,12 +206,16 @@ function ReelsSozlama({ s, chatgpt, band, saqla }: { s: Sozlama; chatgpt: boolea
     <div>
       <div className="o_ulanishMatn" style={{ marginTop: 0 }}>
         Belgilangan vaqtlarda Miya o&apos;zi ssenariy yozadi (eng ko&apos;p ko&apos;rilgan Reels&apos;laringiz va siz haqingizdagi ma&apos;lumotga qarab),
-        video yasaydi, matn va hashtaglarni yozib joylaydi, keyin Telegram&apos;da xabar beradi. O&apos;chirilsa — faqat eslatadi.
+        video yasaydi, matn va hashtaglarni yozadi; so&apos;rash yoqilgan bo&apos;lsa, videoni Telegram&apos;da ko&apos;rsatib ruxsatingizni kutadi, aks holda o&apos;zi joylaydi. O&apos;chirilsa — faqat eslatadi.
         {!chatgpt && " ⚠️ OPENAI_API_KEY yo'q — hozircha faqat eslatadi."}
       </div>
       <label className="o_miyaQator">
         <input type="checkbox" checked={f.autoReels} onChange={(e) => setF({ ...f, autoReels: e.target.checked })} />
         Avtomatik yasab joylasin
+      </label>
+      <label className="o_miyaQator">
+        <input type="checkbox" checked={f.reelsTasdiq} onChange={(e) => setF({ ...f, reelsTasdiq: e.target.checked })} />
+        Joylashdan oldin so&apos;rasin (video Telegram&apos;ga «✅ Joyla / ❌ Bekor» bilan keladi)
       </label>
       <label className="o_miyaYorliq">Vaqtlar (Toshkent, vergul bilan)</label>
       <input className="o_qidiruv" value={f.reelsVaqtlari} onChange={(e) => setF({ ...f, reelsVaqtlari: e.target.value })} placeholder="10:00,19:00" />
@@ -229,6 +234,7 @@ function ReelsSozlama({ s, chatgpt, band, saqla }: { s: Sozlama; chatgpt: boolea
         onClick={() =>
           saqla({
             autoReels: f.autoReels,
+            reelsTasdiq: f.reelsTasdiq,
             reelsVaqtlari: f.reelsVaqtlari,
             reelsBrend: f.reelsBrend,
             reelsFooter: f.reelsFooter,

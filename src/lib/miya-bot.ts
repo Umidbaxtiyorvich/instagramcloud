@@ -2,6 +2,8 @@ import { createHash } from "crypto";
 import type { Qongiroq } from "@prisma/client";
 import { prisma } from "./db";
 import { randomToken } from "./crypto";
+import { tasdiqHal } from "./actions";
+import { uploadForPublish } from "./uploads";
 import { openai } from "./ofis-openai";
 import { sayt } from "./twilio";
 import { gapniIshla, matnniIshla, qongiroqToken, sababToza, salomMatni, suhbatOl, tgChaqir, xatoGap } from "./miya-telefon";
@@ -115,6 +117,22 @@ export async function botXabar(userId: string, text: string) {
   if (chat) await tg("sendMessage", { chat_id: chat, text }).catch((e) => console.error("miya bot:", e));
 }
 
+// Miya yasagan Reels: videoni yuborib, joylash-joylamaslikni so'raydi
+export async function botReelsTasdiq(userId: string, approvalId: string, uploadId: string, caption: string) {
+  const chat = await chati(userId);
+  if (!chat) return false;
+  const reply_markup = { inline_keyboard: [[{ text: "✅ Joyla", callback_data: `rt:ha:${approvalId}` }, { text: "❌ Bekor", callback_data: `rt:yoq:${approvalId}` }]] };
+  const izoh = `🎬 Yangi Reels tayyor. Instagram'ga joylaymi?\n\n${caption}`.slice(0, 1000);
+  const { url } = await uploadForPublish(userId, uploadId);
+  try {
+    await tg("sendVideo", { chat_id: chat, video: url, caption: izoh, reply_markup });
+  } catch {
+    // Telegram videoni yuklab ololmasa — havola bilan
+    await tg("sendMessage", { chat_id: chat, text: `${izoh}\n\n▶️ Video: ${url}`, reply_markup });
+  }
+  return true;
+}
+
 // Javob berilmadi — tarixda qoladi, «qayta qo'ng'iroq» bilan sababini so'rash mumkin
 export async function botOtkazildi(q: Qongiroq) {
   const chat = await chati(q.userId);
@@ -217,6 +235,15 @@ export async function botYangilanish(u: Update) {
 
   if (u.callback_query) {
     await tg("answerCallbackQuery", { callback_query_id: u.callback_query.id }).catch(() => null);
+    const rt = u.callback_query.data?.match(/^rt:(ha|yoq):(.+)$/);
+    if (rt) {
+      try {
+        const r = await tasdiqHal(userId, rt[2], rt[1] === "ha");
+        return tg2(chat, r.status === "executed" ? "✅ Reels Instagram'ga joylandi." : "❌ Bekor qilindi — joylanmaydi.");
+      } catch (e) {
+        return tg2(chat, `⚠️ ${e instanceof Error ? e.message : "Xato"}`);
+      }
+    }
     const id = u.callback_query.data?.startsWith("qayta:") ? u.callback_query.data.slice(6) : "";
     const eski = id ? await prisma.qongiroq.findFirst({ where: { id, userId } }) : null;
     if (!eski) return;

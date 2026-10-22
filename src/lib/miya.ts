@@ -10,6 +10,7 @@ import { moliyaRuxsat, pul } from "./ofis-moliya";
 import { githubdaYasash, osilganIshlar, videoNavbat } from "./video-ish";
 import type { VideoSpec } from "./video";
 import { fikrla } from "./miya-fikr";
+import { botReelsTasdiq } from "./miya-bot";
 
 // AI Ofis «Miya» — avtomatik kuzatuvchi. Railway'dagi bot har 10 daqiqada /api/miya/tick ni chaqiradi:
 // belgilangan postlarni joylaydi, Reels vaqti kelsa video yasab joylaydi, CloudShop va Instagram'ni
@@ -298,26 +299,54 @@ export async function reelsYasaVaJoyla(userId: string, s: MiyaSozlama, kalit: st
   await reelsVideoTayyor(userId, kalit, v.upload_id, ss.caption);
 }
 
-// Video tayyor: Reels qilib joylaydi va Miya xabarini yangilaydi
+// Video tayyor: egasi so'rashni tanlagan bo'lsa — tasdiqqa qo'yadi va Telegram'ga video yuboradi, aks holda o'zi joylaydi
 export async function reelsVideoTayyor(userId: string, kalit: string, uploadId: string, caption: string) {
   const akk = await igAkkaunt(userId);
   if (!akk) return reelsVideoXato(userId, kalit, "Instagram ulanmagan");
-  try {
-    const res = await joyla(userId, akk.id, "publish_reel", uploadId, caption);
-    const mediaId = res.id ?? res.igMediaId;
-    // 48 soatdan keyin natijasi tekshiriladi (reelsNatija)
-    if (mediaId) await prisma.miyaReels.createMany({ data: [{ userId, mediaId, caption: caption.slice(0, 500) }], skipDuplicates: true });
+  const s = await sozlama(userId);
+  if (s.reelsTasdiq) {
+    const payload = { accountId: akk.id, uploadId, caption, baseUrl: configuredUrl(), miyaKalit: kalit };
+    const row = await prisma.approval.create({
+      data: { userId, accountId: akk.id, toolName: "publish_reel", summary: `Miya: Reels — «${caption.slice(0, 80)}»`, payload: JSON.stringify(payload) },
+    });
+    // fayl qaror kutib turganda o'chib ketmasin
+    await prisma.mediaUpload.update({ where: { id: uploadId }, data: { expiresAt: new Date(Date.now() + 7 * KUN) } }).catch(() => null);
+    const yuborildi = await botReelsTasdiq(userId, row.id, uploadId, caption).catch((e) => (console.error("miya reels tasdiq:", e), false));
     await prisma.miyaXabar.update({
       where: { userId_kalit: { userId, kalit } },
       data: {
-        daraja: "info",
-        telegram: false,
-        matn: `🎬 Miya Reels joyladi (@${akk.username}).\nMatn: ${caption.slice(0, 300)}${res.id ? `\nID: ${res.id}` : ""}`,
+        daraja: "ogoh",
+        telegram: yuborildi,
+        matn: `🎬 Reels tayyor — joylaymi? (@${akk.username})\nMatn: ${caption.slice(0, 300)}\n${yuborildi ? "Telegram'da «✅ Joyla» yoki «❌ Bekor» ni bosing." : "Ofisdagi tasdiq navbatida «Tasdiqlash» ni bosing."}`,
       },
     });
+    return;
+  }
+  try {
+    const res = await joyla(userId, akk.id, "publish_reel", uploadId, caption);
+    await reelsJoylandi(userId, kalit, caption, res.id ?? res.igMediaId);
   } catch (e) {
     await reelsVideoXato(userId, kalit, e instanceof Error ? e.message : "joylanmadi");
   }
+}
+
+// Reels joylandi (o'zi yoki egasi tasdiqlagach): natijasi 48 soatdan keyin tekshiriladi (reelsNatija)
+export async function reelsJoylandi(userId: string, kalit: string, caption: string, mediaId?: string) {
+  const akk = await igAkkaunt(userId);
+  if (mediaId) await prisma.miyaReels.createMany({ data: [{ userId, mediaId, caption: caption.slice(0, 500) }], skipDuplicates: true });
+  await prisma.miyaXabar.updateMany({
+    where: { userId, kalit },
+    data: {
+      daraja: "info",
+      telegram: false,
+      matn: `🎬 Miya Reels joyladi${akk ? ` (@${akk.username})` : ""}.\nMatn: ${caption.slice(0, 300)}${mediaId ? `\nID: ${mediaId}` : ""}`,
+    },
+  });
+}
+
+// Egasi Miya Reels'ini rad etdi
+export async function reelsRad(userId: string, kalit: string) {
+  await prisma.miyaXabar.updateMany({ where: { userId, kalit }, data: { daraja: "info", telegram: true, matn: "🎬 Reels bekor qilindi — joylanmadi." } });
 }
 
 export async function reelsVideoXato(userId: string, kalit: string, m: string) {

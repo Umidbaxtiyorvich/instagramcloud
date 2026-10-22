@@ -30,6 +30,7 @@ export async function GET() {
   return NextResponse.json({
     sozlama: {
       autoReels: s.autoReels,
+      reelsTasdiq: s.reelsTasdiq,
       reelsVaqtlari: s.reelsVaqtlari,
       reelsBrend: s.reelsBrend,
       reelsFooter: s.reelsFooter,
@@ -54,6 +55,7 @@ export async function GET() {
 
 const Sozla = z.object({
   autoReels: z.boolean().optional(),
+  reelsTasdiq: z.boolean().optional(),
   reelsVaqtlari: z
     .string()
     .trim()

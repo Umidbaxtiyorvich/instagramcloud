@@ -58,6 +58,8 @@ model MiyaSozlama {
   userId          String    @id
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   autoReels       Boolean   @default(true)
+  // Miya yasagan Reels Telegram'da (yoki tasdiq navbatida) egasi «Joyla» degandan keyingina joylanadi
+  reelsTasdiq     Boolean   @default(true)
   // Toshkent vaqti, vergul bilan: kuniga shu vaqtlarda Reels
   reelsVaqtlari   String    @default("10:00,19:00")
   // Reels uchun brend nomi va pastki qator (telefon); bo'sh bo'lsa akkaunt nomi
