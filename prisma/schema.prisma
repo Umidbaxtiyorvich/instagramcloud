@@ -27,6 +27,7 @@ model User {
   miya        MiyaSozlama?
   miyaXabarlar MiyaXabar[]
   miyaFikrlar MiyaFikr[]
+  miyaReels   MiyaReels[]
   ofisFayllar OfisFayl[]
   qongiroqlar Qongiroq[]
   rejaPostlar RejaPost[]
@@ -87,7 +88,29 @@ model MiyaSozlama {
   telegramChat    String?   @unique
   telegramKod     String?   @unique
   telegramKodVaqt DateTime?
+  // egasi «eslab qol» degan doimiy qoidalar — har bir qatori bitta qoida; Miya hamma joyda amal qiladi
+  qoidalar        String    @default("")
+  // kechki kunlik hisobot va obunachilar o'zgarishi uchun oldingi son
+  oxirgiHisobot   DateTime?
+  oxirgiObunachi  Int?
   createdAt       DateTime  @default(now())
+}
+
+// Miya o'zi joylagan Reels va 48 soatdan keyingi natijasi — keyingi ssenariylar shundan o'rganadi
+model MiyaReels {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mediaId     String
+  caption     String
+  joylandi    DateTime  @default(now())
+  korish      Int?
+  // ko'rishlar akkauntdagi Reels medianasiga nisbatan (1.0 — odatdagidek)
+  nisbat      Float?
+  tekshirildi DateTime?
+
+  @@unique([userId, mediaId])
+  @@index([tekshirildi, joylandi])
 }
 
 // Miya topgan narsalar: ogohlantirishlar va hisobotlar. kalit — bir xil xabar qaytarilmasin

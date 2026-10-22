@@ -5,7 +5,7 @@ import { callTool, writeToolNow } from "./mcp";
 import { configuredUrl } from "./url";
 import { igAkkaunt } from "./ofis-instagram";
 import { openai, openaiModel } from "./ofis-openai";
-import { miyaXabar, sozlama, toshkent } from "./miya";
+import { miyaXabar, qoidalarMatni, reelsNatijalari, sozlama, toshkent } from "./miya";
 
 // Miya «o'ylaydi»: Instagram'dagi hamma narsani o'qiydi, odamday xulosa qiladi va aniq takliflar
 // beradi. Har bir taklif — oq ro'yxatdagi amal; xavfini kod belgilaydi, model emas. Egasining
@@ -117,7 +117,7 @@ async function kontekst(userId: string) {
   const akk = await igAkkaunt(userId);
   if (!akk) return null;
   const hafta = new Date(Date.now() - 7 * 86400_000);
-  const [analytics, reels, report, automations, javobsizD, javobsizK, loglar, xotira, tarix, s] = await Promise.all([
+  const [analytics, reels, report, automations, javobsizD, javobsizK, loglar, xotira, tarix, s, natijalar] = await Promise.all([
     igJson(userId, "instagram_analytics"),
     igJson(userId, "instagram_reels_report", { limit: 10 }),
     igJson(userId, "instagram_automation_report"),
@@ -132,6 +132,7 @@ async function kontekst(userId: string) {
     prisma.xotira.findUnique({ where: { userId } }),
     prisma.miyaFikr.findMany({ where: { userId, holat: { not: "kutmoqda" } }, orderBy: { createdAt: "desc" }, take: 25 }),
     sozlama(userId),
+    reelsNatijalari(userId),
   ]);
 
   // kim nima yozdi va unga nima ketdi; standart javob ketganlari — hech bir qoidaga tushmaganlar
@@ -161,6 +162,7 @@ async function kontekst(userId: string) {
     matn: [
       `Akkaunt: @${akk.username}. Bugun ${toshkent().sana} (Toshkent).`,
       xotira ? `Egasi va biznes haqida (ChatGPT tarixidan):\n${xotira.profil.slice(0, 2500)}` : "Egasi haqida profil yo'q.",
+      qoidalarMatni(s),
       `Statistika: ${q(analytics, 2500)}`,
       `Reels hisoboti: ${q(reels, 3000)}`,
       `Avto-javoblar 7 kunda: ${q(report, 1200)}`,
@@ -169,11 +171,14 @@ async function kontekst(userId: string) {
       `Javobsiz kommentlar (reply_comment uchun comment_id faqat shu yerdan): ${q(javobsizK, 2500)}`,
       `Oxirgi 7 kunda kelgan xabarlar:\n${suhbat.slice(-60).join("\n") || "yo'q"}`,
       `Reels avtomatik: ${s.autoReels ? "yoqilgan" : "o'chirilgan"}, vaqtlari ${s.reelsVaqtlari}.`,
+      natijalar,
       tarix.length
         ? `Oldingi takliflaringiz va egasining javobi (shundan o'rganing, rad etilganini takrorlamang):\n` +
           tarix.map((f) => `- [${f.holat}] ${AMAL_NOMI[f.amal as Amal] ?? f.amal}: ${f.sarlavha}${f.izoh ? ` — egasi: «${f.izoh}»` : ""}${f.natija ? ` (${f.natija.slice(0, 120)})` : ""}`).join("\n")
         : "Hali taklif bermagansiz.",
-    ].join("\n\n"),
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
   };
 }
 

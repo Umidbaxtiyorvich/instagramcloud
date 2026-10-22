@@ -39,6 +39,7 @@ export async function GET() {
       oxirgiInstagram: s.oxirgiInstagram,
       mustaqillik: s.mustaqillik,
       oxirgiFikr: s.oxirgiFikr,
+      qoidalar: s.qoidalar,
     },
     fikrlar,
     ishonch,
@@ -63,6 +64,8 @@ const Sozla = z.object({
   kamQoldiq: z.number().int().min(0).max(100000).optional(),
   qarzKunlari: z.number().int().min(3).max(365).optional(),
   mustaqillik: z.enum(MUSTAQILLIK).optional(),
+  // bir qator — bitta qoida
+  qoidalar: z.string().max(6000).transform((v) => v.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 40).join("\n")).optional(),
 });
 
 export async function PATCH(req: Request) {

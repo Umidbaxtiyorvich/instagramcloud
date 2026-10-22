@@ -7,7 +7,7 @@ import { JAMOALAR, lokalTaqsimot, type JamoaId, type Taqsimot } from "@/lib/ofis
 import { MOLIYA_NOMLARI, MOLIYA_VOSITALAR, lokalMoliya, moliyaHolati, moliyaRuxsat, moliyaVosita, type Davr } from "@/lib/ofis-moliya";
 import { IG_VOSITALAR, amalNomi, igAkkaunt, igVosita, lokalInstagram, yangiTasdiqlar } from "@/lib/ofis-instagram";
 import { agentMcp, type McpSorov } from "@/lib/mcp-ulanish";
-import { MIYA_VOSITALAR, rejaQosh, toshkent } from "@/lib/miya";
+import { MIYA_VOSITALAR, miyaVosita, qoidalarMatni, rejaQosh, sozlama, toshkent } from "@/lib/miya";
 import { prisma } from "@/lib/db";
 import OpenAI from "openai";
 import { HUJJAT_VOSITA, hujjatYarat, matndanHujjat, soralganTur } from "@/lib/ofis-fayl";
@@ -176,12 +176,14 @@ export async function POST(req: Request) {
     console.error("ofis: MCP ulanishlari", e.message);
     return { servers: [], toolsets: [], nomlar: {}, tavsif: "" };
   });
-  const [xotira, miyaXabarlar] = await Promise.all([
+  const [xotira, miyaXabarlar, miyaS] = await Promise.all([
     prisma.xotira.findUnique({ where: { userId: user.id } }),
     prisma.miyaXabar.findMany({ where: { userId: user.id, daraja: { in: ["ogoh", "xavf"] } }, orderBy: { createdAt: "desc" }, take: 5 }),
+    sozlama(user.id),
   ]);
   const kontekst = [
     xotira ? `Foydalanuvchi haqida (uning ChatGPT tarixidan) — shunga qarab muloqot qiling:\n${xotira.profil}` : "",
+    qoidalarMatni(miyaS),
     miyaXabarlar.length ? `Miya oxirgi topgan muammolar:\n${miyaXabarlar.map((x) => `- ${x.matn.split("\n")[0]}`).join("\n")}` : "",
     `Hozir Toshkentda: ${toshkent().sana} ${String(Math.floor(toshkent().daqiqa / 60)).padStart(2, "0")}:${String(toshkent().daqiqa % 60).padStart(2, "0")}.`,
     akk ? `Ulangan Instagram: @${akk.username}${akk.isDemo ? " (demo)" : ""}, ${akk.followersCount} obunachi.` : "Instagram ulanmagan — instagram_* vositalari ishlamaydi.",
@@ -220,6 +222,11 @@ export async function POST(req: Request) {
       const r = await rejaQosh(user.id, kirish as { upload_id: string; tur: string; caption?: string; vaqt: string });
       amallar.push(`Rejaga qo'yildi: ${r.tur} — ${String(kirish.vaqt)}`);
       return `Rejaga qo'yildi (ID ${r.id}): ${r.tur}, Toshkent vaqti ${String(kirish.vaqt)} da o'zi joylanadi.`;
+    }
+    if (nom === "miya_qoida" || nom === "miya_hisobot") {
+      const n = await miyaVosita(user.id, nom, kirish, moliyaBor);
+      amallar.push(nom === "miya_hisobot" ? "Kunlik hisobot" : "Miya qoidalari");
+      return n;
     }
     if (nom.startsWith("moliya_")) {
       if (!moliyaBor) throw new Error("Moliya ma'lumotiga ruxsat yo'q");

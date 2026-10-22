@@ -197,10 +197,12 @@ type Ssenariy = { slides: { title: string; subtitle: string; seconds: number }[]
 async function ssenariyYoz(userId: string, akkNomi: string, brend: string): Promise<Ssenariy> {
   const client = openai();
   if (!client) throw new Error("OPENAI_API_KEY yo'q — Reels ssenariysini yozib bo'lmaydi");
-  const [rep, xotira, oxirgilar] = await Promise.all([
+  const [rep, xotira, oxirgilar, soz, natijalar] = await Promise.all([
     igJson(userId, "instagram_reels_report", { limit: 10 }).catch(() => null),
     prisma.xotira.findUnique({ where: { userId } }),
     prisma.miyaXabar.findMany({ where: { userId, tur: "reels", daraja: "info" }, orderBy: { createdAt: "desc" }, take: 6 }),
+    sozlama(userId),
+    reelsNatijalari(userId),
   ]);
   const eng = rep?.items
     ? [...rep.items].sort((a: { views: number }, b: { views: number }) => b.views - a.views).slice(0, 4).map((r: { caption: string; views: number }) => `«${String(r.caption).slice(0, 80)}» — ${r.views} ko'rish`)
@@ -210,10 +212,13 @@ async function ssenariyYoz(userId: string, akkNomi: string, brend: string): Prom
     instructions:
       "Siz Instagram Reels ssenariychisisiz. O'zbek tilida (lotin) qisqa, sotuvga yo'naltirilgan matnli Reels yozasiz: 4-6 slayd, " +
       "har biri sarlavha (40 belgigacha, emoji yo'q) va qisqa izoh, jami 15-25 soniya. Birinchi slayd e'tiborni tortsin, oxirgisi chaqiriq bo'lsin. " +
-      "caption: 2-4 jumla + 5-8 ta mos hashtag. Oldingi Reels mavzularini takrorlamang.",
+      "caption: 2-4 jumla + 5-8 ta mos hashtag. Oldingi Reels mavzularini takrorlamang. " +
+      "O'zingiz yasagan Reels natijalari berilsa — odatdagidan ko'p ko'rilganlarining mavzusi va uslubiga yaqinroq, kam ko'rilganlaridan uzoqroq yozing.",
     input: [
       `Akkaunt: @${akkNomi}. Brend: ${brend}.`,
       xotira ? `Egasi va biznes haqida:\n${xotira.profil.slice(0, 3000)}` : "",
+      qoidalarMatni(soz),
+      natijalar,
       eng.length ? `Eng ko'p ko'rilgan Reels:\n${eng.join("\n")}` : "",
       oxirgilar.length ? `Oxirgi Miya Reels'lari (takrorlamang):\n${oxirgilar.map((x) => x.matn.slice(0, 160)).join("\n")}` : "",
       `Bugun: ${toshkent().sana}. Yangi Reels yozing.`,
@@ -299,6 +304,9 @@ export async function reelsVideoTayyor(userId: string, kalit: string, uploadId: 
   if (!akk) return reelsVideoXato(userId, kalit, "Instagram ulanmagan");
   try {
     const res = await joyla(userId, akk.id, "publish_reel", uploadId, caption);
+    const mediaId = res.id ?? res.igMediaId;
+    // 48 soatdan keyin natijasi tekshiriladi (reelsNatija)
+    if (mediaId) await prisma.miyaReels.createMany({ data: [{ userId, mediaId, caption: caption.slice(0, 500) }], skipDuplicates: true });
     await prisma.miyaXabar.update({
       where: { userId_kalit: { userId, kalit } },
       data: {
@@ -428,9 +436,153 @@ async function rejaPostlar() {
   }
 }
 
+// ---------- egasining qoidalari ----------
+
+// «Eslab qol: chegirmani 10% dan oshirma» — Miya bundan keyin hamma joyda (Reels, takliflar, telefon, ofis) shunga amal qiladi
+const QOIDA_MAKS = 40;
+
+export const qoidaRoyxati = (s: Pick<MiyaSozlama, "qoidalar">) =>
+  s.qoidalar
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+export function qoidalarMatni(s: Pick<MiyaSozlama, "qoidalar">) {
+  const r = qoidaRoyxati(s);
+  return r.length ? `Egasining doimiy qoidalari (har doim amal qiling, buzmang):\n${r.map((x) => `- ${x}`).join("\n")}` : "";
+}
+
+export async function qoidaQosh(userId: string, matn: string) {
+  const q = matn.replace(/\s+/g, " ").trim().slice(0, 300);
+  if (q.length < 3) throw new Error("Qoida juda qisqa");
+  const r = qoidaRoyxati(await sozlama(userId)).filter((x) => x.toLowerCase() !== q.toLowerCase());
+  r.push(q);
+  await prisma.miyaSozlama.update({ where: { userId }, data: { qoidalar: r.slice(-QOIDA_MAKS).join("\n") } });
+  return q;
+}
+
+// matnida shu so'z bor qoidalarni o'chiradi; nechta o'chganini qaytaradi
+export async function qoidaOchir(userId: string, qism: string) {
+  const k = qism.trim().toLowerCase();
+  if (k.length < 2) throw new Error("Qaysi qoidani o'chirishni ayting");
+  const r = qoidaRoyxati(await sozlama(userId));
+  const qoldi = r.filter((x) => !x.toLowerCase().includes(k));
+  await prisma.miyaSozlama.update({ where: { userId }, data: { qoidalar: qoldi.join("\n") } });
+  return r.length - qoldi.length;
+}
+
+// ---------- Reels natijasi ----------
+
+// Miya joylagan Reels'lardan 48 soat o'tganlarini akkauntning odatiy Reels'lari bilan solishtiradi
+export async function reelsNatija(userId: string) {
+  const kutayotgan = await prisma.miyaReels.findMany({
+    where: { userId, tekshirildi: null, joylandi: { lte: new Date(Date.now() - 48 * 3600_000) } },
+    orderBy: { joylandi: "asc" },
+    take: 5,
+  });
+  if (!kutayotgan.length) return 0;
+  const rep = await igJson(userId, "instagram_reels_report", { limit: 30 });
+  const med = Number(rep?.median?.views) || 0;
+  const items = (rep?.items ?? []) as { id: string; views: number }[];
+  for (const r of kutayotgan) {
+    const it = items.find((x) => String(x.id) === r.mediaId);
+    // 30 ta oxirgi Reels ichida yo'q (o'chirilgan yoki juda eski) — natijasiz yopiladi
+    const korish = it ? Math.round(Number(it.views) || 0) : null;
+    const nisbat = it && med ? Math.round((korish! / med) * 100) / 100 : null;
+    await prisma.miyaReels.update({ where: { id: r.id }, data: { korish, nisbat, tekshirildi: new Date() } });
+    if (korish == null) continue;
+    const baho =
+      nisbat == null ? "" : nisbat >= 1.3 ? ` — odatdagidan ${nisbat}x ko'p 👍 Shu mavzuga o'xshashini ko'proq qilaman.` : nisbat <= 0.7 ? ` — odatdagidan kam (${nisbat}x). Bunday mavzudan qochaman.` : " — odatdagidek.";
+    await xabar(userId, "reels", "info", `📈 Mening Reels'im natijasi (48 soat): «${r.caption.split("\n")[0].slice(0, 90)}» — ${qisqa(korish)} ko'rish${baho}`, `reels-natija:${r.id}`);
+  }
+  return kutayotgan.length;
+}
+
+// Ssenariy va takliflar uchun: Miya Reels'larining natijalari
+export async function reelsNatijalari(userId: string) {
+  const r = await prisma.miyaReels.findMany({ where: { userId, nisbat: { not: null } }, orderBy: { joylandi: "desc" }, take: 10 });
+  if (!r.length) return "";
+  return `O'zingiz yasagan Reels natijalari (1x — akkauntda odatdagidek):\n${r.map((x) => `«${x.caption.split("\n")[0].slice(0, 90)}» — ${x.korish} ko'rish, ${x.nisbat}x`).join("\n")}`;
+}
+
+// ---------- kunlik hisobot ----------
+
+const bugunBoshi = () => Math.floor((Date.parse(`${toshkent().sana}T00:00:00Z`) - TZ) / 1000);
+
+// Kun yakuni: savdo, kassa, Instagram, Miya nima qildi va ertaga nima bor. Model chaqirilmaydi — faqat haqiqiy raqamlar.
+export async function kunlikHisobot(userId: string, moliya: boolean) {
+  const s = await sozlama(userId);
+  const dan = bugunBoshi();
+  const hozir = Math.floor(Date.now() / 1000);
+  const bugun = new Date(dan * 1000);
+  const ertaga = new Date((dan + 86400) * 1000);
+  const indin = new Date((dan + 2 * 86400) * 1000);
+  const qator: string[] = [`🌙 Kun yakuni — ${toshkent().sana.split("-").reverse().join(".")}`];
+
+  if (moliya && cloudshopSozlangan()) {
+    try {
+      const [h, p] = await Promise.all([hujjatlar(dan, hozir), kassa(dan, hozir)]);
+      const sotuv = h.filter((x) => x.tur === "sales");
+      const qaytish = h.filter((x) => x.tur === "return_sales");
+      const kirim = p.filter((x) => x.tur === "kirim").reduce((a, x) => a + x.summa, 0);
+      const chiqim = p.filter((x) => x.tur === "chiqim").reduce((a, x) => a + x.summa, 0);
+      qator.push(
+        `\n💰 Savdo: ${sotuv.length} ta sotuv, ${pul(sotuv.reduce((a, x) => a + x.summa, 0))}` +
+          (qaytish.length ? `; qaytarildi ${qaytish.length} ta (${pul(qaytish.reduce((a, x) => a + x.summa, 0))})` : "") +
+          `\n💵 Kassa: kirim ${pul(kirim)}, chiqim ${pul(chiqim)}`,
+      );
+      // dushanba — o'tgan hafta oldingi hafta bilan
+      if (new Date(Date.now() + TZ).getUTCDay() === 1) {
+        const [b, o] = await Promise.all([hujjatlar(dan - 7 * 86400, dan), hujjatlar(dan - 14 * 86400, dan - 7 * 86400)]);
+        const jami = (r: typeof b) => r.filter((x) => x.tur === "sales").reduce((a, x) => a + x.summa, 0);
+        const [bj, oj] = [jami(b), jami(o)];
+        const f = oj ? Math.round(((bj - oj) / oj) * 100) : null;
+        qator.push(`📅 O'tgan hafta savdosi: ${pul(bj)}${f == null ? "" : ` (oldingi haftaga nisbatan ${f >= 0 ? "+" : ""}${f}%)`}`);
+      }
+    } catch (e) {
+      qator.push(`\n💰 CloudShop'dan ma'lumot olinmadi: ${e instanceof Error ? e.message : "xato"}`);
+    }
+  }
+
+  const akk = await igAkkaunt(userId);
+  if (akk) {
+    const a = await igJson(userId, "instagram_analytics").catch(() => null);
+    const obunachi = Number(a?.followers);
+    if (Number.isFinite(obunachi) && obunachi > 0) {
+      const farq = s.oxirgiObunachi != null ? obunachi - s.oxirgiObunachi : null;
+      qator.push(`\n📊 @${akk.username}: ${qisqa(obunachi)} obunachi${farq == null ? "" : ` (${farq >= 0 ? "+" : ""}${farq} kecha bilan)`}`);
+      await prisma.miyaSozlama.update({ where: { userId }, data: { oxirgiObunachi: obunachi } });
+    }
+  }
+
+  const [joylandi, fikrlar, xavf, natijalar, rejalar] = await Promise.all([
+    prisma.approval.count({ where: { userId, status: "executed", summary: { startsWith: "Miya:" }, decidedAt: { gte: bugun } } }),
+    prisma.miyaFikr.groupBy({ by: ["holat"], where: { userId, createdAt: { gte: bugun } }, _count: true }),
+    prisma.miyaXabar.count({ where: { userId, daraja: "xavf", createdAt: { gte: bugun } } }),
+    prisma.miyaReels.findMany({ where: { userId, tekshirildi: { gte: bugun }, korish: { not: null } } }),
+    prisma.rejaPost.findMany({ where: { userId, holat: "kutmoqda", vaqt: { gte: ertaga, lt: indin } }, orderBy: { vaqt: "asc" } }),
+  ]);
+  const f = (h: string) => fikrlar.find((x) => x.holat === h)?._count ?? 0;
+  const ish = [
+    joylandi ? `${joylandi} ta post/Reels joyladim` : "",
+    f("avtomatik") ? `${f("avtomatik")} ta ishni o'zim qildim` : "",
+    f("kutmoqda") ? `${f("kutmoqda")} ta taklifim javobingizni kutyapti` : "",
+    xavf ? `${xavf} ta jiddiy muammo topdim` : "",
+  ].filter(Boolean);
+  qator.push(`\n🧠 Bugun men: ${ish.length ? ish.join(", ") : "jiddiy ish bo'lmadi, hammasi joyida"}.`);
+  for (const r of natijalar) qator.push(`📈 «${r.caption.split("\n")[0].slice(0, 60)}» — ${qisqa(r.korish ?? 0)} ko'rish${r.nisbat ? ` (${r.nisbat}x)` : ""}`);
+
+  const ertagi = [
+    ...rejalar.map((r) => `${new Date(r.vaqt.getTime() + TZ).toISOString().slice(11, 16)} — ${r.tur.replace("_", " + ")}${r.caption ? ` «${r.caption.slice(0, 40)}»` : ""}`),
+    ...(s.autoReels && akk ? s.reelsVaqtlari.split(",").map((v) => `${v.trim().padStart(5, "0")} — Reels (o'zim yasayman)`) : []),
+  ].sort();
+  if (ertagi.length) qator.push(`\n📆 Ertaga:\n${ertagi.map((x) => `• ${x}`).join("\n")}`);
+  return qator.join("\n");
+}
+
 // ---------- tick ----------
 
-async function band(userId: string, maydon: "oxirgiMoliya" | "oxirgiInstagram" | "oxirgiFikr", soat: number) {
+async function band(userId: string, maydon: "oxirgiMoliya" | "oxirgiInstagram" | "oxirgiFikr" | "oxirgiHisobot", soat: number) {
   const chegara = new Date(Date.now() - soat * 3600_000);
   const r = await prisma.miyaSozlama.updateMany({
     where: { userId, OR: [{ [maydon]: null }, { [maydon]: { lt: chegara } }] },
@@ -469,6 +621,19 @@ export async function tick() {
     } catch (e) {
       console.error("miya instagram:", e);
     }
+    try {
+      const { daqiqa } = toshkent();
+      if (daqiqa >= 9 * 60 && daqiqa < 22 * 60 && (await igAkkaunt(s.userId))) await reelsNatija(s.userId);
+    } catch (e) {
+      console.error("miya reels natija:", e);
+    }
+    try {
+      if (toshkent().daqiqa >= 21 * 60 && (await band(s.userId, "oxirgiHisobot", 20))) {
+        await xabar(s.userId, "hisobot", "info", await kunlikHisobot(s.userId, moliyaRuxsat(s.user.email)), `hisobot:${toshkent().sana}`);
+      }
+    } catch (e) {
+      console.error("miya hisobot:", e);
+    }
     // o'ylash: kunduzi har 6 soatda, bitta tick'da bitta foydalanuvchi (model chaqiruvi sekin)
     try {
       const { daqiqa } = toshkent();
@@ -484,7 +649,7 @@ export async function tick() {
   // Telegram'ga: muhim xabarlar va joylangan postlar (faqat moliya egalariga tegishlilari)
   const egaIdlar = sozlamalar.filter((s) => moliyaRuxsat(s.user.email)).map((s) => s.userId);
   const yangi = await prisma.miyaXabar.findMany({
-    where: { userId: { in: egaIdlar }, telegram: false, OR: [{ daraja: { in: ["ogoh", "xavf"] } }, { tur: { in: ["reels", "post", "fikr"] } }], NOT: { matn: { startsWith: "🎬 Reels tayyorlanmoqda" } } },
+    where: { userId: { in: egaIdlar }, telegram: false, OR: [{ daraja: { in: ["ogoh", "xavf"] } }, { tur: { in: ["reels", "post", "fikr", "hisobot"] } }], NOT: { matn: { startsWith: "🎬 Reels tayyorlanmoqda" } } },
     orderBy: { createdAt: "asc" },
     take: 20,
   });
@@ -511,7 +676,37 @@ export const MIYA_VOSITALAR = [
       additionalProperties: false,
     },
   },
+  {
+    name: "miya_qoida",
+    description:
+      "Egasining doimiy qoidalari. amal=qosh — egasi «eslab qol», «bundan keyin doim/hech qachon …» desa, qoidani qisqa va aniq qilib saqlaydi " +
+      "(Miya bundan keyin Reels, takliflar, javoblarda shunga amal qiladi). amal=ochir — «unut», «endi kerak emas» desa: matn — qoidadagi so'z. " +
+      "amal=royxat — saqlangan qoidalar.",
+    inputSchema: {
+      type: "object",
+      properties: { amal: { type: "string", enum: ["qosh", "ochir", "royxat"] }, matn: { type: "string" } },
+      required: ["amal"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "miya_hisobot",
+    description: "Bugungi kun hisoboti: savdo va kassa (ruxsat bo'lsa), obunachilar, Miya bugun nima qildi, Reels natijalari, ertangi reja.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  },
 ];
+
+// MIYA_VOSITALAR dagi miya_qoida va miya_hisobot (miya_reja_post — rejaQosh)
+export async function miyaVosita(userId: string, nom: string, k: Record<string, unknown>, moliya: boolean) {
+  if (nom === "miya_hisobot") return kunlikHisobot(userId, moliya);
+  if (nom !== "miya_qoida") throw new Error(`Noma'lum vosita: ${nom}`);
+  if (k.amal === "qosh") return `Eslab qoldim: «${await qoidaQosh(userId, String(k.matn ?? ""))}»`;
+  if (k.amal === "ochir") {
+    const n = await qoidaOchir(userId, String(k.matn ?? ""));
+    return n ? `${n} ta qoida o'chirildi` : "Bunday qoida topilmadi";
+  }
+  return qoidalarMatni(await sozlama(userId)) || "Hali qoida yo'q";
+}
 
 export async function rejaQosh(userId: string, a: { upload_id: string; tur: string; caption?: string; vaqt: string }) {
   if (!(REJA_TURLARI as readonly string[]).includes(a.tur)) throw new Error("tur noto'g'ri");

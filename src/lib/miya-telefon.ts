@@ -8,6 +8,7 @@ import { openai, openaiModel, openaiVazifa } from "./ofis-openai";
 import { IG_VOSITALAR, igAkkaunt, igVosita } from "./ofis-instagram";
 import { MOLIYA_VOSITALAR, moliyaHolati, moliyaRuxsat, moliyaVosita, type Davr } from "./ofis-moliya";
 import { qaror } from "./miya-fikr";
+import { MIYA_VOSITALAR, miyaVosita, qoidalarMatni, sozlama } from "./miya";
 import { tasdiqHal } from "./actions";
 import { botChaqir, botOtkazildi } from "./miya-bot";
 import { tgQongiroq, tgTayyor } from "./miya-tg";
@@ -176,6 +177,8 @@ const TELEFON_TIZIM = `Siz «Miya»siz — egasining biznesini (Instagram, Cloud
   qilinishini (matnini ham) qisqa aytib, «bajaraymi?» deb so'rang. Egasi aniq «ha» desa — tasdiq_qaror(ha=true) chaqiring.
   «Navbatdagi tasdiqlar» ro'yxatidagi ishlarni ham shunday hal qiling.
 - Miya takliflari bo'yicha egasi rozi bo'lsa yoki rad etsa — taklif_qaror chaqiring (rad etsa, sababini izohga yozing).
+- Egasi «eslab qol», «bundan keyin doim…» desa — miya_qoida(amal=qosh) bilan saqlang; «unut» desa — amal=ochir.
+  «Bugun nima bo'ldi», «hisobot ber» desa — miya_hisobot.
 - Tushunmasangiz, qisqa qayta so'rang. Egasi «bo'ldi», «rahmat», «xayr» desa yoki gap tugasa — xayrlashing va tugat=true.
 - Yozilmagan ishni «qildim» demang.`;
 
@@ -220,7 +223,7 @@ export const sababToza = (sabab: string) =>
 // Miya'ga egasi haqida va biznes holati haqida beriladigan kontekst (suhbatdan tashqari)
 async function kontekstYig(q: Qongiroq) {
   const userId = q.userId;
-  const [user, akk, xotira, fikrlar, tasdiqlar, xabarlar, qongiroqlar] = await Promise.all([
+  const [user, akk, xotira, fikrlar, tasdiqlar, xabarlar, qongiroqlar, s] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
     igAkkaunt(userId),
     prisma.xotira.findUnique({ where: { userId } }),
@@ -232,6 +235,7 @@ async function kontekstYig(q: Qongiroq) {
       orderBy: { createdAt: "desc" },
       take: 5,
     }),
+    sozlama(userId),
   ]);
   const mh = moliyaHolati();
   const moliyaBor = moliyaRuxsat(user?.email) && (mh.cloudshop || mh.bot);
@@ -239,6 +243,7 @@ async function kontekstYig(q: Qongiroq) {
     `Hozir Toshkentda: ${soat().matn}.`,
     q.yonalish === "chiquvchi" ? `Siz egasiga o'zingiz qo'ng'iroq qildingiz. Sabab: ${sababToza(q.sabab)}` : "Egasi o'zi sizga qo'ng'iroq qildi.",
     xotira ? `Egasi haqida:\n${xotira.profil.slice(0, 1500)}` : "",
+    qoidalarMatni(s),
     akk ? `Instagram: @${akk.username}, ${akk.followersCount} obunachi.` : "Instagram ulanmagan.",
     fikrlar.length ? `Javob kutayotgan Miya takliflari:\n${fikrlar.map((f) => `- id=${f.id} | ${f.sarlavha} — ${f.fikr.slice(0, 200)}`).join("\n")}` : "",
     tasdiqlar.length ? `Navbatdagi tasdiqlar:\n${tasdiqlar.map((t) => `- id=${t.id} | ${t.summary}`).join("\n")}` : "Navbatda tasdiq yo'q.",
@@ -287,6 +292,7 @@ async function javobBer(q: Qongiroq): Promise<{ javob: string; tugat: boolean }>
       const f = await qaror(userId, String(k.id ?? ""), k.ha === true, k.izoh ? String(k.izoh) : undefined);
       return `Taklif: ${f.holat}${f.natija ? ` — ${f.natija}` : ""}`;
     }
+    if (nom === "miya_qoida" || nom === "miya_hisobot") return miyaVosita(userId, nom, k, moliyaBor);
     if (nom.startsWith("moliya_")) {
       if (!moliyaBor) throw new Error("Moliya ma'lumotiga ruxsat yo'q");
       return moliyaVosita(nom, { davr: k.davr as Davr | undefined, qidiruv: k.qidiruv as string | undefined });
@@ -299,7 +305,7 @@ async function javobBer(q: Qongiroq): Promise<{ javob: string; tugat: boolean }>
     client,
     tizim: TELEFON_TIZIM,
     kontekst,
-    vositalar: [...TELEFON_VOSITALAR, ...(akk ? IG_VOSITALAR : []), ...(moliyaBor ? MOLIYA_VOSITALAR : [])],
+    vositalar: [...TELEFON_VOSITALAR, ...MIYA_VOSITALAR.filter((v) => v.name !== "miya_reja_post"), ...(akk ? IG_VOSITALAR : []), ...(moliyaBor ? MOLIYA_VOSITALAR : [])],
     mcp: null,
     sxema: JAVOB_SXEMA,
     bajar,

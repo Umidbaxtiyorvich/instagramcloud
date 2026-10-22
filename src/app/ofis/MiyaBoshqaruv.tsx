@@ -33,6 +33,7 @@ type Sozlama = {
   oxirgiInstagram: string | null;
   mustaqillik: "maslahat" | "ishonchli" | "toliq";
   oxirgiFikr: string | null;
+  qoidalar: string;
 };
 type Javob = {
   sozlama: Sozlama;
@@ -46,13 +47,14 @@ type Javob = {
   ishonch: Record<string, { ha: number; yoq: number }>;
 };
 
-type Bolim = "fikrlar" | "xabarlar" | "telefon" | "reels" | "reja" | "xotira";
+type Bolim = "fikrlar" | "xabarlar" | "telefon" | "reels" | "reja" | "qoidalar" | "xotira";
 const BOLIMLAR: [Bolim, string][] = [
   ["fikrlar", "💭 Fikrlar"],
   ["xabarlar", "🔔 Ogohlantirishlar"],
   ["telefon", "📞 Telefon"],
   ["reels", "🎬 Avtomatik Reels"],
   ["reja", "🗓 Rejadagi postlar"],
+  ["qoidalar", "📌 Qoidalarim"],
   ["xotira", "🧩 Men haqimda"],
 ];
 const DARAJA_RANG: Record<Xabar["daraja"], string> = { info: "#3dff9a", ogoh: "#ffb45a", xavf: "#ff6b5a" };
@@ -186,6 +188,10 @@ export default function MiyaBoshqaruv({ kirgan }: { kirgan: boolean }) {
           ochir={(id) => void sorov("ochir", `/api/miya?reja=${encodeURIComponent(id)}`, "DELETE")}
           xatoBer={setXato}
         />
+      )}
+
+      {bolim === "qoidalar" && (
+        <QoidaBolim key={d.sozlama.qoidalar} qoidalar={d.sozlama.qoidalar} band={!!band} saqla={(q) => sorov("sozla", "/api/miya", "PATCH", { qoidalar: q }).then((j) => j && setOk("Saqlandi"))} />
       )}
 
       {bolim === "xotira" && <XotiraBolim xotira={d.xotira} chatgpt={d.chatgpt} yangila={yukla} />}
@@ -391,6 +397,28 @@ function eksportniOqi(fayllar: Record<string, string>) {
     sarlavhalar: sarlavhalar.slice(0, 3000).map((x) => x.slice(0, 200)),
     xotiralar: xotiralar.slice(0, 500),
   };
+}
+
+function QoidaBolim({ qoidalar, band, saqla }: { qoidalar: string; band: boolean; saqla: (q: string) => void }) {
+  const [q, setQ] = useState(qoidalar);
+  return (
+    <div>
+      <div className="o_ulanishMatn" style={{ marginTop: 0 }}>
+        Miya doim amal qiladigan qoidalaringiz — har qatorga bittadan. Reels yozganda, taklif berganda, telefonda va ofisda shunga qaraydi.
+        Telegram&apos;da yoki qo&apos;ng&apos;iroqda «eslab qol: …» desangiz, o&apos;zi shu yerga qo&apos;shadi; «… ni unut» desangiz — o&apos;chiradi.
+      </div>
+      <textarea
+        className="o_qidiruv"
+        rows={8}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder={"Chegirmani 10% dan oshirma\nReels'da narxni yozma, «Direct'ga yozing» de\nMijozlarga «siz» deb murojaat qil"}
+      />
+      <button className="o_tugma" disabled={band} onClick={() => saqla(q)}>
+        Saqlash
+      </button>
+    </div>
+  );
 }
 
 function XotiraBolim({ xotira, chatgpt, yangila }: { xotira: Javob["xotira"]; chatgpt: boolean; yangila: () => Promise<void> }) {
