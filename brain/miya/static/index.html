@@ -88,10 +88,10 @@ td.n { font-variant-numeric: tabular-nums; white-space: nowrap; }
 <main>
   <section id="chat">
     <div id="log">
-      <div class="msg bot">Salom! Men o'qigan narsalarimni eslab qolaman va bir-biriga bog'layman. Savol bering, yoki «Eslab qol: ...» deb yozing. Yangi bilim uchun «O'rganish» bo'limida sayt yoki kitob qo'shing.</div>
+      <div class="msg bot">Salom! Men o'qigan narsalarimni eslab qolaman va bir-biriga bog'layman. Savol bering, «Eslab qol: ...» deb yozing, yoki sayt havolasini tashlang — o'zim kirib o'qib o'rganaman.</div>
     </div>
     <form class="ask" id="askForm">
-      <input type="text" id="q" autocomplete="off" placeholder="Savol yoki «Eslab qol: ...»" aria-label="Savol">
+      <input type="text" id="q" autocomplete="off" placeholder="Savol, «Eslab qol: ...» yoki sayt havolasi" aria-label="Savol">
       <button class="btn" id="askBtn">Yubor</button>
     </form>
   </section>
@@ -108,6 +108,11 @@ td.n { font-variant-numeric: tabular-nums; white-space: nowrap; }
     </div>
   </section>
   <section id="learn" hidden>
+    <div class="card">
+      <h3>Katta ochiq miya (model)</h3>
+      <p class="hint" id="llmInfo">Tekshirilmoqda…</p>
+      <p class="hint">O'rnatish: <code>brain\miya_setup.bat</code> ni bir marta ishga tushiring. U Ollama'ni va Qwen 2.5 modelini (~4.7 GB) yuklab oladi. Keyin hammasi internetsiz ishlaydi.</p>
+    </div>
     <div class="card">
       <h3>Sayt qo'shish</h3>
       <p class="hint">Miya shu manzildan boshlab sayt ichidagi sahifalarni o'qiydi va belgilangan vaqtda o'zi qaytib, yangilarini o'rganadi. robots.txt qoidalariga rioya qiladi.</p>
@@ -151,7 +156,11 @@ function show(t) {
 // --- holat ---
 async function status() {
   const s = await api("/api/status");
-  $("stats").innerHTML = Object.keys(NAMES).map(k => `<span><i class="dot" style="background:var(--${k})"></i><b>${s.stats[k] || 0}</b> ${NAMES[k]}</span>`).join("") + (s.busy ? "<span>o'rganyapti…</span>" : "");
+  $("stats").innerHTML = Object.keys(NAMES).map(k => `<span><i class="dot" style="background:var(--${k})"></i><b>${s.stats[k] || 0}</b> ${NAMES[k]}</span>`).join("") + (s.busy ? "<span>o'rganyapti…</span>" : "") +
+    (s.llm.ok ? `<span title="Javoblarni shu model tuzadi">model: <b>${s.llm.model}</b></span>` : `<span title="${s.llm.hint}">model yo'q — oddiy rejim</span>`);
+  $("llmInfo").textContent = s.llm.ok
+    ? `Ulangan: ${s.llm.model} (${s.llm.backend}). Javoblarni shu model xotiradagi eslatmalarga tayanib tuzadi.`
+    : `Model ulanmagan: ${s.llm.hint} Model bo'lmasa ham miya ishlaydi, lekin javobni o'qigan matnidan tayyor gaplar bilan beradi.`;
   if (tab !== "learn") return;
   $("srcList").innerHTML = s.sources.length ? "" : `<tr><td colspan="5" class="hint">Hali sayt qo'shilmagan.</td></tr>`;
   for (const x of s.sources) {

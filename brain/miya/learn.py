@@ -98,6 +98,19 @@ class Learner:
             enc = r.headers.get_content_charset() or "utf-8"
         return ctype, raw.decode(enc, errors="replace")
 
+    def learn_page(self, url: str) -> dict:
+        """Bitta sahifani o'qiydi va xotiraga qo'shadi. {title, text, notes, links} qaytaradi."""
+        if not self._allowed(url):
+            raise RuntimeError("sayt robots.txt orqali o'qishga ruxsat bermagan")
+        ctype, html = self.fetch(url)
+        if "html" not in ctype and "text" not in ctype:
+            raise RuntimeError(f"bu sahifa matn emas ({ctype})")
+        title, text, links = html_to_text(html) if "html" in ctype else (url, html, [])
+        title = title or url
+        n = self.ingest_text(title, text, url, "sayt") if len(text) > 200 else 0
+        self.say(f"o'qidim: {title} — {n} ta yangi eslatma" if n else f"yangi narsa yo'q: {title}")
+        return {"title": title, "text": text, "notes": n, "links": links}
+
     def crawl(self, start: str, max_pages: int = 20) -> int:
         """Boshlang'ich sahifadan shu sayt ichidagi havolalar bo'ylab o'qiydi (robots.txt ga rioya qiladi)."""
         host = urllib.parse.urlsplit(start).netloc
@@ -107,23 +120,16 @@ class Learner:
             if url in visited:
                 continue
             visited.add(url)
-            if not self._allowed(url):
-                self.say(f"robots.txt ruxsat bermadi: {url}")
-                continue
             try:
-                ctype, html = self.fetch(url)
+                page = self.learn_page(url)
             except Exception as e:
                 self.say(f"o'qib bo'lmadi: {url} ({e})")
                 continue
-            if "html" not in ctype and "text" not in ctype:
-                continue
-            title, text, links = html_to_text(html) if "html" in ctype else (url, html, [])
-            n = self.ingest_text(title or url, text, url, "sayt") if len(text) > 200 else 0
-            learned += n
-            self.say(f"o'qidim: {title or url} — {n} ta yangi eslatma" if n else f"yangi narsa yo'q: {title or url}")
-            for l in links:
-                u = urllib.parse.urljoin(url, l)
-                if urllib.parse.urlsplit(u).netloc == host and u.startswith("http") and not re.search(r"\.(jpg|jpeg|png|gif|svg|webp|zip|mp4|mp3|css|js)$", u, re.I):
+            learned += page["notes"]
+            for l in page["links"]:
+                u = urllib.parse.urldefrag(urllib.parse.urljoin(url, l))[0]
+                if urllib.parse.urlsplit(u).netloc == host and u.startswith("http") and u not in visited \
+                        and not re.search(r"\.(jpg|jpeg|png|gif|svg|webp|zip|mp4|mp3|css|js|pdf)$", u, re.I):
                     q.append(u)
             time.sleep(1)  # saytga ortiqcha yuk bermaslik uchun
         return learned

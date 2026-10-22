@@ -8,7 +8,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import think
+from . import llm, think
 from .learn import Learner
 from .vault import Vault
 
@@ -46,14 +46,14 @@ class H(BaseHTTPRequestHandler):
             return self._send(200 if n else 404, n or {"error": "Eslatma topilmadi"})
         if u.path == "/api/status":
             return self._send(200, {"stats": v.stats(), "sources": L.sources, "log": list(L.log)[-40:],
-                                    "busy": L.busy.locked(), "vault": str(VAULT)})
+                                    "busy": L.busy.locked(), "vault": str(VAULT), "llm": llm.info()})
         self._send(404, {"error": "topilmadi"})
 
     def do_POST(self):
         u = urllib.parse.urlsplit(self.path)
         try:
             if u.path == "/api/ask":
-                return self._send(200, think.ask(v, self._json().get("q", "")))
+                return self._send(200, think.ask(v, self._json().get("q", ""), L))
             if u.path == "/api/source":
                 b = self._json()
                 url = b.get("url", "").strip()
