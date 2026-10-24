@@ -8,6 +8,7 @@ import { openai, openaiModel } from "./ofis-openai";
 import { cloudshopSozlangan, hujjatlar, kassa, qarzlar, tovarlar } from "./cloudshop";
 import { moliyaRuxsat, pul } from "./ofis-moliya";
 import { githubdaYasash, osilganIshlar, videoNavbat } from "./video-ish";
+import { tashqiVosita } from "./mcp-ulanish";
 import type { VideoSpec } from "./video";
 import { fikrla } from "./miya-fikr";
 import { botReelsTasdiq } from "./miya-bot";
@@ -160,6 +161,25 @@ export async function moliyaTekshir(userId: string, s: MiyaSozlama) {
   }
   if (!topildi.length) {
     await xabar(userId, "kassa", "info", `✅ CloudShop tekshirildi: jiddiy muammo topilmadi. Qarzlar jami ${pul(jami)}.`, `moliya-ok:${sana}`);
+  }
+}
+
+// ---------- YesPOS (Ulanishlar orqali MCP) ----------
+
+// «Ulanishlar»da YesPOS qo'shilgan bo'lsa, har 6 soatda tekshiradi: minus tovarlar, cho'zilgan qarzlar, kechagi savdo
+export async function yesposTekshir(userId: string) {
+  const s = await prisma.mcpServer.findFirst({
+    where: { userId, enabled: true, OR: [{ name: { contains: "yespos", mode: "insensitive" } }, { url: { contains: "yespos", mode: "insensitive" } }] },
+  });
+  if (!s) return;
+  const { sana, daqiqa } = toshkent();
+  const kalit = `yespos:${sana}:${Math.floor(daqiqa / 360)}`;
+  if (await prisma.miyaXabar.findUnique({ where: { userId_kalit: { userId, kalit } } })) return;
+  try {
+    const j = JSON.parse(await tashqiVosita(s, "yespos_ogohlantirishlar")) as { daraja: Daraja; matn: string };
+    await xabar(userId, "yespos", j.daraja, j.matn, kalit);
+  } catch (e) {
+    await xabar(userId, "yespos", "ogoh", `⚠️ YesPOS tekshiruvi bajarilmadi: ${e instanceof Error ? e.message : "xato"}`, `yespos-xato:${sana}`);
   }
 }
 
@@ -644,6 +664,11 @@ export async function tick() {
     } catch (e) {
       console.error("miya moliya:", e);
       await xabar(s.userId, "kassa", "ogoh", `⚠️ CloudShop tekshiruvi bajarilmadi: ${e instanceof Error ? e.message : "xato"}`, `moliya-xato:${toshkent().sana}`);
+    }
+    try {
+      await yesposTekshir(s.userId);
+    } catch (e) {
+      console.error("miya yespos:", e);
     }
     try {
       if (toshkent().daqiqa >= 9 * 60 && (await band(s.userId, "oxirgiInstagram", 20))) await instagramTekshir(s.userId);

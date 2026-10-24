@@ -14,6 +14,13 @@ export type McpVosita = { name: string; description: string; readOnly: boolean }
 
 // Tayyor ro'yxat — URL'ni foydalanuvchi o'zgartirishi mumkin
 export const TAYYOR_MCP: { name: string; url: string; auth: "oauth" | "token" | "none"; tavsif: string; tokenYordam?: string }[] = [
+  {
+    name: "YesPOS",
+    url: "https://yespos-bot-production.up.railway.app/mcp",
+    auth: "token",
+    tavsif: "Savdo, qarzlar, tovarlar, akt sverka (Miya har 6 soatda tekshiradi)",
+    tokenYordam: "Telegram: @Yespos_xisobkitob_bot → «🔌 AI ofis ulanishi»",
+  },
   { name: "Notion", url: "https://mcp.notion.com/mcp", auth: "oauth", tavsif: "Sahifalar, bazalar, eslatmalar" },
   { name: "Linear", url: "https://mcp.linear.app/mcp", auth: "oauth", tavsif: "Vazifalar va loyihalar" },
   { name: "Sentry", url: "https://mcp.sentry.dev/mcp", auth: "oauth", tavsif: "Xatolar va monitoring" },
@@ -316,6 +323,28 @@ export async function tekshir(s: McpServer): Promise<McpVosita[]> {
     if (!cursor) break;
   }
   return out;
+}
+
+// Server tomonida bitta vositani chaqirish (Miya kabi avtomatik tekshiruvlar uchun) — matn qaytaradi
+export async function tashqiVosita(s: McpServer, name: string, args: Record<string, unknown> = {}): Promise<string> {
+  const token = await tokenOl(s);
+  if (s.auth !== "none" && !token) throw new Error(`${s.name}: hali ulanmagan`);
+  const h: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json, text/event-stream" };
+  if (token) h.Authorization = `Bearer ${token}`;
+  const r1 = await olish(s.url, { method: "POST", headers: h, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: initParams() }) });
+  if (r1.status === 401 || r1.status === 403) throw new Error(`${s.name}: token noto'g'ri yoki muddati o'tgan`);
+  if (!r1.ok) throw new Error(`${s.name}: HTTP ${r1.status}`);
+  await rpcJavob(r1, 1);
+  const sessiya = r1.headers.get("mcp-session-id");
+  if (sessiya) h["Mcp-Session-Id"] = sessiya;
+  h["MCP-Protocol-Version"] = "2025-06-18";
+  await olish(s.url, { method: "POST", headers: h, body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) }).catch(() => null);
+  const r = await olish(s.url, { method: "POST", headers: h, body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: args } }) });
+  if (!r.ok) throw new Error(`${s.name} ${name}: HTTP ${r.status}`);
+  const res = (await rpcJavob(r, 2)) as { content?: { type: string; text?: string }[]; isError?: boolean };
+  const text = (res.content ?? []).map((c) => c.text ?? "").join("\n");
+  if (res.isError) throw new Error(`${s.name}: ${text.slice(0, 300)}`);
+  return text;
 }
 
 export async function tekshirVaSaqla(s: McpServer) {
