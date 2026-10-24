@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -14,10 +14,181 @@ model User {
   name         String?
   locale       String   @default("uz")
   mcpToken     String   @unique
+  // "chat": the AI asks in the chat and acts; "dashboard": every write waits for «Ha» in Tasdiqlar
+  aiApproval   String   @default("chat")
   createdAt    DateTime @default(now())
 
-  accounts  InstagramAccount[]
-  approvals Approval[]
+  accounts    InstagramAccount[]
+  approvals   Approval[]
+  uploads     MediaUpload[]
+  oauthCodes  OAuthCode[]
+  oauthTokens OAuthToken[]
+  mcpServers  McpServer[]
+  miya        MiyaSozlama?
+  miyaXabarlar MiyaXabar[]
+  miyaFikrlar MiyaFikr[]
+  miyaReels   MiyaReels[]
+  ofisFayllar OfisFayl[]
+  qongiroqlar Qongiroq[]
+  rejaPostlar RejaPost[]
+  xotira      Xotira?
+  videoIshlar VideoIsh[]
+}
+
+// Video GitHub Actions'da yasaladi (Render'ning bepul serveri ko'tara olmaydi).
+// Runner GitHub OIDC tokeni bilan ssenariyni oladi va tayyor MP4 ni qaytaradi.
+model VideoIsh {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  spec      String // VideoSpec JSON
+  maqsad    String // "agent" | "miya-reels"
+  meta      String   @default("{}") // miya-reels: { kalit, caption }
+  holat     String   @default("kutmoqda") // kutmoqda | ishlanmoqda | tayyor | xato
+  uploadId  String?
+  xato      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([holat, createdAt])
+}
+
+// AI Ofis «Miya»: avtomatik kuzatuv sozlamalari (CloudShop, Instagram, Reels)
+model MiyaSozlama {
+  userId          String    @id
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  autoReels       Boolean   @default(true)
+  // Miya yasagan Reels Telegram'da (yoki tasdiq navbatida) egasi «Joyla» degandan keyingina joylanadi
+  reelsTasdiq     Boolean   @default(true)
+  // Toshkent vaqti, vergul bilan: kuniga shu vaqtlarda Reels
+  reelsVaqtlari   String    @default("10:00,19:00")
+  // Reels uchun brend nomi va pastki qator (telefon); bo'sh bo'lsa akkaunt nomi
+  reelsBrend      String    @default("")
+  reelsFooter     String    @default("")
+  // Miya o'zi qaror qilishi: maslahat — faqat taklif qiladi; ishonchli — siz bir necha marta
+  // tasdiqlagan, xavfi past ishlarni o'zi qiladi; toliq — xavfi yuqori bo'lmaganlarini o'zi qiladi
+  mustaqillik     String    @default("ishonchli")
+  oxirgiFikr      DateTime?
+  kamQoldiq       Int       @default(5)
+  qarzKunlari     Int       @default(30)
+  oxirgiMoliya    DateTime?
+  oxirgiInstagram DateTime?
+  // oldingi tekshiruvdagi jami qarz — o'sishni sezish uchun
+  oxirgiQarz      Int?
+  // Telefon: Miya muhim gapni shu raqamga qo'ng'iroq qilib aytadi; egasi ham Miya raqamiga qo'ng'iroq qiladi
+  telefon         String?
+  telefonTasdiq   Boolean   @default(false)
+  telefonKod      String?
+  telefonKodVaqt  DateTime?
+  telefonUrinish  Int       @default(0)
+  // kiruvchi qo'ng'iroqda so'raladigan PIN (raqamni soxtalashtirib qo'ng'iroq qilishdan himoya)
+  telefonPin      String?
+  // off | xavf — faqat jiddiy muammo | muhim — muammo va Miya takliflari
+  qongiroqRejim   String    @default("xavf")
+  oxirgiQongiroq  DateTime?
+  // Miya Telegram boti: ulangan chat va ulash kodi (t.me/bot?start=kod)
+  telegramChat    String?   @unique
+  telegramKod     String?   @unique
+  telegramKodVaqt DateTime?
+  // egasi «eslab qol» degan doimiy qoidalar — har bir qatori bitta qoida; Miya hamma joyda amal qiladi
+  qoidalar        String    @default("")
+  // kechki kunlik hisobot va obunachilar o'zgarishi uchun oldingi son
+  oxirgiHisobot   DateTime?
+  oxirgiObunachi  Int?
+  createdAt       DateTime  @default(now())
+}
+
+// Miya o'zi joylagan Reels va 48 soatdan keyingi natijasi — keyingi ssenariylar shundan o'rganadi
+model MiyaReels {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mediaId     String
+  caption     String
+  joylandi    DateTime  @default(now())
+  korish      Int?
+  // ko'rishlar akkauntdagi Reels medianasiga nisbatan (1.0 — odatdagidek)
+  nisbat      Float?
+  tekshirildi DateTime?
+
+  @@unique([userId, mediaId])
+  @@index([tekshirildi, joylandi])
+}
+
+// Miya topgan narsalar: ogohlantirishlar va hisobotlar. kalit — bir xil xabar qaytarilmasin
+model MiyaXabar {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tur       String // tovar | qoldiq | narx | kassa | qarz | instagram | reels | post
+  daraja    String   @default("info") // info | ogoh | xavf
+  matn      String
+  kalit     String
+  oqildi    Boolean  @default(false)
+  telegram  Boolean  @default(false) // Telegram'ga yuborildi
+  qongiroq  Boolean  @default(false) // telefon qo'ng'irog'i uchun ko'rib chiqildi
+  createdAt DateTime @default(now())
+
+  @@unique([userId, kalit])
+  @@index([userId, createdAt])
+}
+
+// Belgilangan vaqtda joylanadigan post / Reels / story
+model RejaPost {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tur       String // reel | photo | story | reel_story | photo_story
+  uploadId  String
+  caption   String   @default("")
+  vaqt      DateTime
+  holat     String   @default("kutmoqda") // kutmoqda | joylanmoqda | joylandi | xato
+  xato      String?
+  manba     String   @default("men") // men | miya
+  createdAt DateTime @default(now())
+
+  @@index([holat, vaqt])
+}
+
+// ChatGPT xotirasi eksportidan olingan foydalanuvchi profili
+model Xotira {
+  userId     String   @id
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profil     String
+  manba      String   @default("chatgpt")
+  yangilandi DateTime @default(now())
+}
+
+// AI Ofis agentlari ishlatadigan tashqi MCP serverlar (Notion, Linear, GitHub ...).
+// auth: "none" | "token" (foydalanuvchi bergan API token) | "oauth" (server bilan OAuth 2.1 + PKCE)
+model McpServer {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  url             String
+  auth            String    @default("none")
+  enabled         Boolean   @default(true)
+  // false: agentlar faqat readOnlyHint=true vositalarni ishlatadi (yozish tasdiqsiz ketmasin)
+  allowWrites     Boolean   @default(false)
+  // [{ name, description, readOnly }] — oxirgi tekshiruvdagi tools/list
+  toolsJson       String?
+  checkedAt       DateTime?
+  lastError       String?
+  accessTokenEnc  String?
+  refreshTokenEnc String?
+  tokenExpiresAt  DateTime?
+  // OAuth: dinamik ro'yxatdan o'tgan mijoz va server manzillari
+  oauthClientId   String?
+  oauthClientSecretEnc String?
+  oauthTokenUrl   String?
+  oauthAuthUrl    String?
+  oauthScope      String?
+  oauthVerifierEnc String?
+  oauthState      String?   @unique
+  createdAt       DateTime  @default(now())
+
+  @@unique([userId, name])
 }
 
 model InstagramAccount {
@@ -37,6 +208,9 @@ model InstagramAccount {
   defaultDmMode       String    @default("first")
   commentRepliesOn    Boolean   @default(true)
   connectedAt         DateTime  @default(now())
+  mediaSyncedAt       DateTime?
+  // last time Meta delivered a webhook for this account; null = auto-replies can't fire yet
+  lastWebhookAt       DateTime?
 
   rules         AutoRule[]
   logs          ActivityLog[]
@@ -138,4 +312,130 @@ model Approval {
   result    String?
   createdAt DateTime          @default(now())
   decidedAt DateTime?
+}
+
+// OAuth 2.1 for the MCP connector (Claude, ChatGPT): clients register themselves (RFC 7591),
+// the user signs in on this site and approves, the client gets a token for /mcp.
+model OAuthClient {
+  id           String   @id @default(cuid())
+  clientId     String   @unique
+  name         String   @default("AI")
+  redirectUris String
+  createdAt    DateTime @default(now())
+
+  codes  OAuthCode[]
+  tokens OAuthToken[]
+}
+
+model OAuthCode {
+  id            String      @id @default(cuid())
+  codeHash      String      @unique
+  clientId      String
+  client        OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redirectUri   String
+  codeChallenge String
+  scope         String      @default("instagram")
+  expiresAt     DateTime
+  usedAt        DateTime?
+}
+
+model OAuthToken {
+  id               String      @id @default(cuid())
+  accessHash       String      @unique
+  refreshHash      String      @unique
+  clientId         String
+  client           OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  userId           String
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scope            String      @default("instagram")
+  expiresAt        DateTime
+  refreshExpiresAt DateTime
+  revokedAt        DateTime?
+  lastUsedAt       DateTime?
+  createdAt        DateTime    @default(now())
+}
+
+// Videos and photos uploaded on the site so Instagram can fetch them by URL when publishing.
+// The bytes are dropped after publishing; Render's free disk is not persistent, so they live here.
+model MediaUpload {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  publicToken String    @unique
+  filename    String
+  mimeType    String
+  size        Int
+  data        Bytes?
+  publishedId String?
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+}
+
+// Miya o'ylab topgan takliflar: nimani sezdi, nega, nima qilmoqchi. Egasining «ha/yo'q»
+// javoblari keyingi fikrlashda hisobga olinadi va qaysi ishlarni o'zi qilishini belgilaydi.
+model MiyaFikr {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amal      String // save_dm_rule | save_comment_rule | configure_direct | reply_comment | reels_vaqtlari | eslatma
+  sarlavha  String
+  fikr      String
+  payload   String    @default("{}")
+  ishonch   Int
+  xavf      String // past | orta | yuqori
+  holat     String    @default("kutmoqda") // kutmoqda | bajarildi | avtomatik | rad | xato | eskirdi
+  natija    String?
+  izoh      String?
+  createdAt DateTime  @default(now())
+  hal       DateTime?
+
+  @@index([userId, holat])
+  @@index([userId, createdAt])
+}
+
+// AI Ofis agentlari yasagan fayllar (Excel, Word, PowerPoint) — chatdagi «Yuklab olish» tugmasi shu yerdan beradi
+model OfisFayl {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nom       String
+  tur       String // xlsx | docx | pptx
+  hajm      Int
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// Miya va egasi o'rtasidagi telefon qo'ng'iroqlari (Twilio). suhbat — [{kim: "miya" | "men", matn}]
+model Qongiroq {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  yonalish  String // chiquvchi | kiruvchi | tasdiq
+  kanal     String    @default("telefon") // telefon (Twilio) | web (brauzerda ovoz) | telegram (botdagi ovozli/matnli xabarlar)
+  // ovoz havolalari uchun maxfiy kalit (Twilio audio'ni GET bilan oladi)
+  kalit     String
+  sid       String?
+  sabab     String    @default("")
+  holat     String    @default("boshlandi") // boshlandi | gaplashmoqda | tugadi | javobsiz | xato
+  suhbat    String    @default("[]")
+  kutish    Boolean   @default(false) // javob tayyorlanmoqda
+  tugat     Boolean   @default(false) // oxirgi javobdan keyin go'shakni qo'yish
+  pinOtdi   Boolean   @default(false)
+  fikrId    String?
+  createdAt DateTime  @default(now())
+  tugadi    DateTime?
+
+  @@index([userId, createdAt])
+  @@index([sid])
+}
+
+// Butun sayt uchun bitta qiymatlar (masalan, Miya Telegram akkauntining shifrlangan sessiyasi)
+model Sozlama {
+  kalit      String   @id
+  qiymat     String
+  yangilandi DateTime @updatedAt
 }
