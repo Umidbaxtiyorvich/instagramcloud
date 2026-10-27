@@ -1,0 +1,8 @@
+node_modules
+.next
+.tgv
+.git
+.env*
+!.env.example
+*.pem
+backups
