@@ -19,37 +19,45 @@ export const AQL_TURLARI: readonly AqlTur[] = ["gemini", "groq", "umid", "chatgp
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
 
 const GROQ_URL = "https://api.groq.com/openai/v1";
-// Groq modellarni tez-tez almashtiradi — nom qotirilmaydi: kalit ko'radigan ro'yxatdan shu tartibda tanlanadi
-const GROQ_AFZAL = ["openai/gpt-oss-120b", "moonshotai/kimi-k2-instruct", "llama-3.3-70b-versatile", "qwen/qwen3-32b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"];
+// Provayderlar modellarni tez-tez yopadi, bandligi va bepul chegaralari ham har xil — shuning uchun bitta nom emas,
+// kalit ko'radigan ro'yxatdan nomzodlar tartibi tuziladi; biri ishlamasa (yopilgan, band, so'rov katta) keyingisi olinadi.
+// Groq: avval daqiqalik token chegarasi kattalari (bepul rejada gpt-oss-120b — 8000, Miya so'rovi undan katta).
+const GROQ_AFZAL = [
+  "meta-llama/llama-4-scout-17b-16e-instruct",
+  "moonshotai/kimi-k2-instruct-0905",
+  "moonshotai/kimi-k2-instruct",
+  "llama-3.3-70b-versatile",
+  "openai/gpt-oss-120b",
+  "qwen/qwen3-32b",
+  "openai/gpt-oss-20b",
+  "llama-3.1-8b-instant",
+];
 async function modellar(c: OpenAI) {
   const bor: string[] = [];
   for await (const m of c.models.list()) bor.push(m.id.replace(/^models\//, ""));
   return bor;
 }
 
-// Google ham eski modellarni yopadi (gemini-2.5-flash 404 berdi) — eng yangi oddiy «flash» tanlanadi
 const versiya = (id: string) => (id.match(/gemini-(\d+(?:\.\d+)?)/)?.[1] ?? "0").split(".").map(Number);
 const kattami = (a: number[], b: number[]) => a[0] - b[0] || (a[1] ?? 0) - (b[1] ?? 0);
-async function geminiModelTanla(c: OpenAI) {
-  if (process.env.GEMINI_MODEL?.trim()) return process.env.GEMINI_MODEL.trim();
+async function geminiNomzodlar(c: OpenAI) {
+  if (process.env.GEMINI_MODEL?.trim()) return [process.env.GEMINI_MODEL.trim()];
   const suhbat = (await modellar(c)).filter((id) => id.startsWith("gemini-") && !/image|tts|live|embed|audio|vision|thinking|exp/i.test(id));
-  const eng = (x: string[]) => x.sort((a, b) => kattami(versiya(b), versiya(a)))[0];
-  const tanlov =
-    eng(suhbat.filter((id) => /^gemini-[\d.]+-flash$/.test(id))) ??
-    eng(suhbat.filter((id) => /flash/.test(id) && !/lite/.test(id))) ??
-    eng(suhbat.filter((id) => /flash/.test(id))) ??
-    eng(suhbat);
-  if (!tanlov) throw new Error("Gemini'da suhbat modeli topilmadi");
-  return tanlov;
+  const tartib = (x: string[]) => x.sort((a, b) => kattami(versiya(b), versiya(a)));
+  const oddiy = tartib(suhbat.filter((id) => /^gemini-[\d.]+-flash$/.test(id)));
+  const flash = tartib(suhbat.filter((id) => /flash/.test(id) && !/lite/.test(id) && !oddiy.includes(id)));
+  const lite = tartib(suhbat.filter((id) => /flash-lite/.test(id)));
+  const nomzod = [...new Set([...oddiy, ...flash, ...lite])].slice(0, 6);
+  if (!nomzod.length) throw new Error("Gemini'da suhbat modeli topilmadi");
+  return nomzod;
 }
 
-async function groqModelTanla(c: OpenAI) {
-  if (process.env.GROQ_MODEL?.trim()) return process.env.GROQ_MODEL.trim();
-  const bor = await modellar(c);
-  const suhbat = bor.filter((id) => !/whisper|tts|guard|embed|prompt-guard|playai|orpheus/i.test(id));
-  const tanlov = GROQ_AFZAL.find((id) => suhbat.includes(id)) ?? suhbat.sort().find((id) => /llama|gpt-oss|qwen|kimi|gemma|mistral/i.test(id)) ?? suhbat[0];
-  if (!tanlov) throw new Error("Groq'da suhbat modeli topilmadi");
-  return tanlov;
+async function groqNomzodlar(c: OpenAI) {
+  if (process.env.GROQ_MODEL?.trim()) return [process.env.GROQ_MODEL.trim()];
+  const suhbat = (await modellar(c)).filter((id) => !/whisper|tts|guard|embed|playai|orpheus|compound/i.test(id));
+  const nomzod = [...GROQ_AFZAL.filter((id) => suhbat.includes(id)), ...suhbat.filter((id) => !GROQ_AFZAL.includes(id)).sort()].slice(0, 6);
+  if (!nomzod.length) throw new Error("Groq'da suhbat modeli topilmadi");
+  return nomzod;
 }
 export const umidModel = () => process.env.UMID_MODEL?.trim() || "qwen3:4b-instruct";
 
@@ -188,6 +196,31 @@ class Moslama {
     readonly tur: ChatTur,
   ) {}
 
+  // model bo'sh bo'lsa (Gemini, Groq) — nomzodlar ro'yxatidan; ishlaganini eslab qoladi
+  private nomzodlar: string[] | null = null;
+
+  private async sora(messages: Xabar[], tools: OpenAI.Chat.Completions.ChatCompletionTool[]) {
+    if (this.model) return this.c.chat.completions.create({ model: this.model, messages, ...(tools.length ? { tools } : {}) });
+    this.nomzodlar ??= await (this.tur === "gemini" ? geminiNomzodlar(this.c) : groqNomzodlar(this.c));
+    let oxirgi: unknown;
+    for (const model of [...this.nomzodlar]) {
+      const boshi = Date.now();
+      try {
+        const r = await this.c.chat.completions.create({ model, messages, ...(tools.length ? { tools } : {}) });
+        // ishlagani ro'yxat boshiga — keyingi so'rov darhol shundan boshlanadi
+        this.nomzodlar = [model, ...this.nomzodlar.filter((x) => x !== model)];
+        return r;
+      } catch (e) {
+        const holat = (e as { status?: number }).status;
+        console.error(`aql: ${this.tur} ${model} (${Math.round((Date.now() - boshi) / 1000)}s) —`, e instanceof Error ? e.message.slice(0, 160) : e);
+        oxirgi = e;
+        // kalit noto'g'ri yoki so'rov buzuq — boshqa model ham yordam bermaydi
+        if (holat === 401 || holat === 403 || holat === 400) break;
+      }
+    }
+    throw oxirgi;
+  }
+
   private async yarat(p: Kirish) {
     const sxema = p.text?.format?.type === "json_schema" ? p.text.format.schema : null;
     const msgs: Xabar[] = p.previous_response_id ? [...(this.tarix.get(p.previous_response_id) ?? [])] : [];
@@ -211,14 +244,7 @@ class Moslama {
         function: { name: t.name!, description: t.description ?? "", parameters: sxemaTozala(t.parameters ?? { type: "object", properties: {} }) as Record<string, unknown> },
       }));
 
-    if (!this.model) {
-      this.model = await (this.tur === "gemini" ? geminiModelTanla(this.c) : groqModelTanla(this.c));
-      console.log(`aql: ${this.tur} modeli — ${this.model}`);
-    }
-    const boshi = Date.now();
-    const r = await this.c.chat.completions.create({ model: this.model, messages: msgs, ...(tools.length ? { tools } : {}) }).catch((e: unknown) => {
-      throw new Error(`${aqlNomi(this.tur)} (${this.model}, ${Math.round((Date.now() - boshi) / 1000)}s): ${e instanceof Error ? e.message : e}`);
-    });
+    const r = await this.sora(msgs, tools);
     const m = r.choices[0]?.message;
     if (!m) throw new Error(`${aqlNomi(this.tur)} bo'sh javob qaytardi`);
     // ba'zi modellar chaqiruv id'sini bermaydi — tool javobini ulash uchun o'zimiz qo'yamiz
@@ -259,7 +285,7 @@ export async function aqlSinov(tur: AqlTur, groqKalit?: string) {
 let geminiNomi: Promise<string> | null = null;
 export function geminiModel() {
   if (!geminiBor()) return Promise.resolve(process.env.GEMINI_MODEL?.trim() || "gemini-flash-latest");
-  geminiNomi ??= geminiModelTanla(new OpenAI({ apiKey: process.env.GEMINI_API_KEY!.trim(), baseURL: process.env.GEMINI_OPENAI_URL || GEMINI_URL })).catch((e) => {
+  geminiNomi ??= geminiNomzodlar(new OpenAI({ apiKey: process.env.GEMINI_API_KEY!.trim(), baseURL: process.env.GEMINI_OPENAI_URL || GEMINI_URL })).then((x) => x[0]).catch((e) => {
     geminiNomi = null;
     throw e;
   });
