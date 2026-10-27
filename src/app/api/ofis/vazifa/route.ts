@@ -14,6 +14,7 @@ import { HUJJAT_VOSITA, hujjatYarat, matndanHujjat, soralganTur } from "@/lib/of
 import type { Fayl } from "@/lib/ofis";
 import { javobSxemasi, openai, openaiModel, openaiVazifa } from "@/lib/ofis-openai";
 import { claude } from "@/lib/ofis-claude";
+import { aql } from "@/lib/ofis-aql";
 
 const JAMOA_IDLAR = JAMOALAR.map((j) => j.id) as [JamoaId, ...JamoaId[]];
 
@@ -162,7 +163,7 @@ export async function POST(req: Request) {
   };
 
   const client = claude();
-  const oai = openai();
+  const oai = aql();
   if ((!client && !oai) || !user) {
     return NextResponse.json({ taqsimot: await lokal(), eslatma: client || oai ? "AI agentlar uchun tizimga kiring" : undefined });
   }

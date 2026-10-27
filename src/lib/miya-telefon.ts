@@ -5,6 +5,7 @@ import type { Qongiroq } from "@prisma/client";
 import { prisma } from "./db";
 import { randomToken } from "./crypto";
 import { openai, openaiModel, openaiVazifa, openaiXatoMatni } from "./ofis-openai";
+import { aql } from "./ofis-aql";
 import { IG_VOSITALAR, igAkkaunt, igVosita } from "./ofis-instagram";
 import { MOLIYA_VOSITALAR, moliyaHolati, moliyaRuxsat, moliyaVosita, type Davr } from "./ofis-moliya";
 import { qaror } from "./miya-fikr";
@@ -280,8 +281,8 @@ export async function gapYoz(qId: string, kim: Gap["kim"], matn: string) {
 }
 
 async function javobBer(q: Qongiroq): Promise<{ javob: string; tugat: boolean }> {
-  const client = openai();
-  if (!client) throw new Error("OPENAI_API_KEY yo'q");
+  const client = aql();
+  if (!client) throw new Error("AI ulanmagan — Ulanishlar'da Gemini, Umid AI yoki ChatGPT'ni yoqing");
   const { kontekst: asos, akk, moliyaBor, userId } = await kontekstYig(q);
   const kontekst = `${asos}\n\nSuhbat:\n${suhbatOl(q).map((g) => `${g.kim === "miya" ? "Miya" : "Egasi"}: ${g.matn}`).join("\n")}`;
 
@@ -510,7 +511,7 @@ export async function kodTekshir(userId: string, kod: string) {
 // Bir nechta yozma xabarni telefonda aytiladigan 2-4 jumlaga aylantiradi
 async function ogzaki(matnlar: string[], taklif: string | null) {
   const xom = [...matnlar, ...(taklif ? [`Taklif: ${taklif}`] : [])].join("\n\n");
-  const client = openai();
+  const client = aql();
   if (client) {
     try {
       const r = await client.responses.create({

@@ -12,6 +12,7 @@ import { tashqiVosita } from "./mcp-ulanish";
 import type { VideoSpec } from "./video";
 import { fikrla } from "./miya-fikr";
 import { botReelsTasdiq } from "./miya-bot";
+import { aql } from "./ofis-aql";
 
 // AI Ofis «Miya» — avtomatik kuzatuvchi. Railway'dagi bot har 10 daqiqada /api/miya/tick ni chaqiradi:
 // belgilangan postlarni joylaydi, Reels vaqti kelsa video yasab joylaydi, CloudShop va Instagram'ni
@@ -216,8 +217,8 @@ export async function instagramTekshir(userId: string) {
 type Ssenariy = { slides: { title: string; subtitle: string; seconds: number }[]; caption: string; theme: string };
 
 async function ssenariyYoz(userId: string, akkNomi: string, brend: string): Promise<Ssenariy> {
-  const client = openai();
-  if (!client) throw new Error("OPENAI_API_KEY yo'q — Reels ssenariysini yozib bo'lmaydi");
+  const client = aql();
+  if (!client) throw new Error("AI ulanmagan — Reels ssenariysini yozib bo'lmaydi");
   const [rep, xotira, oxirgilar, soz, natijalar] = await Promise.all([
     igJson(userId, "instagram_reels_report", { limit: 10 }).catch(() => null),
     prisma.xotira.findUnique({ where: { userId } }),
@@ -691,7 +692,7 @@ export async function tick() {
     // o'ylash: kunduzi har 6 soatda, bitta tick'da bitta foydalanuvchi (model chaqiruvi sekin)
     try {
       const { daqiqa } = toshkent();
-      if (!ogir && openai() && daqiqa >= 8 * 60 && daqiqa < 22 * 60 && (await igAkkaunt(s.userId)) && (await band(s.userId, "oxirgiFikr", 6))) {
+      if (!ogir && aql() && daqiqa >= 8 * 60 && daqiqa < 22 * 60 && (await igAkkaunt(s.userId)) && (await band(s.userId, "oxirgiFikr", 6))) {
         ogir = true;
         await fikrla(s.userId);
       }

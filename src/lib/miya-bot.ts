@@ -5,6 +5,7 @@ import { randomToken } from "./crypto";
 import { tasdiqHal } from "./actions";
 import { uploadForPublish } from "./uploads";
 import { openai } from "./ofis-openai";
+import { aql } from "./ofis-aql";
 import { sayt } from "./twilio";
 import { gapniIshla, matnniIshla, qongiroqToken, sababToza, salomMatni, suhbatOl, tgChaqir, xatoGap } from "./miya-telefon";
 
@@ -277,7 +278,7 @@ export async function botYangilanish(u: Update) {
   // ovozli yoki oddiy xabar — Miya javob beradi
   const fayl = u.message?.voice?.file_id ?? u.message?.audio?.file_id;
   if (!fayl && !text) return;
-  if (!openai()) return tg("sendMessage", { chat_id: chat, text: "⚠️ ChatGPT kaliti yo'q — saytda AI Ofis → Ulanishlar → ChatGPT'ga kalit qo'ying." });
+  if (!aql()) return tg("sendMessage", { chat_id: chat, text: "⚠️ Miya'ga AI ulanmagan — saytda AI Ofis → Ulanishlar'da Gemini, Umid AI yoki ChatGPT'ni yoqing." });
   await tg("sendChatAction", { chat_id: chat, action: fayl ? "record_voice" : "typing" }).catch(() => null);
   const q = await botSuhbat(userId);
   let yangi: Qongiroq;

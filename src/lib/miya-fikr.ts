@@ -6,6 +6,7 @@ import { configuredUrl } from "./url";
 import { igAkkaunt } from "./ofis-instagram";
 import { openai, openaiModel } from "./ofis-openai";
 import { miyaXabar, qoidalarMatni, reelsNatijalari, sozlama, toshkent } from "./miya";
+import { aql } from "./ofis-aql";
 
 // Miya «o'ylaydi»: Instagram'dagi hamma narsani o'qiydi, odamday xulosa qiladi va aniq takliflar
 // beradi. Har bir taklif — oq ro'yxatdagi amal; xavfini kod belgilaydi, model emas. Egasining
@@ -264,8 +265,8 @@ async function xabarYoz(userId: string, f: MiyaFikr) {
 
 // Bitta fikrlash sikli. Qaytaradi: nechta taklif, nechtasini o'zi qildi
 export async function fikrla(userId: string) {
-  const client = openai();
-  if (!client) throw new Error("OPENAI_API_KEY yo'q — Miya o'ylay olmaydi");
+  const client = aql();
+  if (!client) throw new Error("AI ulanmagan — Miya o'ylay olmaydi");
   // javobsiz qolgan eski takliflar eskiradi — vaziyat o'zgargan bo'ladi
   await prisma.miyaFikr.updateMany({ where: { userId, holat: "kutmoqda", createdAt: { lt: new Date(Date.now() - 3 * 86400_000) } }, data: { holat: "eskirdi", hal: new Date() } });
 

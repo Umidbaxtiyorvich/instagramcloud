@@ -679,6 +679,13 @@ button.o_vosita {
   cursor: pointer;
 }
 
+.o_misol.o_misolFaol {
+  color: #0d1a14;
+  background: #3dff9a;
+  border-color: #3dff9a;
+  font-weight: 700;
+}
+
 .o_buyruq {
   display: flex;
   gap: 8px;

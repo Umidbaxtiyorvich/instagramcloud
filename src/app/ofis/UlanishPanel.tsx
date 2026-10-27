@@ -106,6 +106,7 @@ export default function UlanishPanel({ yop, kirgan, xabar }: { yop: () => void; 
 
       {kirgan && (
         <>
+          <AqlTanlov />
           <AiKalit yangilandi={() => void yukla()} {...CHATGPT} />
           <AiKalit yangilandi={() => void yukla()} {...CLAUDE} />
           <div className="o_jadval">
@@ -255,6 +256,119 @@ export default function UlanishPanel({ yop, kirgan, xabar }: { yop: () => void; 
             </div>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+type AqlHolat = { tanlov: "gemini" | "groq" | "umid" | "chatgpt"; gemini: boolean; groq: string | null; chatgpt: boolean; umidUrl: string | null; ruxsat: boolean };
+
+const AQL_VARIANT = [
+  { tur: "gemini", nom: "Gemini", izoh: "Google, bepul, doim ishlaydi" },
+  { tur: "groq", nom: "Groq", izoh: "bepul, juda tez, doim ishlaydi" },
+  { tur: "umid", nom: "Umid AI", izoh: "kompyuteringizdagi AI — kompyuter yoniq bo'lsa" },
+  { tur: "chatgpt", nom: "ChatGPT", izoh: "OpenAI, hisobda pul bo'lsa" },
+] as const;
+
+// Miya va agentlar qaysi AI bilan o'ylaydi. Tanlangani ishlamasa, Miya o'zi Gemini'ga, keyin ChatGPT'ga o'tadi.
+function AqlTanlov() {
+  const [h, setH] = useState<AqlHolat | null>(null);
+  const [band, setBand] = useState(false);
+  const [xabar, setXabar] = useState<{ ok: boolean; matn: string } | null>(null);
+  const [url, setUrl] = useState("");
+  const [groq, setGroq] = useState("");
+
+  const sorov = useCallback(async (method: string, body?: unknown) => {
+    setBand(method !== "GET");
+    setXabar(null);
+    try {
+      const r = await fetch("/api/ofis/aql", {
+        method,
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const d = (await r.json().catch(() => ({}))) as AqlHolat & { error?: string; javob?: string | null };
+      if (d.tanlov) setH(d);
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      if (d.javob) setXabar({ ok: true, matn: `Javob berdi: «${d.javob}»` });
+      else if (method !== "GET") setXabar({ ok: true, matn: "Saqlandi." });
+    } catch (e) {
+      setXabar({ ok: false, matn: (e as Error).message });
+    } finally {
+      setBand(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => void sorov("GET"), 0);
+    return () => clearTimeout(t);
+  }, [sorov]);
+
+  if (!h) return null;
+  const tayyor = (t: AqlHolat["tanlov"]) => ({ gemini: h.gemini, groq: Boolean(h.groq), umid: Boolean(h.umidUrl), chatgpt: h.chatgpt })[t];
+  return (
+    <div className="o_ulanish" style={{ marginBottom: 10 }}>
+      <div className="o_ulanishBosh">
+        <span className={`o_holatNuqta ${tayyor(h.tanlov) ? "o_yashil" : "o_qizil"}`} />
+        <b>Miya'ning AI'si</b>
+        <small>Miya va agentlar shu AI bilan o&apos;ylaydi va javob beradi</small>
+      </div>
+      <div className="o_ulanishTugmalar">
+        {AQL_VARIANT.map((v) => (
+          <button
+            key={v.tur}
+            className={`o_misol ${h.tanlov === v.tur ? "o_misolFaol" : ""}`}
+            disabled={band || !h.ruxsat}
+            title={v.izoh}
+            onClick={() => void sorov("POST", { tanlov: v.tur, sinov: v.tur })}
+          >
+            {h.tanlov === v.tur ? "● " : ""}
+            {v.nom}
+            {!tayyor(v.tur) && " (ulanmagan)"}
+          </button>
+        ))}
+      </div>
+      <div className="o_ulanishMatn">
+        {AQL_VARIANT.find((v) => v.tur === h.tanlov)?.izoh}. Tanlangani ishlamasa, Miya o&apos;zi Gemini&apos;ga, Groq&apos;ga, keyin ChatGPT&apos;ga o&apos;tadi.
+        {h.groq && ` Groq kaliti: …${h.groq}.`}
+        {h.umidUrl ? ` Umid AI manzili: ${h.umidUrl}.` : " Umid AI: kompyuterda «miyaga_ulash.bat» ni ishga tushiring va chiqqan manzilni pastga qo'ying."}
+        {xabar && <span className={xabar.ok ? undefined : "o_ulanishXato"}> {xabar.ok ? "✅" : "⚠️"} {xabar.matn}</span>}
+      </div>
+      {h.ruxsat && (
+        <div className="o_tokenYangi">
+          <input
+            className="o_qidiruv"
+            type="password"
+            placeholder={h.groq ? "Yangi Groq kaliti (gsk_...)" : "Groq kaliti (gsk_...) — console.groq.com → API Keys"}
+            value={groq}
+            onChange={(e) => setGroq(e.target.value)}
+          />
+          <button
+            className="o_misol"
+            disabled={band || !groq.trim()}
+            onClick={() => void sorov("POST", { groqKalit: groq.trim(), tanlov: "groq", sinov: "groq" }).then(() => setGroq(""))}
+          >
+            Saqlash
+          </button>
+        </div>
+      )}
+      {h.ruxsat && (
+        <div className="o_tokenYangi">
+          <input
+            className="o_qidiruv"
+            placeholder="Umid AI manzili (https://....trycloudflare.com)"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <button className="o_misol" disabled={band || !url.trim()} onClick={() => void sorov("POST", { umidUrl: url.trim(), tanlov: "umid", sinov: "umid" })}>
+            Ulash
+          </button>
+          {h.umidUrl && (
+            <button className="o_misol" disabled={band} onClick={() => void sorov("POST", { umidUrl: "" })}>
+              Uzish
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

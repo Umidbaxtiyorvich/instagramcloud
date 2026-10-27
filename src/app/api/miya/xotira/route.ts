@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { openai, openaiModel } from "@/lib/ofis-openai";
+import { aql } from "@/lib/ofis-aql";
 
 // ChatGPT eksportidan foydalanuvchi profili. ZIP brauzerda ochiladi; bu yerga faqat
 // foydalanuvchining o'z xabarlari (va saqlangan xotiralar bo'lsa) keladi, profil shulardan yoziladi.
@@ -17,8 +18,8 @@ const Kirish = z.object({
 export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Kirish kerak" }, { status: 401 });
-  const client = openai();
-  if (!client) return NextResponse.json({ error: "OPENAI_API_KEY yo'q — profilni yozib bo'lmaydi" }, { status: 400 });
+  const client = aql();
+  if (!client) return NextResponse.json({ error: "AI ulanmagan — profilni yozib bo'lmaydi" }, { status: 400 });
   const p = Kirish.safeParse(await req.json().catch(() => null));
   if (!p.success || (!p.data.xabarlar.length && !p.data.xotiralar.length)) {
     return NextResponse.json({ error: "Faylda xabarlar topilmadi" }, { status: 400 });
