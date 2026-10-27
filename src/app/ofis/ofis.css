@@ -383,6 +383,13 @@ a.o_vosita {
   text-decoration: none;
 }
 
+button.o_vosita {
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .o_vosita .o_ulanmagan {
   color: #ffb45a;
 }

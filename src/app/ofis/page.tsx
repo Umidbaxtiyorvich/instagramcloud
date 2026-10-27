@@ -62,6 +62,7 @@ const MISOLLAR = [
 ];
 
 type IgAkkaunt = { id: string; username: string; followersCount: number; isDemo: boolean };
+type McpUlanish = { id: string; name: string; enabled: boolean; ulangan: boolean; vositalar: unknown[] | null };
 type IgTasdiq = { id: string; summary: string; toolName: string; createdAt: string };
 type IgLog = { kind: string; direction: string; username: string | null; text: string; replyText: string | null; createdAt: string };
 
@@ -171,6 +172,15 @@ export default function OfisSahifa() {
   const [igTasdiqlar, setIgTasdiqlar] = useState<IgTasdiq[]>([]);
   const [jonli, setJonli] = useState<Record<string, number>>({});
   const [moliyaHolat, setMoliyaHolat] = useState<{ cloudshop: boolean; bot: boolean } | null>(null);
+  // «Ulanishlar»dagi MCP serverlar — agentlar aynan shularni ishlatadi
+  const [mcpUlanishlar, setMcpUlanishlar] = useState<McpUlanish[]>([]);
+  useEffect(() => {
+    if (!foydalanuvchi || tab !== "ofis") return;
+    fetch("/api/ofis/ulanish")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { ulanishlar?: McpUlanish[] } | null) => d?.ulanishlar && setMcpUlanishlar(d.ulanishlar))
+      .catch(() => {});
+  }, [foydalanuvchi, tab]);
   const [ovoz, setOvoz] = useState<{ faol: boolean; matn: string; maqsad: "buyruq" | "chat" }>({
     faol: false,
     matn: "",
@@ -710,6 +720,8 @@ export default function OfisSahifa() {
         <JamoaPaneli
           moliyaniOch={() => setTab("moliya")}
           moliyaHolat={moliyaHolat}
+          mcp={mcpUlanishlar}
+          ulanishlarniOch={() => setTab("ulanishlar")}
           instagram={igAkkaunt}
           kirgan={!!foydalanuvchi}
           jamoa={tanlanganJamoa}
@@ -1039,6 +1051,8 @@ export default function OfisSahifa() {
 function JamoaPaneli({
   moliyaniOch,
   moliyaHolat,
+  mcp,
+  ulanishlarniOch,
   instagram,
   kirgan,
   jamoa,
@@ -1048,6 +1062,8 @@ function JamoaPaneli({
   agentniOch,
   yashirin,
 }: {
+  mcp: McpUlanish[];
+  ulanishlarniOch: () => void;
   jamoa: ReturnType<typeof jamoaById>;
   agentlar: Agent[];
   vazifalar: Vazifa[];
@@ -1104,43 +1120,73 @@ function JamoaPaneli({
         </button>
       )}
 
-      <div className={s.bolimNom}>
-        Ulangan vositalar <em>● ulangan</em>
-      </div>
+      {/* Faqat agentlar haqiqatan ishlatadigan vositalar: Instagram, moliya, hujjatlar va «Ulanishlar»dagi MCP */}
+      <div className={s.bolimNom}>Agentlar ishlatadigan vositalar</div>
       <div className={s.vositalar}>
-        {jamoa.vositalar.map((v) =>
-          v.startsWith("Instagram") ? (
-            instagram ? (
-              <a key={v} className={s.vosita} href="/dashboard">
-                {v}
-                <small>
-                  ● @{instagram.username}
-                  {instagram.isDemo ? " · demo" : ""}
-                </small>
-              </a>
-            ) : (
-              <a key={v} className={s.vosita} href={kirgan ? "/connect/instagram" : "/login"}>
-                {v}
-                <small className={s.ulanmagan}>○ {kirgan ? "ulash" : "kirish kerak"}</small>
-              </a>
-            )
-          ) : v === "CloudShop" || v.startsWith("Telegram bot") ? (
-            <div key={v} className={s.vosita}>
-              {v}
-              {(v === "CloudShop" ? moliyaHolat?.cloudshop : moliyaHolat?.bot) ? (
-                <small>● ulangan</small>
-              ) : (
-                <small className={s.ulanmagan}>○ {moliyaHolat ? "sozlanmagan" : "kirish kerak"}</small>
-              )}
-            </div>
-          ) : (
-            <div key={v} className={s.vosita}>
-              {v}
-              <small>● ulangan</small>
-            </div>
-          ),
+        {instagram ? (
+          <a className={s.vosita} href="/dashboard">
+            Instagram
+            <small>
+              ● @{instagram.username}
+              {instagram.isDemo ? " · demo" : ""}
+            </small>
+          </a>
+        ) : (
+          <a className={s.vosita} href={kirgan ? "/connect/instagram" : "/login"}>
+            Instagram
+            <small className={s.ulanmagan}>○ {kirgan ? "ulash" : "kirish kerak"}</small>
+          </a>
         )}
+        {(jamoa.id === "moliya" || moliyaHolat?.cloudshop || moliyaHolat?.bot) &&
+          (
+            [
+              ["CloudShop", moliyaHolat?.cloudshop],
+              ["Telegram bot @claudeadminbot_bot", moliyaHolat?.bot],
+            ] as const
+          ).map(([nom, bor]) => (
+            <div key={nom} className={s.vosita}>
+              {nom}
+              {bor ? <small>● ulangan</small> : <small className={s.ulanmagan}>○ {moliyaHolat ? "sozlanmagan" : "kirish kerak"}</small>}
+            </div>
+          ))}
+        <div className={s.vosita}>
+          Hujjatlar: Excel, Word, PowerPoint
+          <small>● tayyor</small>
+        </div>
+        {mcp.map((m) => (
+          <button key={m.id} className={s.vosita} onClick={ulanishlarniOch}>
+            {m.name}
+            {m.enabled && m.ulangan ? (
+              <small>● ulangan{m.vositalar ? ` · ${m.vositalar.length} vosita` : ""}</small>
+            ) : (
+              <small className={s.ulanmagan}>○ {m.enabled ? "token kerak" : "o'chirilgan"}</small>
+            )}
+          </button>
+        ))}
       </div>
+
+      {(() => {
+        // jamoaga foydali, lekin hali ulanmagan vositalar — «Ulanishlar»da MCP yoki token bilan qo'shiladi
+        const bor = (v: string) =>
+          v.startsWith("Instagram") || v === "CloudShop" || v.startsWith("Telegram bot") || v === "Excel" ||
+          mcp.some((m) => m.enabled && m.ulangan && m.name.toLowerCase().includes(v.toLowerCase()));
+        const kerak = jamoa.vositalar.filter((v) => !bor(v));
+        return kerak.length ? (
+          <>
+            <div className={s.bolimNom}>
+              Ulash mumkin <em>○ ulanmagan</em>
+            </div>
+            <div className={s.vositalar}>
+              {kerak.map((v) => (
+                <button key={v} className={s.vosita} onClick={ulanishlarniOch}>
+                  {v}
+                  <small className={s.ulanmagan}>○ ulash</small>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : null;
+      })()}
 
       <div className={s.bolimNom}>
         Ko&apos;nikmalar {ishda > 0 && <em>{ishda} ta parallel ishlamoqda</em>}

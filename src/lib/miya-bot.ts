@@ -277,7 +277,7 @@ export async function botYangilanish(u: Update) {
   // ovozli yoki oddiy xabar — Miya javob beradi
   const fayl = u.message?.voice?.file_id ?? u.message?.audio?.file_id;
   if (!fayl && !text) return;
-  if (!openai()) return tg("sendMessage", { chat_id: chat, text: "⚠️ OPENAI_API_KEY yo'q — Miya javob bera olmaydi." });
+  if (!openai()) return tg("sendMessage", { chat_id: chat, text: "⚠️ ChatGPT kaliti yo'q — saytda AI Ofis → Ulanishlar → ChatGPT'ga kalit qo'ying." });
   await tg("sendChatAction", { chat_id: chat, action: fayl ? "record_voice" : "typing" }).catch(() => null);
   const q = await botSuhbat(userId);
   let yangi: Qongiroq;

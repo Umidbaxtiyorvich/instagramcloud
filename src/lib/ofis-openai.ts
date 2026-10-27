@@ -39,6 +39,16 @@ export function openai() {
   return g.__openaiMijoz.mijoz;
 }
 
+// OpenAI xatosini egasi tushunadigan gapga o'giradi (eng ko'p uchraydigani — hisobda pul qolmagani)
+export function openaiXatoMatni(e: unknown) {
+  const m = e instanceof Error ? e.message : String(e);
+  if (/insufficient_quota|no credits|exceeded your current quota/i.test(m))
+    return "ChatGPT hisobida pul (kredit) qolmagan — platform.openai.com → Billing'da to'ldiring yoki saytda boshqa kalit qo'ying";
+  if (e instanceof OpenAI.AuthenticationError || /invalid api key|incorrect api key/i.test(m)) return "OpenAI bu kalitni qabul qilmadi";
+  if (e instanceof OpenAI.RateLimitError) return "ChatGPT hozir band (so'rovlar chegarasi) — bir daqiqadan keyin qayta urining";
+  return m.slice(0, 160);
+}
+
 export const openaiModel = () => process.env.OPENAI_MODEL?.trim() || "gpt-5-mini";
 
 type Vosita = { name: string; description: string; inputSchema: unknown };

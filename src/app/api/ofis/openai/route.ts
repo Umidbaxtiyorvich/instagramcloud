@@ -5,7 +5,7 @@ import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encryptSecret } from "@/lib/crypto";
 import { moliyaRuxsat } from "@/lib/ofis-moliya";
-import { OPENAI_KALIT, openaiKalitOrnat, openaiKalitSaytdan, openaiKalitYukla, openaiKaliti } from "@/lib/ofis-openai";
+import { OPENAI_KALIT, openaiXatoMatni, openaiKalitOrnat, openaiKalitSaytdan, openaiKalitYukla, openaiKaliti } from "@/lib/ofis-openai";
 
 // AI Ofis «Ulanishlar» → ChatGPT: Miya va agentlar ishlatadigan OpenAI kaliti (butun sayt uchun bitta).
 // Kalitning o'zi brauzerga qaytmaydi — faqat oxirgi 4 belgisi. Almashtirishni faqat admin (MOLIYA_ADMIN_EMAILS) qiladi.
@@ -38,12 +38,12 @@ export async function POST(req: Request) {
   if (!p.success) return NextResponse.json({ error: "Kalit noto'g'ri ko'rinishda" }, { status: 400 });
   const { kalit } = p.data;
 
-  // saqlashdan oldin OpenAI'da tekshiramiz — ishlamaydigan kalit Miyani to'xtatib qo'ymasin
+  // saqlashdan oldin OpenAI'da tekshiramiz — ishlamaydigan kalit Miyani to'xtatib qo'ymasin.
+  // models.list() pulsiz hisobda ham o'tadi, shuning uchun haqiqiy (eng arzon) so'rov yuboramiz.
   try {
-    await new OpenAI({ apiKey: kalit }).models.list();
+    await new OpenAI({ apiKey: kalit }).embeddings.create({ model: "text-embedding-3-small", input: "salom" });
   } catch (e) {
-    const xato = e instanceof OpenAI.AuthenticationError ? "OpenAI bu kalitni qabul qilmadi" : `OpenAI bilan tekshirib bo'lmadi: ${(e as Error).message}`;
-    return NextResponse.json({ error: xato }, { status: 400 });
+    return NextResponse.json({ error: openaiXatoMatni(e) }, { status: 400 });
   }
 
   const qiymat = encryptSecret(kalit);

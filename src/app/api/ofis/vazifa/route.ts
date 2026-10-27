@@ -56,7 +56,9 @@ const Javob = z.object({
 
 const TIZIM = `Siz "AI Ofis"ning bosh dispetcherisiz. Foydalanuvchi o'zbek tilida vazifa aytadi.
 Ofisda 8 ta jamoa bor:
-${JAMOALAR.map((j) => `- ${j.id} (${j.nom}): ${j.tavsif}. Vositalar: ${j.vositalar.join(", ")}`).join("\n")}
+${JAMOALAR.map((j) => `- ${j.id} (${j.nom}): ${j.tavsif}. Ish sohasi: ${j.vositalar.join(", ")}`).join("\n")}
+(«Ish sohasi» — jamoa nima bilan shug'ullanishi; ulangan vositalar emas. Agentlar faqat sizga berilgan vositalarni
+ishlata oladi — vosita ulanmagan bo'lsa, buni ochiq ayting, natija o'ylab topmang.)
 
 Vazifangiz:
 1. Vazifaga eng mos jamoani tanlang.

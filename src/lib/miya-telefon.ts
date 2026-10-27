@@ -4,7 +4,7 @@ import OpenAI, { toFile } from "openai";
 import type { Qongiroq } from "@prisma/client";
 import { prisma } from "./db";
 import { randomToken } from "./crypto";
-import { openai, openaiModel, openaiVazifa } from "./ofis-openai";
+import { openai, openaiModel, openaiVazifa, openaiXatoMatni } from "./ofis-openai";
 import { IG_VOSITALAR, igAkkaunt, igVosita } from "./ofis-instagram";
 import { MOLIYA_VOSITALAR, moliyaHolati, moliyaRuxsat, moliyaVosita, type Davr } from "./ofis-moliya";
 import { qaror } from "./miya-fikr";
@@ -172,6 +172,8 @@ const TELEFON_TIZIM = `Siz «Miya»siz — egasining biznesini (Instagram, Cloud
 - Javob og'zaki va jonli, xuddi odam telefonda gaplashgandek: 1-2 qisqa, aniq jumla (40 so'zgacha), o'zbek tilida (lotin).
   Avval savolga to'g'ridan-to'g'ri javob, keyin kerak bo'lsa bitta qo'shimcha. Umumiy, noaniq gaplar yo'q — aniq raqam, nom, holat.
   Markdown, emoji, ro'yxat, havola yo'q. Raqamlarni so'z bilan aytish oson bo'ladigan qilib yaxlitlang.
+- Egasi salomlashsa yoki oddiy gap qilsa («salom», «qalaysan», «rahmat») — xuddi odamdek o'shanga javob bering
+  («Va alaykum assalom! Yaxshi, o'zingiz qalaysiz?»). Ogohlantirish, hisobot, raqamlarni egasi so'ramaguncha aytmang.
 - Savolga avval vositalar bilan haqiqiy ma'lumotni oling, o'ylab topmang.
 - Instagram'ga yozadigan ishlar (javob, Direct, qoida, joylash) darhol bajarilmaydi — tasdiq navbatiga tushadi. Shunda egasiga aniq nima
   qilinishini (matnini ham) qisqa aytib, «bajaraymi?» deb so'rang. Egasi aniq «ha» desa — tasdiq_qaror(ha=true) chaqiring.
@@ -331,7 +333,7 @@ export async function matnniIshla(id: string, matn: string) {
 
 export const xatoGap = (e: unknown): Gap => ({
   kim: "miya",
-  matn: `Kechirasiz, xatolik bo'ldi: ${e instanceof Error ? e.message.slice(0, 120) : "noma'lum"}. Yana bir bor ayting.`,
+  matn: `Kechirasiz, javob bera olmadim: ${openaiXatoMatni(e)}.`,
 });
 
 // Twilio yozib olgan gapni eshitib, javob tayyorlaydi (javob qaytgandan keyin, fonda ishlaydi)
@@ -374,17 +376,10 @@ export async function tugmaJavob(q: Qongiroq, raqam: string) {
 // egasi bosib, telefon brauzerida ovoz bilan gaplashadi
 export const webMi = () => !twilioSozlangan();
 
+// Egasi o'zi qo'ng'iroq qilganda — oddiy salom; ogohlantirishlarni so'ragandagina aytadi
 export async function salomMatni(userId: string) {
-  const [muhim, kutayotgan] = await Promise.all([
-    prisma.miyaXabar.count({ where: { userId, oqildi: false, daraja: { in: ["ogoh", "xavf"] } } }),
-    prisma.miyaFikr.count({ where: { userId, holat: "kutmoqda" } }),
-  ]);
-  return (
-    "Salom! Miya eshitadi." +
-    (muhim ? ` ${muhim} ta o'qilmagan ogohlantirish bor.` : "") +
-    (kutayotgan ? ` ${kutayotgan} ta taklifim javobingizni kutyapti.` : "") +
-    " Nima qilay?"
-  );
+  const kutayotgan = await prisma.miyaFikr.count({ where: { userId, holat: "kutmoqda" } });
+  return "Assalomu alaykum! Miya eshitadi." + (kutayotgan ? " Bitta-ikkita taklifim ham bor." : "") + " Nima qilay?";
 }
 
 async function webQongiroq(userId: string, sabab: string, fikrId?: string) {
