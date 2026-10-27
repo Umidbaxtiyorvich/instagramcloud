@@ -1,5 +1,6 @@
 # Render'ning bepul serveri 15 daqiqa so'rov kelmasa uxlaydi — webhook'lar, Miya va botlar to'xtaydi.
-# Bu workflow saytni har 5 daqiqada chaqirib turadi. Oyiga 750 bepul soat bitta servisga 24/7 yetadi.
+# Bu workflow saytni har 5 daqiqada uyg'otadi va Miya'ning tick'ini chaqiradi (YesPOS, CloudShop,
+# Instagram tekshiruvlari, kunlik hisobot). Kirish parolsiz — sayt GitHub OIDC tokenini tekshiradi.
 name: uygoq
 
 on:
@@ -9,14 +10,25 @@ on:
 
 permissions:
   actions: write
+  id-token: write
+
+concurrency:
+  group: uygoq
+
+env:
+  SAYT: https://instagramcloud.onrender.com
 
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
       - name: Saytni uyg'otish
-        run: curl -fsS -o /dev/null --retry 5 --retry-delay 20 --max-time 90 -w "%{http_code} %{time_total}s\n" https://instagramcloud.onrender.com/login
+        run: curl -fsS -o /dev/null --retry 5 --retry-delay 20 --max-time 90 -w "%{http_code} %{time_total}s\n" "$SAYT/login"
+      - name: Miya tick
+        run: |
+          T=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$SAYT" | jq -r .value)
+          curl -sS --max-time 600 -H "Authorization: Bearer $T" "$SAYT/api/miya/tick" -w "\n%{http_code}\n" || true
       # GitHub 60 kun faolliksiz repodagi jadvalli workflow'ni o'chiradi — o'zini qayta yoqib turadi
       - name: Workflow'ni yoniq saqlash
         env:
