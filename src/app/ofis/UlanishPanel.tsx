@@ -98,7 +98,7 @@ export default function UlanishPanel({ yop, kirgan, xabar }: { yop: () => void; 
       {!kirgan && <div className="o_bosh">Ulanishlarni boshqarish uchun tizimga kiring.</div>}
       {kirgan && !claude && (
         <div className="o_natija" style={{ marginBottom: 10 }}>
-          ○ Agentlar hozir oddiy rejimda: ulanishlar AI rejimida ishlaydi. Serverga OPENAI_API_KEY (ChatGPT) yoki ANTHROPIC_API_KEY (Claude) qo&apos;shilgach yoqiladi.
+          ○ Agentlar hozir oddiy rejimda: ulanishlar AI rejimida ishlaydi. Pastda ChatGPT yoki Claude kaliti qo&apos;yilgach yoqiladi.
         </div>
       )}
       {xabar && <div className="o_natija" style={{ marginBottom: 10 }}>🔌 {xabar}</div>}
@@ -106,7 +106,8 @@ export default function UlanishPanel({ yop, kirgan, xabar }: { yop: () => void; 
 
       {kirgan && (
         <>
-          <ChatgptKalit yangilandi={() => void yukla()} />
+          <AiKalit yangilandi={() => void yukla()} {...CHATGPT} />
+          <AiKalit yangilandi={() => void yukla()} {...CLAUDE} />
           <div className="o_jadval">
             {!rows.length && <div className="o_bosh">Hali ulanish yo&apos;q. Pastdan tanlang yoki o&apos;zingiz qo&apos;shing.</div>}
             {rows.map((r) => (
@@ -259,11 +260,31 @@ export default function UlanishPanel({ yop, kirgan, xabar }: { yop: () => void; 
   );
 }
 
-type ChatgptHolat = { ulangan: boolean; manba: "sayt" | "server" | null; oxiri: string | null; yangilandi: string | null; ruxsat: boolean };
+type KalitHolat = { ulangan: boolean; manba: "sayt" | "server" | null; oxiri: string | null; yangilandi: string | null; ruxsat: boolean };
+type KalitTur = { nom: string; api: string; tavsif: string; yoq: string; serverNom: string; misol: string; tekshiruv: string };
 
-// Miya va agentlar ishlatadigan ChatGPT (OpenAI) kaliti — butun sayt uchun bitta, almashtirishni admin qiladi
-function ChatgptKalit({ yangilandi }: { yangilandi: () => void }) {
-  const [h, setH] = useState<ChatgptHolat | null>(null);
+const CHATGPT: KalitTur = {
+  nom: "ChatGPT",
+  api: "/api/ofis/openai",
+  tavsif: "OpenAI API kaliti · Miya va agentlarning «miyasi»",
+  yoq: "Kalit yo'q — Miya o'ylay olmaydi, gapira olmaydi. ",
+  serverNom: "OPENAI_API_KEY",
+  misol: "Yangi OpenAI kaliti (sk-...)",
+  tekshiruv: "OpenAI'da",
+};
+const CLAUDE: KalitTur = {
+  nom: "Claude",
+  api: "/api/ofis/claude",
+  tavsif: "Anthropic API kaliti · agentlar vazifalarni Claude bilan bajaradi",
+  yoq: "Kalit yo'q — agentlar ChatGPT (bo'lsa) yoki oddiy rejimda ishlaydi. ",
+  serverNom: "ANTHROPIC_API_KEY",
+  misol: "Yangi Claude kaliti (sk-ant-...)",
+  tekshiruv: "Anthropic'da",
+};
+
+// Miya va agentlar ishlatadigan AI kaliti (ChatGPT yoki Claude) — butun sayt uchun bitta, almashtirishni admin qiladi
+function AiKalit({ yangilandi, nom, api, tavsif, yoq, serverNom, misol, tekshiruv }: KalitTur & { yangilandi: () => void }) {
+  const [h, setH] = useState<KalitHolat | null>(null);
   const [band, setBand] = useState(false);
   const [xato, setXato] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
@@ -274,12 +295,12 @@ function ChatgptKalit({ yangilandi }: { yangilandi: () => void }) {
       setXato(null);
       setOk(false);
       try {
-        const r = await fetch("/api/ofis/openai", {
+        const r = await fetch(api, {
           method,
           headers: body ? { "Content-Type": "application/json" } : undefined,
           body: body ? JSON.stringify(body) : undefined,
         });
-        const d = (await r.json().catch(() => ({}))) as ChatgptHolat & { error?: string };
+        const d = (await r.json().catch(() => ({}))) as KalitHolat & { error?: string };
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
         setH(d);
         if (method !== "GET") {
@@ -292,7 +313,7 @@ function ChatgptKalit({ yangilandi }: { yangilandi: () => void }) {
         setBand(false);
       }
     },
-    [yangilandi],
+    [yangilandi, api],
   );
 
   useEffect(() => {
@@ -305,29 +326,29 @@ function ChatgptKalit({ yangilandi }: { yangilandi: () => void }) {
     <div className="o_ulanish" style={{ marginBottom: 10 }}>
       <div className="o_ulanishBosh">
         <span className={`o_holatNuqta ${h.ulangan ? "o_yashil" : "o_qizil"}`} />
-        <b>ChatGPT</b>
+        <b>{nom}</b>
         <small>
-          OpenAI API kaliti · Miya va agentlarning «miyasi»
+          {tavsif}
           {h.oxiri && ` · …${h.oxiri}`}
         </small>
       </div>
       <div className="o_ulanishMatn">
-        {!h.ulangan && "Kalit yo'q — Miya o'ylay olmaydi, gapira olmaydi. "}
+        {!h.ulangan && yoq}
         {h.manba === "sayt" && `Kalit shu yerda saqlangan${h.yangilandi ? ` (${new Date(h.yangilandi).toLocaleString("uz-UZ")})` : ""}. `}
-        {h.manba === "server" && "Kalit serverning OPENAI_API_KEY sozlamasidan olinmoqda. "}
-        {h.ruxsat ? "Yangi kalitni qo'ysangiz, avval OpenAI'da tekshiriladi, keyin darhol ishlay boshlaydi." : "Kalitni faqat admin almashtira oladi."}
+        {h.manba === "server" && `Kalit serverning ${serverNom} sozlamasidan olinmoqda. `}
+        {h.ruxsat ? `Yangi kalitni qo'ysangiz, avval ${tekshiruv} tekshiriladi (hisobda pul borligi ham), keyin darhol ishlay boshlaydi.` : "Kalitni faqat admin almashtira oladi."}
         {ok && <span> ✅ Saqlandi.</span>}
         {xato && <span className="o_ulanishXato"> ⚠️ {xato}</span>}
       </div>
       {h.ruxsat && (
         <>
-          <TokenYangila band={band} saqla={(kalit) => void sorov("POST", { kalit })} matn="Yangi OpenAI kaliti (sk-...)" />
+          <TokenYangila band={band} saqla={(kalit) => void sorov("POST", { kalit })} matn={misol} />
           {h.manba === "sayt" && (
             <div className="o_ulanishTugmalar" style={{ marginTop: 8 }}>
               <button
                 className="o_misol"
                 disabled={band}
-                onClick={() => confirm("Saytdagi kalitni o'chiraymi? Serverdagi OPENAI_API_KEY (bo'lsa) ishlatiladi.") && void sorov("DELETE")}
+                onClick={() => confirm(`Saytdagi kalitni o'chiraymi? Serverdagi ${serverNom} (bo'lsa) ishlatiladi.`) && void sorov("DELETE")}
               >
                 Saytdagi kalitni o&apos;chirish
               </button>

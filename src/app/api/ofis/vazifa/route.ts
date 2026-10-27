@@ -13,6 +13,7 @@ import OpenAI from "openai";
 import { HUJJAT_VOSITA, hujjatYarat, matndanHujjat, soralganTur } from "@/lib/ofis-fayl";
 import type { Fayl } from "@/lib/ofis";
 import { javobSxemasi, openai, openaiModel, openaiVazifa } from "@/lib/ofis-openai";
+import { claude } from "@/lib/ofis-claude";
 
 const JAMOA_IDLAR = JAMOALAR.map((j) => j.id) as [JamoaId, ...JamoaId[]];
 
@@ -107,13 +108,6 @@ const NOMLAR_OQISH = new Set([
   "instagram_upload_url",
   "instagram_make_video",
 ]);
-
-let mijoz: Anthropic | null = null;
-function claude() {
-  if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) return null;
-  mijoz ??= new Anthropic();
-  return mijoz;
-}
 
 export async function POST(req: Request) {
   const tahlil = Kirish.safeParse(await req.json().catch(() => null));
@@ -371,7 +365,7 @@ export async function POST(req: Request) {
         eslatma = "Anthropic API hisobida kredit tugagan (console.anthropic.com → Billing) — hozircha lokal rejim";
       } else if (e instanceof Anthropic.AuthenticationError) {
         console.error("ofis: Claude kaliti noto'g'ri");
-        eslatma = "ANTHROPIC_API_KEY noto'g'ri — hozircha lokal rejim";
+        eslatma = "Claude kaliti noto'g'ri (Ulanishlar → Claude) — hozircha lokal rejim";
       } else if (e instanceof Anthropic.RateLimitError) {
         console.error("ofis: Claude limiti tugadi");
         eslatma = "Claude limiti tugadi, birozdan keyin urinib ko'ring — hozircha lokal rejim";
