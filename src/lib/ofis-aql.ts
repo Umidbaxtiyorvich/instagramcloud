@@ -19,7 +19,17 @@ export const AQL_TURLARI: readonly AqlTur[] = ["gemini", "groq", "umid", "chatgp
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
 export const geminiModel = () => process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
 const GROQ_URL = "https://api.groq.com/openai/v1";
-export const groqModel = () => process.env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile";
+// Groq modellarni tez-tez almashtiradi — nom qotirilmaydi: kalit ko'radigan ro'yxatdan shu tartibda tanlanadi
+const GROQ_AFZAL = ["openai/gpt-oss-120b", "moonshotai/kimi-k2-instruct", "llama-3.3-70b-versatile", "qwen/qwen3-32b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"];
+async function groqModelTanla(c: OpenAI) {
+  if (process.env.GROQ_MODEL?.trim()) return process.env.GROQ_MODEL.trim();
+  const bor: string[] = [];
+  for await (const m of c.models.list()) bor.push(m.id);
+  const suhbat = bor.filter((id) => !/whisper|tts|guard|embed|prompt-guard|playai|orpheus/i.test(id));
+  const tanlov = GROQ_AFZAL.find((id) => suhbat.includes(id)) ?? suhbat.sort().find((id) => /llama|gpt-oss|qwen|kimi|gemma|mistral/i.test(id)) ?? suhbat[0];
+  if (!tanlov) throw new Error("Groq'da suhbat modeli topilmadi");
+  return tanlov;
+}
 export const umidModel = () => process.env.UMID_MODEL?.trim() || "qwen3:4b-instruct";
 
 type AqlSozlama = { tanlov: AqlTur | null; umidUrl: string | null; groqKalit: string | null };
@@ -60,7 +70,7 @@ function moslama(tur: ChatTur, groqKalit?: string): Moslama | null {
     tur === "gemini"
       ? geminiBor() && { kalit: process.env.GEMINI_API_KEY!.trim(), url: process.env.GEMINI_OPENAI_URL || GEMINI_URL, model: geminiModel() }
       : tur === "groq"
-        ? groq && { kalit: groq, url: GROQ_URL, model: groqModel() }
+        ? groq && { kalit: groq, url: GROQ_URL, model: "" }
         : umidUrl && { kalit: "ollama", url: `${umidUrl.replace(/\/+$/, "")}/v1`, model: umidModel() };
   if (!sozlama) return null;
   const kesh = (g.__aqlMijoz ??= new Map());
@@ -152,6 +162,7 @@ class Moslama {
 
   constructor(
     private c: OpenAI,
+    // bo'sh — birinchi so'rovda provayderning ro'yxatidan tanlanadi (Groq)
     private model: string,
     readonly tur: ChatTur,
   ) {}
@@ -179,6 +190,7 @@ class Moslama {
         function: { name: t.name!, description: t.description ?? "", parameters: sxemaTozala(t.parameters ?? { type: "object", properties: {} }) as Record<string, unknown> },
       }));
 
+    if (!this.model) this.model = await groqModelTanla(this.c);
     const r = await this.c.chat.completions.create({ model: this.model, messages: msgs, ...(tools.length ? { tools } : {}) });
     const m = r.choices[0]?.message;
     if (!m) throw new Error(`${aqlNomi(this.tur)} bo'sh javob qaytardi`);
