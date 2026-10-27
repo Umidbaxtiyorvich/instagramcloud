@@ -96,7 +96,7 @@ function moslama(tur: ChatTur, groqKalit?: string): Moslama | null {
   if (!sozlama) return null;
   const kesh = (g.__aqlMijoz ??= new Map());
   const k = `${tur}|${sozlama.url}|${sozlama.model}|${sozlama.kalit.slice(-6)}`;
-  if (!kesh.has(k)) kesh.set(k, new Moslama(new OpenAI({ apiKey: sozlama.kalit, baseURL: sozlama.url, timeout: 120_000, maxRetries: 1 }), sozlama.model, tur));
+  if (!kesh.has(k)) kesh.set(k, new Moslama(new OpenAI({ apiKey: sozlama.kalit, baseURL: sozlama.url, timeout: tur === "umid" ? 120_000 : 45_000, maxRetries: 0 }), sozlama.model, tur));
   return kesh.get(k)!;
 }
 
@@ -211,8 +211,14 @@ class Moslama {
         function: { name: t.name!, description: t.description ?? "", parameters: sxemaTozala(t.parameters ?? { type: "object", properties: {} }) as Record<string, unknown> },
       }));
 
-    if (!this.model) this.model = await (this.tur === "gemini" ? geminiModelTanla(this.c) : groqModelTanla(this.c));
-    const r = await this.c.chat.completions.create({ model: this.model, messages: msgs, ...(tools.length ? { tools } : {}) });
+    if (!this.model) {
+      this.model = await (this.tur === "gemini" ? geminiModelTanla(this.c) : groqModelTanla(this.c));
+      console.log(`aql: ${this.tur} modeli — ${this.model}`);
+    }
+    const boshi = Date.now();
+    const r = await this.c.chat.completions.create({ model: this.model, messages: msgs, ...(tools.length ? { tools } : {}) }).catch((e: unknown) => {
+      throw new Error(`${aqlNomi(this.tur)} (${this.model}, ${Math.round((Date.now() - boshi) / 1000)}s): ${e instanceof Error ? e.message : e}`);
+    });
     const m = r.choices[0]?.message;
     if (!m) throw new Error(`${aqlNomi(this.tur)} bo'sh javob qaytardi`);
     // ba'zi modellar chaqiruv id'sini bermaydi — tool javobini ulash uchun o'zimiz qo'yamiz
