@@ -48,15 +48,15 @@ export async function videoNavbat(userId: string, spec: VideoSpec, maqsad: Maqsa
   return ish;
 }
 
-// Runnerning OIDC tokeni: aynan shu repodagi video.yml workflow'idan bo'lishi shart
-export async function runnerTekshir(req: Request) {
+// Runnerning OIDC tokeni: aynan shu repodagi shu workflow'dan bo'lishi shart
+export async function runnerTekshir(req: Request, workflow = WORKFLOW) {
   const auth = req.headers.get("authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token) throw new Error("token yo'q");
   const { payload } = await jwtVerify(token, jwks, { issuer: OIDC_ISSUER, audience: configuredUrl() });
   const repo = String(payload.repository || "");
   const wf = String(payload.workflow_ref || "");
-  if (repo !== REPO || !wf.startsWith(`${REPO}/.github/workflows/${WORKFLOW}@`)) throw new Error("boshqa repo yoki workflow");
+  if (repo !== REPO || !wf.startsWith(`${REPO}/.github/workflows/${workflow}@`)) throw new Error("boshqa repo yoki workflow");
 }
 
 export async function ishTugadi(id: string, bytes: Uint8Array) {

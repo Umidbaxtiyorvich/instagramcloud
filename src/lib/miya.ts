@@ -707,8 +707,12 @@ export async function tick() {
     orderBy: { createdAt: "asc" },
     take: 20,
   });
-  if (yangi.length) await prisma.miyaXabar.updateMany({ where: { id: { in: yangi.map((x) => x.id) } }, data: { telegram: true } });
-  return [...new Set(yangi.map((x) => `🧠 Miya\n${x.matn}`))];
+  // yuborilgan deb belgilash chaqiruvchining ishi (yetkazilgandan keyin) — telegramYuborildi
+  return yangi.map((x) => ({ id: x.id, userId: x.userId, matn: `🧠 Miya\n${x.matn}` }));
+}
+
+export async function telegramYuborildi(idlar: string[]) {
+  if (idlar.length) await prisma.miyaXabar.updateMany({ where: { id: { in: idlar } }, data: { telegram: true } });
 }
 
 // Agentlar uchun: post/Reels/story'ni vaqtga qo'yish

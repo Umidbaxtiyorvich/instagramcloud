@@ -114,7 +114,11 @@ export async function botChaqir(userId: string, q: Qongiroq) {
 
 export async function botXabar(userId: string, text: string) {
   const chat = await chati(userId);
-  if (chat) await tg("sendMessage", { chat_id: chat, text }).catch((e) => console.error("miya bot:", e));
+  if (!chat) return false;
+  return tg("sendMessage", { chat_id: chat, text }).then(
+    () => true,
+    (e) => (console.error("miya bot:", e), false),
+  );
 }
 
 // Miya yasagan Reels: videoni yuborib, joylash-joylamaslikni so'raydi
