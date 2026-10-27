@@ -2,14 +2,14 @@
 # Ishga tushirish: deploy/ORACLE.md
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: instagramcloud
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: instagramcloud
     volumes:
-      - dbdata:/var/lib/postgresql/data
+      - dbdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U instagramcloud"]
       interval: 10s
@@ -43,7 +43,7 @@ services:
 
   # har kuni baza nusxasi ./backups ga, 14 kundan eskilari o'chadi
   backup:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       PGPASSWORD: ${DB_PASSWORD}
