@@ -25,11 +25,23 @@ if (process.env.TG_API_ID && process.env.TG_API_HASH) {
   else console.error("miya-tg: .tgv o'rnatilmagan — build loglarida «miya-tg» ni ko'ring");
 }
 
-// YesPOS boti: YP_ bilan boshlangan sozlamalar botga prefikssiz beriladi (YP_BOT_TOKEN → BOT_TOKEN)
+// .env matni (Railway → Variables → Raw Editor'dan bir martada nusxalanadi) → { KALIT: qiymat }
+function envMatn(matn = "") {
+  const r = {};
+  for (const q of matn.split(/\r?\n/)) {
+    const m = q.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!m || m[1].startsWith("RAILWAY_") || m[1] === "PORT") continue;
+    r[m[1]] = m[2].trim().replace(/^(["'])(.*)\1$/, "$2");
+  }
+  return r;
+}
+
+// YesPOS boti: sozlamalari YESPOS_ENV da (.env matni) yoki YP_ prefiksli (YP_BOT_TOKEN → BOT_TOKEN)
 let ypSaqla = null;
-if (process.env.YP_BOT_TOKEN) {
+if (process.env.YESPOS_ENV || process.env.YP_BOT_TOKEN) {
   if (existsSync(".ypv/bin/python")) {
     const env = { RENDER: process.env.RENDER, PATH: process.env.PATH, TZ: "Asia/Tashkent", PYTHONUNBUFFERED: "1" };
+    Object.assign(env, envMatn(process.env.YESPOS_ENV));
     for (const [k, v] of Object.entries(process.env)) if (k.startsWith("YP_")) env[k.slice(3)] = v;
     const sayt = (process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/+$/, "");
     Object.assign(env, { PORT: YESPOS_PORT, WEB_PREFIX: "/yespos", PUBLIC_URL: `${sayt}/yespos` });

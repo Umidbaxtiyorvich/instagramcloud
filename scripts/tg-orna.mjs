@@ -1,5 +1,5 @@
 // Build oxirida yonidagi dasturlar uchun Python muhitlarini o'rnatadi:
-// TG_API_ID bo'lsa — miya-tg (.tgv), YP_BOT_TOKEN bo'lsa — YesPOS boti (.ypv).
+// TG_API_ID bo'lsa — miya-tg (.tgv), YESPOS_ENV yoki YP_BOT_TOKEN bo'lsa — YesPOS boti (.ypv).
 // Hech qachon build'ni yiqitmaydi — o'rnatilmasa, sayt baribir ishlaydi.
 import { execSync } from "node:child_process";
 
@@ -23,4 +23,4 @@ function orna(nom, venv, talablar) {
 }
 
 if (process.env.TG_API_ID) orna("miya-tg", ".tgv", "miya-tg/requirements.txt");
-if (process.env.YP_BOT_TOKEN) orna("yespos-bot", ".ypv", "yespos-bot/requirements.txt");
+if (process.env.YESPOS_ENV || process.env.YP_BOT_TOKEN) orna("yespos-bot", ".ypv", "yespos-bot/requirements.txt");
