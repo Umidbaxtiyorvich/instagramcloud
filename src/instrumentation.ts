@@ -4,8 +4,10 @@ export async function register() {
   const { openaiKalitYukla } = await import("./lib/ofis-openai");
   const { claudeKalitYukla } = await import("./lib/ofis-claude");
   const { aqlYukla } = await import("./lib/ofis-aql");
+  const { yesposUlanishYangila } = await import("./lib/mcp-ulanish");
   const yukla = () =>
     Promise.all([
+      yesposUlanishYangila().catch((e) => console.error("YesPOS ulanishi yangilanmadi:", (e as Error).message)),
       aqlYukla().catch((e) => console.error("AI tanlovi bazadan o'qilmadi:", (e as Error).message)),
       openaiKalitYukla().catch((e) => console.error("OpenAI kaliti bazadan o'qilmadi:", (e as Error).message)),
       claudeKalitYukla().catch((e) => console.error("Claude kaliti bazadan o'qilmadi:", (e as Error).message)),

@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import type { McpServer } from "@prisma/client";
 import { prisma } from "./db";
 import { decryptSecret, encryptSecret, randomToken } from "./crypto";
-import { baseUrl } from "./url";
+import { baseUrl, configuredUrl } from "./url";
 
 // AI Ofis «Ulanishlar»: agentlar ishlatadigan tashqi MCP serverlar.
 // Ulanish: tokensiz, API token bilan yoki OAuth 2.1 (MCP avtorizatsiya spetsifikatsiyasi:
@@ -413,4 +413,32 @@ export async function agentMcp(userId: string): Promise<McpSorov> {
     out.tavsif = `Tashqi ulanishlar (MCP) — vazifaga kerak bo'lsa ishlating:\n${qatorlar.join("\n")}`;
   }
   return out;
+}
+
+// YesPOS boti shu serverda yonma-yon ishlaydi (scripts/start.mjs): uning MCP tokeni bot papkasida, bazada
+// (BotFayl «yespos/mcp_token.txt»). Eski Railway manzilidagi yoki eski tokenli YesPOS ulanishlari o'zi
+// yangi manzil va tokenga o'tadi — egasi tokenni qo'lda ko'chirmaydi.
+export async function yesposUlanishYangila() {
+  const sayt = configuredUrl();
+  if (!sayt) return;
+  const fayl = await prisma.botFayl.findUnique({ where: { yol: "yespos/mcp_token.txt" } });
+  const token = fayl ? Buffer.from(fayl.data).toString("utf8").trim() : "";
+  if (!token) return;
+  const url = `${sayt}/yespos/mcp`;
+  const rows = await prisma.mcpServer.findMany({ where: { OR: [{ url: { contains: "yespos" } }, { name: { contains: "yespos", mode: "insensitive" } }] } });
+  for (const s of rows) {
+    let eski = "";
+    try {
+      eski = s.accessTokenEnc ? decryptSecret(s.accessTokenEnc) : "";
+    } catch {
+      eski = "";
+    }
+    if (s.url === url && eski === token) continue;
+    const yangi = await prisma.mcpServer.update({
+      where: { id: s.id },
+      data: { url, auth: "token", accessTokenEnc: encryptSecret(token), lastError: null },
+    });
+    await tekshirVaSaqla(yangi).catch((e) => console.error("yespos ulanish:", e instanceof Error ? e.message : e));
+    console.log(`yespos ulanish: ${s.name} → ${url}`);
+  }
 }
