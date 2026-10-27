@@ -5,7 +5,7 @@ import type { Qongiroq } from "@prisma/client";
 import { prisma } from "./db";
 import { randomToken } from "./crypto";
 import { openai, openaiModel, openaiVazifa, openaiXatoMatni } from "./ofis-openai";
-import { aql } from "./ofis-aql";
+import { aql, geminiModel } from "./ofis-aql";
 import { IG_VOSITALAR, igAkkaunt, igVosita } from "./ofis-instagram";
 import { MOLIYA_VOSITALAR, moliyaHolati, moliyaRuxsat, moliyaVosita, type Davr } from "./ofis-moliya";
 import { qaror } from "./miya-fikr";
@@ -108,7 +108,7 @@ const GEMINI_KORSATMA =
 async function geminiMatn(ovoz: Uint8Array, tur: string) {
   const kalit = process.env.GEMINI_API_KEY?.trim();
   if (!kalit) return null;
-  const model = process.env.GEMINI_STT_MODEL?.trim() || "gemini-2.5-flash";
+  const model = process.env.GEMINI_STT_MODEL?.trim() || (await geminiModel());
   const r = await fetch(`${process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta"}/models/${model}:generateContent`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": kalit },

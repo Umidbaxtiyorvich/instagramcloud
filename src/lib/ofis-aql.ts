@@ -17,14 +17,35 @@ export type AqlTur = "gemini" | "groq" | "umid" | "chatgpt";
 export const AQL_TURLARI: readonly AqlTur[] = ["gemini", "groq", "umid", "chatgpt"];
 
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
-export const geminiModel = () => process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+
 const GROQ_URL = "https://api.groq.com/openai/v1";
 // Groq modellarni tez-tez almashtiradi — nom qotirilmaydi: kalit ko'radigan ro'yxatdan shu tartibda tanlanadi
 const GROQ_AFZAL = ["openai/gpt-oss-120b", "moonshotai/kimi-k2-instruct", "llama-3.3-70b-versatile", "qwen/qwen3-32b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"];
+async function modellar(c: OpenAI) {
+  const bor: string[] = [];
+  for await (const m of c.models.list()) bor.push(m.id.replace(/^models\//, ""));
+  return bor;
+}
+
+// Google ham eski modellarni yopadi (gemini-2.5-flash 404 berdi) — eng yangi oddiy «flash» tanlanadi
+const versiya = (id: string) => (id.match(/gemini-(\d+(?:\.\d+)?)/)?.[1] ?? "0").split(".").map(Number);
+const kattami = (a: number[], b: number[]) => a[0] - b[0] || (a[1] ?? 0) - (b[1] ?? 0);
+async function geminiModelTanla(c: OpenAI) {
+  if (process.env.GEMINI_MODEL?.trim()) return process.env.GEMINI_MODEL.trim();
+  const suhbat = (await modellar(c)).filter((id) => id.startsWith("gemini-") && !/image|tts|live|embed|audio|vision|thinking|exp/i.test(id));
+  const eng = (x: string[]) => x.sort((a, b) => kattami(versiya(b), versiya(a)))[0];
+  const tanlov =
+    eng(suhbat.filter((id) => /^gemini-[\d.]+-flash$/.test(id))) ??
+    eng(suhbat.filter((id) => /flash/.test(id) && !/lite/.test(id))) ??
+    eng(suhbat.filter((id) => /flash/.test(id))) ??
+    eng(suhbat);
+  if (!tanlov) throw new Error("Gemini'da suhbat modeli topilmadi");
+  return tanlov;
+}
+
 async function groqModelTanla(c: OpenAI) {
   if (process.env.GROQ_MODEL?.trim()) return process.env.GROQ_MODEL.trim();
-  const bor: string[] = [];
-  for await (const m of c.models.list()) bor.push(m.id);
+  const bor = await modellar(c);
   const suhbat = bor.filter((id) => !/whisper|tts|guard|embed|prompt-guard|playai|orpheus/i.test(id));
   const tanlov = GROQ_AFZAL.find((id) => suhbat.includes(id)) ?? suhbat.sort().find((id) => /llama|gpt-oss|qwen|kimi|gemma|mistral/i.test(id)) ?? suhbat[0];
   if (!tanlov) throw new Error("Groq'da suhbat modeli topilmadi");
@@ -68,7 +89,7 @@ function moslama(tur: ChatTur, groqKalit?: string): Moslama | null {
   const groq = groqKalit ?? saqlangan;
   const sozlama =
     tur === "gemini"
-      ? geminiBor() && { kalit: process.env.GEMINI_API_KEY!.trim(), url: process.env.GEMINI_OPENAI_URL || GEMINI_URL, model: geminiModel() }
+      ? geminiBor() && { kalit: process.env.GEMINI_API_KEY!.trim(), url: process.env.GEMINI_OPENAI_URL || GEMINI_URL, model: "" }
       : tur === "groq"
         ? groq && { kalit: groq, url: GROQ_URL, model: "" }
         : umidUrl && { kalit: "ollama", url: `${umidUrl.replace(/\/+$/, "")}/v1`, model: umidModel() };
@@ -162,7 +183,7 @@ class Moslama {
 
   constructor(
     private c: OpenAI,
-    // bo'sh — birinchi so'rovda provayderning ro'yxatidan tanlanadi (Groq)
+    // bo'sh — birinchi so'rovda provayderning ro'yxatidan tanlanadi (Gemini, Groq)
     private model: string,
     readonly tur: ChatTur,
   ) {}
@@ -190,7 +211,7 @@ class Moslama {
         function: { name: t.name!, description: t.description ?? "", parameters: sxemaTozala(t.parameters ?? { type: "object", properties: {} }) as Record<string, unknown> },
       }));
 
-    if (!this.model) this.model = await groqModelTanla(this.c);
+    if (!this.model) this.model = await (this.tur === "gemini" ? geminiModelTanla(this.c) : groqModelTanla(this.c));
     const r = await this.c.chat.completions.create({ model: this.model, messages: msgs, ...(tools.length ? { tools } : {}) });
     const m = r.choices[0]?.message;
     if (!m) throw new Error(`${aqlNomi(this.tur)} bo'sh javob qaytardi`);
@@ -226,4 +247,15 @@ export async function aqlSinov(tur: AqlTur, groqKalit?: string) {
     input: "Salom! Bitta qisqa jumla bilan salomlashing.",
   })) as { output_text: string };
   return r.output_text.trim().slice(0, 300);
+}
+
+// Gemini'ning boshqa joylari (ovozni matnga o'girish) uchun — tanlangan model nomi, bir marta aniqlanadi
+let geminiNomi: Promise<string> | null = null;
+export function geminiModel() {
+  if (!geminiBor()) return Promise.resolve(process.env.GEMINI_MODEL?.trim() || "gemini-flash-latest");
+  geminiNomi ??= geminiModelTanla(new OpenAI({ apiKey: process.env.GEMINI_API_KEY!.trim(), baseURL: process.env.GEMINI_OPENAI_URL || GEMINI_URL })).catch((e) => {
+    geminiNomi = null;
+    throw e;
+  });
+  return geminiNomi;
 }
