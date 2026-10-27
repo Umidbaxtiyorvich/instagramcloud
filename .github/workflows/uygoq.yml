@@ -1,0 +1,24 @@
+# Render'ning bepul serveri 15 daqiqa so'rov kelmasa uxlaydi — webhook'lar, Miya va botlar to'xtaydi.
+# Bu workflow saytni har 5 daqiqada chaqirib turadi. Oyiga 750 bepul soat bitta servisga 24/7 yetadi.
+name: uygoq
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Saytni uyg'otish
+        run: curl -fsS -o /dev/null --retry 5 --retry-delay 20 --max-time 90 -w "%{http_code} %{time_total}s\n" https://instagramcloud.onrender.com/login
+      # GitHub 60 kun faolliksiz repodagi jadvalli workflow'ni o'chiradi — o'zini qayta yoqib turadi
+      - name: Workflow'ni yoniq saqlash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/uygoq.yml/enable"
