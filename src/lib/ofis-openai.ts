@@ -5,11 +5,38 @@ import type { McpSorov } from "./mcp-ulanish";
 // Ofis vositalari (Instagram, Moliya) bizning serverda bajariladi; «Ulanishlar»dagi
 // MCP serverlarni OpenAI o'zi chaqiradi — yozishga ruxsat bo'lmasa, faqat o'qish vositalari.
 
-let mijoz: OpenAI | null = null;
+// Kalit «Ulanishlar»da almashtiriladi va bazada shifrlangan turadi; yo'q bo'lsa — serverdagi OPENAI_API_KEY.
+// openai() sinxron, shuning uchun bazadagi kalit xotirada (globalThis — instrumentation va route'lar bitta qiymatni ko'radi).
+export const OPENAI_KALIT = "openai_kalit";
+const g = globalThis as { __openaiKalit?: string; __openaiMijoz?: { kalit: string; mijoz: OpenAI } };
+
+export const openaiKaliti = () => g.__openaiKalit || process.env.OPENAI_API_KEY?.trim() || "";
+export const openaiKalitSaytdan = () => Boolean(g.__openaiKalit);
+
+export function openaiKalitOrnat(kalit: string | null) {
+  g.__openaiKalit = kalit || undefined;
+}
+
+// bazadan qayta o'qiydi (server ishga tushganda va har daqiqada; boshqa nusxa saqlagan bo'lsa ham yetib keladi)
+export async function openaiKalitYukla() {
+  const { prisma } = await import("./db");
+  const { decryptSecret } = await import("./crypto");
+  const r = await prisma.sozlama.findUnique({ where: { kalit: OPENAI_KALIT } });
+  let kalit: string | null = null;
+  try {
+    kalit = r ? decryptSecret(r.qiymat) : null;
+  } catch {
+    kalit = null;
+  }
+  openaiKalitOrnat(kalit);
+  return r?.yangilandi ?? null;
+}
+
 export function openai() {
-  if (!process.env.OPENAI_API_KEY) return null;
-  mijoz ??= new OpenAI();
-  return mijoz;
+  const kalit = openaiKaliti();
+  if (!kalit) return null;
+  if (g.__openaiMijoz?.kalit !== kalit) g.__openaiMijoz = { kalit, mijoz: new OpenAI({ apiKey: kalit }) };
+  return g.__openaiMijoz.mijoz;
 }
 
 export const openaiModel = () => process.env.OPENAI_MODEL?.trim() || "gpt-5-mini";

@@ -81,6 +81,8 @@ class Holat:
     kirish_hash: str = ""
     suhbatlar: dict[int, "Suhbat"] = {}
     http: ClientSession | None = None
+    kalit: str = ""  # saytdan olingan OpenAI kaliti
+    kalit_vaqt: float = -1e9
 
 
 H = Holat()
@@ -95,6 +97,17 @@ async def sayt(amal: str, **kw):
         if r.status >= 400:
             raise RuntimeError(j.get("error") if isinstance(j, dict) else f"HTTP {r.status}")
         return j
+
+
+async def openai_kalit() -> str:
+    """Saytdagi «Ulanishlar»da almashtirilgan kalit (daqiqada bir so'raladi); sayt javob bermasa — oxirgisi yoki OPENAI_API_KEY."""
+    if time.monotonic() - H.kalit_vaqt > 60:
+        try:
+            H.kalit = (await sayt("openai_kalit")).get("kalit") or OPENAI_KEY
+            H.kalit_vaqt = time.monotonic()
+        except Exception as e:
+            log.warning("OpenAI kaliti saytdan olinmadi: %s", e)
+    return H.kalit or OPENAI_KEY
 
 
 async def izoh(q: str, matn: str):
@@ -134,7 +147,7 @@ JIMLIK = b"\0" * (TEZLIK * 2)  # 1 soniya
 async def ovoz(matn: str) -> bytes:
     async with H.http.post(
         f"{OPENAI_URL}/audio/speech",
-        headers={"Authorization": f"Bearer {OPENAI_KEY}"},
+        headers={"Authorization": f"Bearer {await openai_kalit()}"},
         json={
             "model": TTS_MODEL,
             "voice": OVOZ,
@@ -177,7 +190,7 @@ async def matnga(pcm: bytes, tezlik: int = TEZLIK) -> str:
         f.add_field("model", model)
         if til:
             f.add_field("language", til)
-        async with H.http.post(f"{OPENAI_URL}/audio/transcriptions", headers={"Authorization": f"Bearer {OPENAI_KEY}"}, data=f) as r:
+        async with H.http.post(f"{OPENAI_URL}/audio/transcriptions", headers={"Authorization": f"Bearer {await openai_kalit()}"}, data=f) as r:
             j = await r.json(content_type=None)
             if r.status < 400:
                 STT_BOSHI = k
@@ -610,7 +623,7 @@ class Jonli:
         try:
             kontekst = (await sayt("jonli_boshla", q=self.q)).get("kontekst", "")
             self.ws = await H.http.ws_connect(
-                f"{JONLI_URL}?model={JONLI_MODEL}", headers={"Authorization": f"Bearer {OPENAI_KEY}"}, heartbeat=20, max_msg_size=0
+                f"{JONLI_URL}?model={JONLI_MODEL}", headers={"Authorization": f"Bearer {await openai_kalit()}"}, heartbeat=20, max_msg_size=0
             )
             ga = True
             await self.ws.send_json(self.sessiya(kontekst, ga))

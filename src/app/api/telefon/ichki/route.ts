@@ -6,6 +6,7 @@ import { randomToken } from "@/lib/crypto";
 import { ichkiKalit, ruxsatRaqam, sessiyaOl, sessiyaSaqla, tgEgasi } from "@/lib/miya-tg";
 import { gapYoz, jonliKontekst, matnniIshla, salomMatni, suhbatOl, vositaJavob, xatoGap } from "@/lib/miya-telefon";
 import { botOtkazildi, botXabar } from "@/lib/miya-bot";
+import { openaiKaliti } from "@/lib/ofis-openai";
 
 // Faqat miya-tg (shu serverdagi Telegram qo'ng'iroq dasturi) uchun
 export const maxDuration = 120;
@@ -15,6 +16,7 @@ const Amal = z.discriminatedUnion("amal", [
   z.object({ amal: z.literal("sessiya_saqla"), sessiya: z.string().min(10).max(2000) }),
   z.object({ amal: z.literal("kiruvchi"), tgId: z.string().max(32), telefon: z.string().max(20).optional() }),
   z.object({ amal: z.literal("ruxsat") }),
+  z.object({ amal: z.literal("openai_kalit") }),
   z.object({ amal: z.literal("gap"), q: z.string().max(64), matn: z.string().max(2000) }),
   z.object({ amal: z.literal("tugadi"), q: z.string().max(64) }),
   z.object({ amal: z.literal("javobsiz"), q: z.string().max(64), xato: z.string().max(300).optional() }),
@@ -50,6 +52,9 @@ export async function POST(req: Request) {
 
   // egasi Miya akkauntiga o'zi qo'ng'iroq qildi (shaxsiy chatda chat id = foydalanuvchi id)
   if (a.amal === "ruxsat") return NextResponse.json({ telefon: await ruxsatRaqam() });
+
+  // «Ulanishlar»da almashtirilgan ChatGPT kaliti (miya-tg ovoz va jonli suhbat uchun)
+  if (a.amal === "openai_kalit") return NextResponse.json({ kalit: openaiKaliti() });
 
   if (a.amal === "kiruvchi") {
     // faqat egasining raqamidan kelgan qo'ng'iroqni ko'taradi (raqam berilgan bo'lsa — qat'iy shu raqam)

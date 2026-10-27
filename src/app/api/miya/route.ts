@@ -7,6 +7,7 @@ import { moliyaRuxsat } from "@/lib/ofis-moliya";
 import { cloudshopSozlangan } from "@/lib/cloudshop";
 import { listUploads } from "@/lib/uploads";
 import { MUSTAQILLIK, fikrla, ishonchHisobi, qaror } from "@/lib/miya-fikr";
+import { openai } from "@/lib/ofis-openai";
 
 // AI Ofis «Miya» paneli: ogohlantirishlar, avtomatik Reels sozlamasi, rejadagi postlar, xotira holati
 export const maxDuration = 300;
@@ -45,7 +46,7 @@ export async function GET() {
     fikrlar,
     ishonch,
     moliya: moliyaRuxsat(user.email) && cloudshopSozlangan(),
-    chatgpt: Boolean(process.env.OPENAI_API_KEY),
+    chatgpt: Boolean(openai()),
     xabarlar,
     rejalar,
     xotira: xotira ? { yangilandi: xotira.yangilandi, profil: xotira.profil } : null,

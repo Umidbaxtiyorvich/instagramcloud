@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encryptSecret } from "@/lib/crypto";
 import { TAYYOR_MCP, tekshirUrl, tekshirVaSaqla, vositalar } from "@/lib/mcp-ulanish";
+import { openai } from "@/lib/ofis-openai";
 import type { McpServer } from "@prisma/client";
 
 // AI Ofis «Ulanishlar»: foydalanuvchining MCP serverlari. Tokenlar hech qachon brauzerga qaytmaydi.
@@ -32,7 +33,7 @@ export async function GET() {
   return NextResponse.json({
     ulanishlar: rows.map(korinish),
     tayyor: TAYYOR_MCP,
-    claude: Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || process.env.OPENAI_API_KEY),
+    claude: Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || openai()),
   });
 }
 

@@ -106,6 +106,7 @@ export default function UlanishPanel({ yop, kirgan, xabar }: { yop: () => void; 
 
       {kirgan && (
         <>
+          <ChatgptKalit yangilandi={() => void yukla()} />
           <div className="o_jadval">
             {!rows.length && <div className="o_bosh">Hali ulanish yo&apos;q. Pastdan tanlang yoki o&apos;zingiz qo&apos;shing.</div>}
             {rows.map((r) => (
@@ -258,7 +259,87 @@ export default function UlanishPanel({ yop, kirgan, xabar }: { yop: () => void; 
   );
 }
 
-function TokenYangila({ band, saqla }: { band: boolean; saqla: (token: string) => void }) {
+type ChatgptHolat = { ulangan: boolean; manba: "sayt" | "server" | null; oxiri: string | null; yangilandi: string | null; ruxsat: boolean };
+
+// Miya va agentlar ishlatadigan ChatGPT (OpenAI) kaliti — butun sayt uchun bitta, almashtirishni admin qiladi
+function ChatgptKalit({ yangilandi }: { yangilandi: () => void }) {
+  const [h, setH] = useState<ChatgptHolat | null>(null);
+  const [band, setBand] = useState(false);
+  const [xato, setXato] = useState<string | null>(null);
+  const [ok, setOk] = useState(false);
+
+  const sorov = useCallback(
+    async (method: string, body?: unknown) => {
+      setBand(method !== "GET");
+      setXato(null);
+      setOk(false);
+      try {
+        const r = await fetch("/api/ofis/openai", {
+          method,
+          headers: body ? { "Content-Type": "application/json" } : undefined,
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        const d = (await r.json().catch(() => ({}))) as ChatgptHolat & { error?: string };
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        setH(d);
+        if (method !== "GET") {
+          setOk(true);
+          yangilandi();
+        }
+      } catch (e) {
+        setXato((e as Error).message);
+      } finally {
+        setBand(false);
+      }
+    },
+    [yangilandi],
+  );
+
+  useEffect(() => {
+    const t = setTimeout(() => void sorov("GET"), 0);
+    return () => clearTimeout(t);
+  }, [sorov]);
+
+  if (!h) return null;
+  return (
+    <div className="o_ulanish" style={{ marginBottom: 10 }}>
+      <div className="o_ulanishBosh">
+        <span className={`o_holatNuqta ${h.ulangan ? "o_yashil" : "o_qizil"}`} />
+        <b>ChatGPT</b>
+        <small>
+          OpenAI API kaliti · Miya va agentlarning «miyasi»
+          {h.oxiri && ` · …${h.oxiri}`}
+        </small>
+      </div>
+      <div className="o_ulanishMatn">
+        {!h.ulangan && "Kalit yo'q — Miya o'ylay olmaydi, gapira olmaydi. "}
+        {h.manba === "sayt" && `Kalit shu yerda saqlangan${h.yangilandi ? ` (${new Date(h.yangilandi).toLocaleString("uz-UZ")})` : ""}. `}
+        {h.manba === "server" && "Kalit serverning OPENAI_API_KEY sozlamasidan olinmoqda. "}
+        {h.ruxsat ? "Yangi kalitni qo'ysangiz, avval OpenAI'da tekshiriladi, keyin darhol ishlay boshlaydi." : "Kalitni faqat admin almashtira oladi."}
+        {ok && <span> ✅ Saqlandi.</span>}
+        {xato && <span className="o_ulanishXato"> ⚠️ {xato}</span>}
+      </div>
+      {h.ruxsat && (
+        <>
+          <TokenYangila band={band} saqla={(kalit) => void sorov("POST", { kalit })} matn="Yangi OpenAI kaliti (sk-...)" />
+          {h.manba === "sayt" && (
+            <div className="o_ulanishTugmalar" style={{ marginTop: 8 }}>
+              <button
+                className="o_misol"
+                disabled={band}
+                onClick={() => confirm("Saytdagi kalitni o'chiraymi? Serverdagi OPENAI_API_KEY (bo'lsa) ishlatiladi.") && void sorov("DELETE")}
+              >
+                Saytdagi kalitni o&apos;chirish
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function TokenYangila({ band, saqla, matn }: { band: boolean; saqla: (token: string) => void; matn?: string }) {
   const [token, setToken] = useState("");
   return (
     <div className="o_tokenYangi">
@@ -266,7 +347,7 @@ function TokenYangila({ band, saqla }: { band: boolean; saqla: (token: string) =
         className="o_qidiruv"
         type="password"
         autoComplete="off"
-        placeholder="Yangi API token (almashtirish uchun)"
+        placeholder={matn ?? "Yangi API token (almashtirish uchun)"}
         value={token}
         onChange={(e) => setToken(e.target.value)}
       />
