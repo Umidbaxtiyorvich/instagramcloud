@@ -16,7 +16,7 @@ export type McpVosita = { name: string; description: string; readOnly: boolean }
 export const TAYYOR_MCP: { name: string; url: string; auth: "oauth" | "token" | "none"; tavsif: string; tokenYordam?: string }[] = [
   {
     name: "YesPOS",
-    url: "https://yespos-bot-production.up.railway.app/mcp",
+    url: "https://instagramcloud.onrender.com/yespos/mcp",
     auth: "token",
     tavsif: "Savdo, qarzlar, tovarlar, akt sverka (Miya har 6 soatda tekshiradi)",
     tokenYordam: "Telegram: @Yespos_xisobkitob_bot → «🔌 AI ofis ulanishi»",

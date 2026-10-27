@@ -46,3 +46,5 @@ next-env.d.ts
 .tgv/
 __pycache__/
 /backups/
+/yespos-bot/data/
+.ypv/

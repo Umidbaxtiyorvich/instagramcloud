@@ -21,6 +21,9 @@ const nextConfig: NextConfig = {
       { source: "/.well-known/oauth-authorization-server/:path*", destination: "/api/oauth/as-metadata" },
       { source: "/.well-known/openid-configuration", destination: "/api/oauth/as-metadata" },
       { source: "/.well-known/openid-configuration/:path*", destination: "/api/oauth/as-metadata" },
+      // YesPOS boti shu serverda yonma-yon ishlaydi (scripts/start.mjs): web sayt va MCP
+      { source: "/yespos", destination: "http://127.0.0.1:8791/" },
+      { source: "/yespos/:path*", destination: "http://127.0.0.1:8791/:path*" },
     ];
   },
   async headers() {

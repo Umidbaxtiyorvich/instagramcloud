@@ -439,3 +439,11 @@ model Sozlama {
   qiymat     String
   yangilandi DateTime @updatedAt
 }
+
+// Serverda yonma-yon ishlaydigan botlarning (yespos-bot) data papkasi — Render'ning diski
+// har deploy'da tozalanadi, shuning uchun fayllar shu yerda saqlanadi (scripts/fayl-saqla.mjs)
+model BotFayl {
+  yol       String   @id
+  data      Bytes
+  updatedAt DateTime @updatedAt
+}
