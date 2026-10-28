@@ -585,7 +585,7 @@ async function docForm(kind) {
 
 (async () => {
   const code = new URLSearchParams(location.search).get('code');
-  if (code) { history.replaceState(null, '', '/'); try { await post('/api/auth/login', {code}); } catch (e) {} }
+  if (code) { history.replaceState(null, '', location.pathname); try { await post('/api/auth/login', {code}); } catch (e) {} }
   renderApp().catch(() => {});
 })();
 </script>
