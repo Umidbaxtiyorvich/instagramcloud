@@ -216,7 +216,7 @@ async def tolov(request):
     _jurnalga({"vaqt": (sana or an.now()).isoformat(), "summa": summa, "tur": tur, "izoh": izoh,
                "kim": (_ctx["sessiya"](request) or {}).get("device", "")})
     _ctx["drop"]("supdebts")
-    await _ctx["broadcast"](_ctx["bot"], f"🧾 Qarz sayti: {k['name']} — {an.money(summa)} so'm to'lov"
+    await _ctx["broadcast"](_ctx["bot"], f"🧾 Qarz yozildi: {an.money(summa)} so'm"
                                          + (f", {sana:%d.%m.%Y}" if sana else "") + (f"\nIzoh: {izoh}" if izoh else ""))
     return _ctx["jres"]({"ok": True})
 
@@ -246,7 +246,7 @@ async def tahrirla(request):
     izoh = str(b.get("izoh") or "").strip()[:300]
     _izoh_saqla(pay_id, izoh)
     _ctx["drop"]("supdebts")
-    await _ctx["broadcast"](_ctx["bot"], f"✏️ Qarz sayti: to'lov o'zgartirildi — {an.money(p.get('value'))} → "
+    await _ctx["broadcast"](_ctx["bot"], f"✏️ Qarz o'zgartirildi — {an.money(p.get('value'))} → "
                                          f"{an.money(summa)} so'm" + (f"\nIzoh: {izoh}" if izoh else ""))
     return _ctx["jres"]({"ok": True})
 
@@ -261,7 +261,7 @@ async def ochir(request):
     await api.delete_supplier_pay(pay_id)
     _izoh_saqla(pay_id, None)
     _ctx["drop"]("supdebts")
-    await _ctx["broadcast"](_ctx["bot"], f"🗑 Qarz sayti: {an.money(p.get('value'))} so'm to'lov o'chirildi")
+    await _ctx["broadcast"](_ctx["bot"], f"✅ Qarz qaytarildi (o'chirildi): {an.money(p.get('value'))} so'm")
     return _ctx["jres"]({"ok": True})
 
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Qarz — to'lov yozish</title>
+<title>Qarz yozish</title>
 <style>
 :root{--bg:#0b0a16;--card:rgba(255,255,255,.045);--line:rgba(255,255,255,.09);--text:#ecebf7;--muted:#9a97b8;
   --red:#f87171;--green:#34d399;--gold:#f5c451}
@@ -39,7 +39,7 @@ button.oddiy{background:var(--card);border:1px solid var(--line);color:var(--tex
 .holat{color:var(--muted);text-align:center;padding:20px 0}
 .amal{grid-column:2/-1;display:flex;gap:6px;justify-content:flex-end}
 .amal button{background:transparent;border:1px solid var(--line);color:var(--text);padding:4px 10px;font-size:12px;font-weight:500}
-.amal button.ochir{color:var(--red)}
+.amal button.ochir{color:var(--green)}
 .tahrir{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
 .tahrir textarea{grid-column:1/-1;min-height:48px}
 .tahrir .tugmalar{grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end}
@@ -49,17 +49,17 @@ button.oddiy{background:var(--card);border:1px solid var(--line);color:var(--tex
 <body>
 <main>
   <h1 id="nom">Qarz</h1>
-  <div class="sub">To'lov yozish · YesPOS'ga darhol yoziladi</div>
+  <div class="sub">Qarz yozish · YesPOS'ga darhol yoziladi. Qarz qaytsa — «Qaytardi» bilan o'chiring</div>
   <div id="ichki" hidden>
-    <div class="card qoldiq"><span>Hozirgi qoldiq</span><b id="qoldiq">—</b></div>
+    <div class="card qoldiq"><span>Jami qarz</span><b id="qoldiq">—</b></div>
 
     <div class="card">
       <form id="forma">
-        <label>Summa (so'm)<input id="summa" inputmode="numeric" autocomplete="off" placeholder="1 500 000" required></label>
+        <label>Summa (so'm)<input id="summa" inputmode="numeric" autocomplete="off" placeholder="500 000" required></label>
         <label>To'lov turi<select id="tur" required></select></label>
         <label>Sana<input type="date" id="sana" required></label>
         <label class="keng">Izoh — kim, nima uchun<textarea id="izoh" maxlength="300" placeholder="Masalan: Alisher aka, 12-oktabrdagi qarz qaytdi"></textarea></label>
-        <button class="yuborish" id="btn">To'lovni yozish</button>
+        <button class="yuborish" id="btn">Qarzni yozish</button>
         <div class="xabar" id="xabar"></div>
       </form>
     </div>
@@ -69,7 +69,7 @@ button.oddiy{background:var(--card);border:1px solid var(--line);color:var(--tex
       <div class="havola"><input id="havola" readonly><button class="oddiy" id="nusxa" type="button">Nusxalash</button></div>
     </div>
 
-    <h2>Oxirgi yozuvlar</h2>
+    <h2>Oxirgi qarzlar</h2>
     <div class="card" id="royxat"><div class="holat">Yuklanmoqda…</div></div>
   </div>
   <div id="kirish" class="card" hidden>
@@ -97,15 +97,15 @@ async function api(path, opts) {
 async function royxat() {
   try {
     const d = await api('/api/qarz/akt');
-    $('#qoldiq').textContent = d.closing < 0 ? `${pul(-d.closing)} so'm qarz` : `${pul(d.closing)} so'm`;
-    $('#qoldiq').className = d.closing < 0 ? 'kirim' : 'tolov';
-    qatorlar = [...d.rows].reverse().slice(0, 30);
+    $('#qoldiq').textContent = `${pul(d.closing)} so'm`;
+    $('#qoldiq').className = 'kirim';
+    qatorlar = d.rows.filter(x => x.debit > 0).reverse().slice(0, 30);
     $('#royxat').innerHTML = qatorlar.length ? qatorlar.map((x, i) => `<div class="qator" data-i="${i}">
-        <small>${sana(x.date)}</small><span>${esc(x.document)}</span>
-        <span class="s ${x.credit ? 'kirim' : 'tolov'}">${x.credit ? '+' + pul(x.credit) : '−' + pul(x.debit)}</span>
+        <small>${sana(x.date)}</small><span></span>
+        <span class="s kirim">${pul(x.debit)}</span>
         ${x.izoh ? `<span class="izoh">${esc(x.izoh)}</span>` : ''}
-        ${x.id ? `<div class="amal"><button type="button" data-a="tahrir">✏️ Tahrirlash</button><button type="button" class="ochir" data-a="ochir">🗑 O'chirish</button></div>` : ''}</div>`).join('')
-      : '<div class="holat">Hali yozuv yo\'q</div>';
+        ${x.id ? `<div class="amal"><button type="button" data-a="tahrir">✏️ Tahrirlash</button><button type="button" class="ochir" data-a="ochir">✅ Qaytardi (o'chirish)</button></div>` : ''}</div>`).join('')
+      : '<div class="holat">Hali qarz yo\'q</div>';
   } catch (e) {
     if (e.message !== 'auth') $('#royxat').innerHTML = `<div class="holat">⚠️ ${esc(e.message)}</div>`;
   }
@@ -117,7 +117,7 @@ async function boshla() {
     const d = await api('/api/qarz/info');
     $('#ichki').hidden = false;
     $('#nom').textContent = d.kontragent;
-    document.title = `${d.kontragent} — to'lov yozish`;
+    document.title = `${d.kontragent} — qarz yozish`;
     $('#havola').value = d.korish;
     turlar = d.turlar;
     $('#tur').innerHTML = d.turlar.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
@@ -161,7 +161,7 @@ $('#royxat').onclick = async e => {
   if (!b || !q) return;
   const x = qatorlar[+q.dataset.i];
   if (b.dataset.a === 'ochir') {
-    if (!confirm(`${pul(x.debit)} so'm to'lov YesPOS'dan butunlay o'chirilsinmi?`)) return;
+    if (!confirm(`${pul(x.debit)} so'm qarz qaytarildimi? Yozuv YesPOS'dan o'chiriladi.`)) return;
     b.disabled = true;
     try {
       await api(`/api/qarz/tolov/${x.id}?sana=${encodeURIComponent(x.date)}`, {method: 'DELETE'});
