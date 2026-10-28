@@ -451,6 +451,8 @@ async def start(bot, cached, period, broadcast, drop, notify_login=None):
     app = create_app()
     import mcp_server
     mcp_server.setup(app, bot=bot, cached=cached, period=period, broadcast=broadcast, drop=drop)
+    import qarz
+    qarz.setup(app, bot=bot, broadcast=broadcast, drop=drop, jres=jres, sessiya=_session)
     runner = web.AppRunner(app)
     await runner.setup()
     port = int(os.getenv("PORT", "8080"))

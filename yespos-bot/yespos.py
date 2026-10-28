@@ -194,10 +194,11 @@ class YesPos:
         return d.get("pays") or []
 
     # ---------- yozish ----------
-    async def pay_to_supplier(self, supplier_id: int, value: float, payment_type: int):
-        return await self.post("payToSupplier", {
-            "payment_type": int(payment_type), "supplier": int(supplier_id), "value": float(value),
-        })
+    async def pay_to_supplier(self, supplier_id: int, value: float, payment_type: int, comment: str = ""):
+        body = {"payment_type": int(payment_type), "supplier": int(supplier_id), "value": float(value)}
+        if comment:
+            body["comment"] = comment
+        return await self.post("payToSupplier", body)
 
     async def pay_by_purchase(self, doc_id: int, value: float, payment_type: int, when: datetime, comment: str = ""):
         """Kirim hujjatiga bog'langan to'lov — sana bilan saqlanadi (YesPOS vaqtni mahalliy saqlaydi)."""

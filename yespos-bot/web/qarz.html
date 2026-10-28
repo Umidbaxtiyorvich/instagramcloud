@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Qarz — akt sverka</title>
+<style>
+:root{--bg:#0b0a16;--card:rgba(255,255,255,.045);--line:rgba(255,255,255,.09);--text:#ecebf7;--muted:#9a97b8;
+  --violet:#8b6cff;--red:#f87171;--green:#34d399;--gold:#f5c451}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:20px;margin:0 0 2px}
+.sub{color:var(--muted);font-size:13px}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.qoldiq{text-align:right}
+.qoldiq b{display:block;font-size:26px;font-variant-numeric:tabular-nums}
+.qoldiq small{color:var(--muted)}
+.davr{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.davr button,.davr input{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:7px 11px;font:inherit}
+.davr button{cursor:pointer}
+.davr button.faol{background:#5b3fd9;border-color:#5b3fd9;color:#fff}
+.jami{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.jami div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.jami small{color:var(--muted);display:block;font-size:12px}
+.jami b{font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:12px}
+td.s{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.kirim{color:var(--red)}.tolov{color:var(--green)}
+.izoh{color:var(--gold)}
+.holat{color:var(--muted);padding:30px 0;text-align:center}
+@media (max-width:640px){
+  .jami{grid-template-columns:repeat(2,1fr)}
+  thead{display:none}
+  table,tbody,tr,td{display:block;width:100%}
+  tr{border-bottom:1px solid var(--line);padding:8px 4px}
+  td{border:0;padding:2px 8px}
+  td.s{text-align:left}
+  td[data-n]::before{content:attr(data-n) ": ";color:var(--muted)}
+}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div><h1 id="nom">Qarz</h1><div class="sub">Akt sverka · faqat ko'rish uchun</div></div>
+    <div class="qoldiq"><small id="qoldiqNom">Qoldiq</small><b id="qoldiq">—</b></div>
+  </div>
+  <div class="davr">
+    <button data-d="hammasi" class="faol">Hammasi</button>
+    <button data-d="oy">Bu oy</button>
+    <button data-d="otgan">O'tgan oy</button>
+    <button data-d="yil">Bu yil</button>
+    <input type="date" id="dan" aria-label="Boshlanish sanasi"> <input type="date" id="gacha" aria-label="Tugash sanasi">
+  </div>
+  <div class="jami">
+    <div><small>Boshlang'ich qoldiq</small><b id="j0">—</b></div>
+    <div><small>Kirim (qarz)</small><b id="j1" class="kirim">—</b></div>
+    <div><small>To'lovlar</small><b id="j2" class="tolov">—</b></div>
+    <div><small>Oxirgi qoldiq</small><b id="j3">—</b></div>
+  </div>
+  <div id="joy"><div class="holat">Yuklanmoqda…</div></div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const pul = v => Math.round(Number(v) || 0).toLocaleString('ru-RU').replace(/,/g, ' ');
+const sana = s => new Date(s).toLocaleString('ru-RU', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const kun = d => new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+// manfiy qoldiq — kontragent oldidagi qarz
+const qoldiqMatn = v => v < 0 ? `${pul(-v)} so'm qarz` : v > 0 ? `${pul(v)} so'm ortiqcha` : '0';
+
+async function yukla(dan, gacha) {
+  $('#joy').innerHTML = '<div class="holat">Yuklanmoqda…</div>';
+  const q = dan ? `?from=${dan}&to=${gacha}` : '';
+  try {
+    const r = await fetch(location.pathname.replace(/\/$/, '') + '/akt' + q);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Xato');
+    $('#nom').textContent = d.kontragent;
+    document.title = `${d.kontragent} — akt sverka`;
+    $('#qoldiq').textContent = qoldiqMatn(d.closing);
+    $('#qoldiq').className = d.closing < 0 ? 'kirim' : 'tolov';
+    $('#j0').textContent = pul(d.opening); $('#j1').textContent = pul(d.credit);
+    $('#j2').textContent = pul(d.debit); $('#j3').textContent = pul(d.closing);
+    if (!d.rows.length) { $('#joy').innerHTML = '<div class="holat">Bu davrda yozuv yo\'q</div>'; return; }
+    $('#joy').innerHTML = `<table><thead><tr><th>Sana</th><th>Hujjat</th><th>Kirim (qarz)</th><th>To'lov</th><th>Izoh</th><th>Qoldiq</th></tr></thead><tbody>${
+      [...d.rows].reverse().map(x => `<tr>
+        <td data-n="Sana">${sana(x.date)}</td>
+        <td data-n="Hujjat">${esc(x.document)}</td>
+        <td class="s kirim" data-n="Kirim">${x.credit ? pul(x.credit) : ''}</td>
+        <td class="s tolov" data-n="To'lov">${x.debit ? pul(x.debit) : ''}</td>
+        <td class="izoh" data-n="Izoh">${esc(x.izoh)}</td>
+        <td class="s" data-n="Qoldiq">${pul(x.balance)}</td></tr>`).join('')}</tbody></table>`;
+  } catch (e) {
+    $('#joy').innerHTML = `<div class="holat">⚠️ ${esc(e.message)}</div>`;
+  }
+}
+
+document.querySelectorAll('.davr button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.davr button').forEach(x => x.classList.toggle('faol', x === b));
+  const t = new Date(), y = t.getFullYear(), m = t.getMonth();
+  const d = {oy: [new Date(y, m, 1), t], otgan: [new Date(y, m - 1, 1), new Date(y, m, 0)], yil: [new Date(y, 0, 1), t]}[b.dataset.d];
+  $('#dan').value = d ? kun(d[0]) : ''; $('#gacha').value = d ? kun(d[1]) : '';
+  d ? yukla(kun(d[0]), kun(d[1])) : yukla();
+});
+['#dan', '#gacha'].forEach(s => $(s).onchange = () => {
+  if (!$('#dan').value || !$('#gacha').value) return;
+  document.querySelectorAll('.davr button').forEach(x => x.classList.remove('faol'));
+  yukla($('#dan').value, $('#gacha').value);
+});
+yukla();
+</script>
+</body>
+</html>
