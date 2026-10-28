@@ -200,6 +200,15 @@ class YesPos:
             body["comment"] = comment
         return await self.post("payToSupplier", body)
 
+    # YesPOS veb-ilovasi ham shularni ishlatadi (Yetkazib beruvchilar → To'lovlar)
+    async def update_supplier_pay(self, pay_id: int, supplier_id: int, value: float, payment_type: int):
+        return await self.request("PUT", "updatePayBySupplier", body={
+            "id": int(pay_id), "supplier": int(supplier_id), "value": float(value), "payment_type": int(payment_type),
+        })
+
+    async def delete_supplier_pay(self, pay_id: int):
+        return await self.request("DELETE", "deletePayBySupplier", params={"id": str(int(pay_id))})
+
     async def pay_by_purchase(self, doc_id: int, value: float, payment_type: int, when: datetime, comment: str = ""):
         """Kirim hujjatiga bog'langan to'lov — sana bilan saqlanadi (YesPOS vaqtni mahalliy saqlaydi)."""
         return await self.post("pay-to-supplier-by-purchase", {

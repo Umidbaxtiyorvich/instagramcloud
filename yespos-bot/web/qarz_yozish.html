@@ -37,6 +37,12 @@ button.oddiy{background:var(--card);border:1px solid var(--line);color:var(--tex
 .qator .izoh{grid-column:2/-1;color:var(--gold);font-size:13px}
 .kirim{color:var(--red)}.tolov{color:var(--green)}
 .holat{color:var(--muted);text-align:center;padding:20px 0}
+.amal{grid-column:2/-1;display:flex;gap:6px;justify-content:flex-end}
+.amal button{background:transparent;border:1px solid var(--line);color:var(--text);padding:4px 10px;font-size:12px;font-weight:500}
+.amal button.ochir{color:var(--red)}
+.tahrir{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.tahrir textarea{grid-column:1/-1;min-height:48px}
+.tahrir .tugmalar{grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end}
 @media (max-width:560px){form{grid-template-columns:1fr}}
 </style>
 </head>
@@ -77,6 +83,7 @@ const pul = v => Math.round(Number(v) || 0).toLocaleString('ru-RU').replace(/,/g
 const sana = s => new Date(s).toLocaleString('ru-RU', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const bugun = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+let turlar = [], qatorlar = [];
 const asosiy = location.pathname.replace(/\/qarz-yozish\/?$/, '') || '/';
 
 async function api(path, opts) {
@@ -92,11 +99,12 @@ async function royxat() {
     const d = await api('/api/qarz/akt');
     $('#qoldiq').textContent = d.closing < 0 ? `${pul(-d.closing)} so'm qarz` : `${pul(d.closing)} so'm`;
     $('#qoldiq').className = d.closing < 0 ? 'kirim' : 'tolov';
-    const rows = [...d.rows].reverse().slice(0, 30);
-    $('#royxat').innerHTML = rows.length ? rows.map(x => `<div class="qator">
+    qatorlar = [...d.rows].reverse().slice(0, 30);
+    $('#royxat').innerHTML = qatorlar.length ? qatorlar.map((x, i) => `<div class="qator" data-i="${i}">
         <small>${sana(x.date)}</small><span>${esc(x.document)}</span>
         <span class="s ${x.credit ? 'kirim' : 'tolov'}">${x.credit ? '+' + pul(x.credit) : '−' + pul(x.debit)}</span>
-        ${x.izoh ? `<span class="izoh">${esc(x.izoh)}</span>` : ''}</div>`).join('')
+        ${x.izoh ? `<span class="izoh">${esc(x.izoh)}</span>` : ''}
+        ${x.id ? `<div class="amal"><button type="button" data-a="tahrir">✏️ Tahrirlash</button><button type="button" class="ochir" data-a="ochir">🗑 O'chirish</button></div>` : ''}</div>`).join('')
       : '<div class="holat">Hali yozuv yo\'q</div>';
   } catch (e) {
     if (e.message !== 'auth') $('#royxat').innerHTML = `<div class="holat">⚠️ ${esc(e.message)}</div>`;
@@ -111,6 +119,7 @@ async function boshla() {
     $('#nom').textContent = d.kontragent;
     document.title = `${d.kontragent} — to'lov yozish`;
     $('#havola').value = d.korish;
+    turlar = d.turlar;
     $('#tur').innerHTML = d.turlar.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
     $('#sana').value = $('#sana').max = bugun();
     royxat();
@@ -143,6 +152,39 @@ $('#forma').onsubmit = async e => {
     if (err.message !== 'auth') $('#xabar').innerHTML = `<span class="xato">⚠️ ${esc(err.message)}</span>`;
   } finally {
     $('#btn').disabled = false;
+  }
+};
+// ro'yxatdagi to'lovni tahrirlash / o'chirish (faqat to'lovlar — kirim hujjatlari YesPOS'ning o'zida)
+$('#royxat').onclick = async e => {
+  const b = e.target.closest('button');
+  const q = e.target.closest('.qator');
+  if (!b || !q) return;
+  const x = qatorlar[+q.dataset.i];
+  if (b.dataset.a === 'ochir') {
+    if (!confirm(`${pul(x.debit)} so'm to'lov YesPOS'dan butunlay o'chirilsinmi?`)) return;
+    b.disabled = true;
+    try {
+      await api(`/api/qarz/tolov/${x.id}?sana=${encodeURIComponent(x.date)}`, {method: 'DELETE'});
+      royxat();
+    } catch (err) { if (err.message !== 'auth') { alert(err.message); b.disabled = false; } }
+  } else if (b.dataset.a === 'tahrir') {
+    if (q.querySelector('.tahrir')) return;
+    q.insertAdjacentHTML('beforeend', `<div class="tahrir">
+      <input class="t-summa" inputmode="numeric" value="${pul(x.debit)}" aria-label="Summa">
+      <select class="t-tur" aria-label="To'lov turi">${turlar.map(t => `<option value="${t.id}" ${t.id === x.tur ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+      <textarea class="t-izoh" maxlength="300" placeholder="Izoh" aria-label="Izoh">${esc(x.izoh)}</textarea>
+      <div class="tugmalar"><button type="button" class="oddiy" data-a="bekor">Bekor</button><button type="button" data-a="saqla">Saqlash</button></div></div>`);
+    q.querySelector('.t-summa').oninput = ev => { const r = ev.target.value.replace(/\D/g, ''); ev.target.value = r ? pul(r) : ''; };
+  } else if (b.dataset.a === 'bekor') {
+    q.querySelector('.tahrir').remove();
+  } else if (b.dataset.a === 'saqla') {
+    const summa = Number(q.querySelector('.t-summa').value.replace(/\D/g, ''));
+    if (!summa) return;
+    b.disabled = true;
+    try {
+      await api(`/api/qarz/tolov/${x.id}`, {method: 'PUT', body: JSON.stringify({summa, tur: +q.querySelector('.t-tur').value, izoh: q.querySelector('.t-izoh').value, sana: x.date})});
+      royxat();
+    } catch (err) { if (err.message !== 'auth') { alert(err.message); b.disabled = false; } }
   }
 };
 boshla();

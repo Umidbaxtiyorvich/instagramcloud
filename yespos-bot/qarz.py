@@ -18,6 +18,8 @@ from yespos import YesPosError, api
 
 KALIT_FAYL = os.path.join(config.DATA_DIR, "qarz_token.txt")
 JURNAL_FAYL = os.path.join(config.DATA_DIR, "qarz_jurnal.json")
+# to'lov id → izoh (saytda yozilgan yoki tahrirlangan izoh; YesPOS'dagi izohdan ustun)
+IZOH_FAYL = os.path.join(config.DATA_DIR, "qarz_izoh.json")
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 PREFIX = os.getenv("WEB_PREFIX", "").rstrip("/")
 
@@ -73,6 +75,24 @@ def _jurnalga(yozuv: dict):
         json.dump(j[-2000:], f, ensure_ascii=False)
 
 
+def _izohlar() -> dict:
+    try:
+        with open(IZOH_FAYL, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def _izoh_saqla(pay_id, izoh: str | None):
+    iz = _izohlar()
+    if izoh:
+        iz[str(pay_id)] = izoh
+    else:
+        iz.pop(str(pay_id), None)
+    with open(IZOH_FAYL, "w", encoding="utf-8") as f:
+        json.dump(iz, f, ensure_ascii=False)
+
+
 def _davr(q) -> tuple[datetime, datetime]:
     try:
         frm = datetime.strptime(q["from"], "%Y-%m-%d").replace(tzinfo=config.TZ)
@@ -91,14 +111,19 @@ async def akt(frm: datetime, to: datetime) -> dict:
                 if p.get("supplier") == k["id"]]
     hujjatlar = {d.get("id"): d for d in await api.supplier_purchase_orders(k["id"])}
     jurnal = _jurnal()
+    izohlar = _izohlar()
+    band: set = set()
     for r in a["rows"]:
         izoh = ""
         if r["kind"] == "pay":
             qiymat = r["debit"] or r["credit"]
-            mos = [p for p in tolovlar if abs((p.get("value") or 0) - qiymat) < 0.5]
+            mos = [p for p in tolovlar if abs((p.get("value") or 0) - qiymat) < 0.5 and p.get("id") not in band]
             if mos:
                 p = min(mos, key=lambda p: abs((an.parse_dt(p["created_date"]) - r["date"]).total_seconds()))
-                izoh = (p.get("comment") or "").strip()
+                band.add(p.get("id"))
+                # tahrirlash/o'chirish uchun — shu qator qaysi YesPOS to'lovi
+                r["id"], r["tur"] = p.get("id"), p.get("payment_type")
+                izoh = izohlar.get(str(p.get("id"))) or (p.get("comment") or "").strip()
             if not izoh:
                 yaqin = [j for j in jurnal if abs(j["summa"] - qiymat) < 0.5
                          and abs((datetime.fromisoformat(j["vaqt"]) - r["date"]).total_seconds()) < 3 * 86400]
@@ -184,11 +209,59 @@ async def tolov(request):
         await an.pay_dated(k["id"], summa, tur, sana, izoh or "Qarz sayti")
     else:
         await api.pay_to_supplier(k["id"], summa, tur, izoh)
+    if izoh:
+        yangi = await _topish(k["id"], summa, sana or an.now(), eng_yangi=True)
+        if yangi:
+            _izoh_saqla(yangi["id"], izoh)
     _jurnalga({"vaqt": (sana or an.now()).isoformat(), "summa": summa, "tur": tur, "izoh": izoh,
                "kim": (_ctx["sessiya"](request) or {}).get("device", "")})
     _ctx["drop"]("supdebts")
     await _ctx["broadcast"](_ctx["bot"], f"🧾 Qarz sayti: {k['name']} — {an.money(summa)} so'm to'lov"
                                          + (f", {sana:%d.%m.%Y}" if sana else "") + (f"\nIzoh: {izoh}" if izoh else ""))
+    return _ctx["jres"]({"ok": True})
+
+
+async def _topish(supplier_id: int, summa: float | None, vaqt: datetime, eng_yangi=False, pay_id: int | None = None):
+    """Qarz kontragentining to'lovi (id yoki summa bo'yicha) — boshqa kontragent to'loviga tegib ketmaslik uchun."""
+    pays = await api.supplier_payments(vaqt - timedelta(days=3), vaqt + timedelta(days=3), 2000)
+    mos = [p for p in pays if p.get("supplier") == supplier_id
+           and (p.get("id") == pay_id if pay_id is not None else abs((p.get("value") or 0) - summa) < 0.5)]
+    if not mos:
+        return None
+    return max(mos, key=lambda p: p.get("id") or 0) if eng_yangi else mos[0]
+
+
+async def tahrirla(request):
+    b = await request.json()
+    k = await kontragent()
+    pay_id = int(request.match_info["id"])
+    vaqt = an.parse_dt(b["sana"]) if b.get("sana") else an.now()
+    p = await _topish(k["id"], None, vaqt, pay_id=pay_id)
+    if not p:
+        raise YesPosError("Bu to'lov «Qarz» kontragentida topilmadi")
+    summa = _summa(b.get("summa"))
+    tur = int(b.get("tur") or p.get("payment_type"))
+    if abs(summa - (p.get("value") or 0)) > 0.001 or tur != p.get("payment_type"):
+        await api.update_supplier_pay(pay_id, k["id"], summa, tur)
+    izoh = str(b.get("izoh") or "").strip()[:300]
+    _izoh_saqla(pay_id, izoh)
+    _ctx["drop"]("supdebts")
+    await _ctx["broadcast"](_ctx["bot"], f"✏️ Qarz sayti: to'lov o'zgartirildi — {an.money(p.get('value'))} → "
+                                         f"{an.money(summa)} so'm" + (f"\nIzoh: {izoh}" if izoh else ""))
+    return _ctx["jres"]({"ok": True})
+
+
+async def ochir(request):
+    k = await kontragent()
+    pay_id = int(request.match_info["id"])
+    sana = request.query.get("sana")
+    p = await _topish(k["id"], None, an.parse_dt(sana) if sana else an.now(), pay_id=pay_id)
+    if not p:
+        raise YesPosError("Bu to'lov «Qarz» kontragentida topilmadi")
+    await api.delete_supplier_pay(pay_id)
+    _izoh_saqla(pay_id, None)
+    _ctx["drop"]("supdebts")
+    await _ctx["broadcast"](_ctx["bot"], f"🗑 Qarz sayti: {an.money(p.get('value'))} so'm to'lov o'chirildi")
     return _ctx["jres"]({"ok": True})
 
 
@@ -202,3 +275,5 @@ def setup(app: web.Application, **ctx):
     r.add_get("/api/qarz/info", info)
     r.add_get("/api/qarz/akt", akt_ichki)
     r.add_post("/api/qarz/tolov", tolov)
+    r.add_put("/api/qarz/tolov/{id:\d+}", tahrirla)
+    r.add_delete("/api/qarz/tolov/{id:\d+}", ochir)
