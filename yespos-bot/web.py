@@ -122,7 +122,9 @@ async def send_code(request):
         _codes.clear()
     code = f"{secrets.randbelow(1000000):06d}"
     _codes[code] = time.time() + 300
-    link = f"https://{request.host}/?code={code}"
+    # sayt boshqa sayt ichida bo'lsa (PUBLIC_URL=https://.../yespos) — request.host ichki manzil bo'ladi
+    sayt = os.getenv("PUBLIC_URL", "").rstrip("/") or f"https://{request.host}"
+    link = f"{sayt}/?code={code}"
     sent = await _ctx["broadcast"](_ctx["bot"], f"🔐 Saytga kirish kodi: <code>{code}</code>\n"
                                                 f"Yoki shu havolani bosing: {link}\n\n5 daqiqa amal qiladi. "
                                                 f"Agar siz so'ramagan bo'lsangiz, e'tibor bermang.")
