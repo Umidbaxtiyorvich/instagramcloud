@@ -19,7 +19,7 @@ async function oidc() {
 
 const manzil = `${SAYT}/api/video/ish/${ISH}`;
 
-async function yubor(body: Uint8Array | null, xato?: string) {
+async function yuborBir(body: Uint8Array | null, xato?: string) {
   const r = await fetch(manzil, {
     method: "POST",
     headers: {
@@ -29,7 +29,25 @@ async function yubor(body: Uint8Array | null, xato?: string) {
     body: body ? new Blob([new Uint8Array(body)], { type: "video/mp4" }) : undefined,
     signal: AbortSignal.timeout(240_000),
   });
-  if (!r.ok) throw new Error(`Sayt qabul qilmadi: HTTP ${r.status} ${await r.text()}`);
+  const matn = r.ok ? "" : await r.text();
+  // oldingi urinish aslida yetib borgan, faqat javobi yo'qolgan
+  if (r.status === 400 && matn.includes("allaqachon tugagan")) return;
+  if (!r.ok) throw Object.assign(new Error(`Sayt qabul qilmadi: HTTP ${r.status} ${matn}`), { qayta: r.status >= 500 });
+}
+
+// Render qayta ishga tushayotgan (deploy, xotira) paytda 502/503 beradi — bir-ikki daqiqa kutib qayta yuboramiz
+async function yubor(body: Uint8Array | null, xato?: string) {
+  const kutish = [15, 30, 60, 90];
+  for (let i = 0; ; i++) {
+    try {
+      return await yuborBir(body, xato);
+    } catch (e) {
+      const qayta = (e as { qayta?: boolean }).qayta !== false; // tarmoq xatosi ham qayta urinadi
+      if (!qayta || i >= kutish.length) throw e;
+      console.error(`${e instanceof Error ? e.message : e} — ${kutish[i]} s dan keyin qayta yuboraman`);
+      await new Promise((r) => setTimeout(r, kutish[i] * 1000));
+    }
+  }
 }
 
 // Render bepul serveri uxlab qolgan bo'lsa, birinchi so'rov uyg'otadi (≈1 daqiqa)
