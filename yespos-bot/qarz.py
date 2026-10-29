@@ -235,6 +235,40 @@ async def tolov(request):
     return _ctx["jres"]({"ok": True})
 
 
+async def kopi(request):
+    """Ko'p qarzni bir martada yozadi (masalan Excel'dagi ro'yxat): [{sana, summa, izoh}], bitta tur.
+    Har biri alohida YesPOS to'lovi; Telegram'ga oxirida bitta xulosa."""
+    b = await request.json()
+    k = await kontragent()
+    tur = int(b.get("tur") or 0)
+    if not tur:
+        raise YesPosError("To'lov turini tanlang")
+    royxat = b.get("qarzlar") or []
+    if not royxat or len(royxat) > 300:
+        raise YesPosError("Ro'yxat bo'sh yoki juda uzun (300 tagacha)")
+    yozildi, xatolar = [], []
+    for i, q in enumerate(royxat):
+        try:
+            summa = _summa(q.get("summa"))
+            d = datetime.strptime(q["sana"], "%Y-%m-%d").date()
+            if d > an.now().date():
+                raise YesPosError("kelajakdagi sana")
+            izoh = str(q.get("izoh") or "").strip()[:300]
+            await api.pay_to_supplier(k["id"], summa, tur, izoh)
+            yangi = await _topish(k["id"], summa, an.now(), eng_yangi=True)
+            sana = datetime(d.year, d.month, d.day, 12, 0, tzinfo=config.TZ)
+            if yangi:
+                _izoh_saqla(yangi["id"], izoh, sana.isoformat())
+            _jurnalga({"vaqt": sana.isoformat(), "summa": summa, "tur": tur, "izoh": izoh, "kim": "ommaviy"})
+            yozildi.append(summa)
+        except Exception as e:  # bittasi xato bo'lsa, qolganlari davom etadi
+            xatolar.append({"qator": i + 1, "xato": str(e)})
+    _ctx["drop"]("supdebts")
+    await _ctx["broadcast"](_ctx["bot"], f"🧾 Qarz sayti: {len(yozildi)} ta qarz yozildi, jami {an.money(sum(yozildi))} so'm"
+                                         + (f"\n⚠️ {len(xatolar)} tasi yozilmadi" if xatolar else ""))
+    return _ctx["jres"]({"ok": True, "yozildi": len(yozildi), "jami": sum(yozildi), "xatolar": xatolar})
+
+
 async def _topish(supplier_id: int, summa: float | None, vaqt: datetime, eng_yangi=False, pay_id: int | None = None):
     """Qarz kontragentining to'lovi (id yoki summa bo'yicha) — boshqa kontragent to'loviga tegib ketmaslik uchun."""
     pays = await api.supplier_payments(vaqt - timedelta(days=3), vaqt + timedelta(days=3), 2000)
@@ -289,5 +323,6 @@ def setup(app: web.Application, **ctx):
     r.add_get("/api/qarz/info", info)
     r.add_get("/api/qarz/akt", akt_ichki)
     r.add_post("/api/qarz/tolov", tolov)
+    r.add_post("/api/qarz/kopi", kopi)
     r.add_put("/api/qarz/tolov/{id:\d+}", tahrirla)
     r.add_delete("/api/qarz/tolov/{id:\d+}", ochir)
