@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YesPOS Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg0:#0b0a16;--bg1:#141127;--glass:rgba(255,255,255,.045);--glass2:rgba(255,255,255,.075);
+  --line:rgba(255,255,255,.09);--text:#ecebf7;--muted:#9a97b8;--dim:#6f6c8e;
+  --violet:#8b6cff;--violet2:#6a4cf0;--teal:#2dd4bf;--blue:#4f8cff;--gold:#f5c451;--pink:#f472b6;--orange:#fb923c;
+  --red:#f87171;--green:#34d399;--radius:16px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text);font-size:14px;
+  background:radial-gradient(1200px 600px at 75% -10%,rgba(139,108,255,.22),transparent 60%),
+             radial-gradient(900px 500px at -10% 110%,rgba(45,212,191,.12),transparent 60%),
+             linear-gradient(160deg,var(--bg1),var(--bg0));background-attachment:fixed}
+a{color:inherit}
+.layout{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+/* sidebar */
+aside{position:sticky;top:0;height:100vh;padding:18px 14px;border-right:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.015));backdrop-filter:blur(14px);display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 18px}
+.logo{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-weight:800;font-size:18px;color:#fff;
+  background:conic-gradient(from 210deg,var(--violet),var(--teal),var(--blue),var(--violet));box-shadow:0 6px 16px rgba(0,0,0,.35)}
+.brand b{display:block;font-size:16px}.brand small{color:var(--muted)}
+.sec{color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.08em;margin:14px 10px 6px}
+.nav button{all:unset;display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;padding:9px 12px;border-radius:10px;
+  color:var(--muted);cursor:pointer;font-weight:500;margin-bottom:2px}
+.nav button:hover{background:var(--glass);color:var(--text)}
+.nav button.on{background:linear-gradient(90deg,rgba(139,108,255,.28),rgba(139,108,255,.06));color:#fff;box-shadow:inset 2px 0 0 var(--violet)}
+.nav .ic{width:20px;text-align:center}
+.side-foot{margin-top:auto;padding:14px;border-radius:14px;background:linear-gradient(160deg,rgba(139,108,255,.25),rgba(45,212,191,.08));border:1px solid var(--line)}
+.side-foot small{color:var(--muted)}
+/* topbar */
+.main{min-width:0;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:12px;padding:14px 24px;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20;
+  background:rgba(14,12,28,.72);backdrop-filter:blur(14px)}
+.top h1{font-size:22px;margin:0;font-weight:700}.top .sp{flex:1}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid rgba(52,211,153,.35);color:var(--green);background:rgba(52,211,153,.08);font-size:12.5px;font-weight:600}
+.pill i{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.user{display:flex;align-items:center;gap:10px}.ava{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;background:linear-gradient(135deg,var(--violet),var(--pink))}
+.user small{display:block;color:var(--muted);font-size:11.5px}
+.burger{display:none}
+.content{padding:22px 24px 40px;max-width:1400px;width:100%}
+/* cards */
+.card{background:var(--glass);border:1px solid var(--line);border-radius:var(--radius);padding:18px;backdrop-filter:blur(10px);
+  box-shadow:0 10px 30px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.04);min-width:0}
+.card h2{font-size:15px;margin:0;font-weight:600;display:flex;align-items:center;gap:8px}
+.card h2 .ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--glass2);font-size:14px}
+.ch{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}.ch .sp{flex:1}
+.grid{display:grid;gap:16px;margin-bottom:16px}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g21{grid-template-columns:2fr 1fr}.g12{grid-template-columns:1fr 2fr}
+.kpi{position:relative;overflow:hidden}
+.kpi .lbl{color:var(--muted);font-size:13px;display:flex;align-items:center;gap:8px}
+.kpi .val{font-size:27px;font-weight:700;margin-top:10px;letter-spacing:-.02em;white-space:nowrap}
+.kpi .sub{color:var(--muted);font-size:12.5px;margin-top:4px}
+.kv{display:flex;align-items:flex-end;gap:12px}.kv .val{flex:none}.kv .sw{flex:1;min-width:50px;max-width:150px;height:46px;margin-left:auto;position:relative}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:700}
+.tag.g{background:rgba(52,211,153,.14);color:var(--green)}.tag.r{background:rgba(248,113,113,.14);color:var(--red)}
+.tag.v{background:rgba(139,108,255,.18);color:#c4b5fd}.tag.o{background:rgba(251,146,60,.15);color:var(--orange)}
+.chart{position:relative;height:280px}.chart.sm{height:230px}.chart.lg{height:330px}
+/* controls */
+button,.btn{font:inherit;border:1px solid var(--line);background:var(--glass2);color:var(--text);padding:8px 14px;border-radius:10px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+button:hover,.btn:hover{border-color:rgba(255,255,255,.2)}
+button.primary,.btn.primary{background:linear-gradient(135deg,var(--violet),var(--violet2));border-color:transparent;color:#fff;box-shadow:0 6px 16px rgba(0,0,0,.3)}
+button.danger{background:rgba(248,113,113,.15);border-color:rgba(248,113,113,.35);color:var(--red);padding:6px 10px}
+button:disabled{opacity:.5;cursor:default}
+input,select{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.25);color:var(--text);width:100%;outline:none}
+input:focus,select:focus{border-color:var(--violet);box-shadow:0 0 0 3px rgba(139,108,255,.2)}
+select option{background:#1b1830}
+input[type=date]{color-scheme:dark}
+label{font-size:12.5px;color:var(--muted);display:block;margin:12px 0 6px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}.row>*{flex:1;min-width:150px}.row label{margin-top:0}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips button{padding:6px 12px;font-size:13px;border-radius:999px;background:transparent}
+.chips button.on{background:rgba(139,108,255,.22);border-color:rgba(139,108,255,.6);color:#fff}
+/* tables */
+.tw{overflow:auto;max-height:560px;border-radius:12px;border:1px solid var(--line)}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--dim);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0;background:#17142b;z-index:1}
+tbody tr:hover td{background:rgba(255,255,255,.025)}
+tfoot td{background:#17142b;position:sticky;bottom:0}
+td.n,th.n{text-align:right;white-space:nowrap}
+.red{color:var(--red)}.orange{color:var(--orange)}.green{color:var(--green)}.muted{color:var(--muted)}.gold{color:var(--gold)}
+.tot{font-weight:700}
+tr.click{cursor:pointer}tr.click:hover td{background:rgba(139,108,255,.1)}
+.dd{position:relative}.dd ul{position:absolute;left:0;right:0;top:100%;margin:4px 0 0;padding:4px;list-style:none;background:#1b1830;border:1px solid var(--line);border-radius:12px;max-height:300px;overflow:auto;z-index:30;box-shadow:0 18px 40px rgba(0,0,0,.5)}
+.dd li{padding:9px 10px;cursor:pointer;border-radius:8px}.dd li:hover{background:rgba(139,108,255,.16)}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#221e3a;border:1px solid var(--line);color:#fff;padding:11px 18px;border-radius:12px;z-index:80;max-width:90vw;box-shadow:0 12px 30px rgba(0,0,0,.5)}
+.toast.err{background:#3a1720;border-color:rgba(248,113,113,.4)}
+.loading{color:var(--muted);padding:28px;text-align:center}
+.hide{display:none!important}
+.modal-bg{position:fixed;inset:0;background:rgba(5,4,12,.7);backdrop-filter:blur(4px);z-index:60;display:flex;align-items:flex-start;justify-content:center;padding:6vh 14px;overflow:auto}
+.modal{background:linear-gradient(180deg,#1d1934,#15122a);border:1px solid var(--line);border-radius:18px;width:100%;max-width:860px;padding:20px;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.modal .mh{display:flex;align-items:center;gap:10px;margin-bottom:14px}.modal .mh h2{margin:0;flex:1;font-size:18px}
+.mini{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:12px}
+.mini div{background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.mini small{color:var(--muted);display:block;font-size:12px}.mini b{font-size:17px}
+.plan{background:rgba(139,108,255,.1);border:1px solid rgba(139,108,255,.3);border-radius:12px;padding:12px;margin-top:12px;font-size:13.5px;line-height:1.6}
+.login{min-height:100vh;display:grid;place-items:center;padding:16px}
+.login .card{width:100%;max-width:400px;padding:28px}
+.form{max-width:640px}
+.empty{color:var(--muted);text-align:center;padding:30px}
+@media (max-width:1150px){.g4{grid-template-columns:repeat(2,minmax(0,1fr))}.g21,.g12,.g3{grid-template-columns:1fr}}
+@media (max-width:820px){
+  .layout{grid-template-columns:1fr}
+  aside{position:fixed;left:0;top:0;z-index:50;width:262px;transform:translateX(-100%);transition:transform .2s;background:#141127}
+  aside.open{transform:none;box-shadow:20px 0 60px rgba(0,0,0,.6)}
+  .burger{display:inline-flex}.top{padding:12px 16px}.top h1{font-size:18px}.content{padding:16px}
+  .g2,.g4{grid-template-columns:1fr}.user div,.pill span{display:none}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const fmt = v => Math.round(v || 0).toLocaleString('ru-RU').replace(/,/g, ' ');
+const short = v => { v = v || 0; const a = Math.abs(v); return a >= 1e9 ? (v / 1e9).toFixed(1) + ' mlrd' : a >= 1e6 ? (v / 1e6).toFixed(1) + ' mln' : a >= 1e3 ? (v / 1e3).toFixed(0) + ' ming' : fmt(v); };
+const fq = v => String(Math.round((v || 0) * 1000) / 1000);
+const fd = s => s ? new Date(s).toLocaleDateString('ru-RU') : '';
+const fdt = s => s ? new Date(s).toLocaleString('ru-RU', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'}) : '';
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const todayStr = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+const PAL = ['#8b6cff', '#2dd4bf', '#4f8cff', '#f5c451', '#f472b6', '#fb923c', '#34d399', '#a78bfa', '#38bdf8', '#facc15'];
+
+function toast(msg, err) {
+  const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), err ? 6000 : 3500);
+}
+async function api(path, opts = {}) {
+  const r = await fetch(path, {credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, ...opts});
+  const d = await r.json().catch(() => ({error: "Server javobi noto'g'ri"}));
+  if (r.status === 401 && d.error === 'auth') { renderLogin(); throw new Error('auth'); }
+  if (!r.ok) { toast(d.error || 'Xato', true); throw new Error(d.error); }
+  return d;
+}
+const post = (p, b) => api(p, {method: 'POST', body: JSON.stringify(b)});
+
+// ---------- Chart.js ----------
+let charts = [];
+function killCharts() { charts.forEach(c => c.destroy()); charts = []; }
+if (window.Chart) {
+  Chart.defaults.color = '#9a97b8'; Chart.defaults.font.family = 'Inter, system-ui, sans-serif'; Chart.defaults.font.size = 12;
+  Chart.defaults.borderColor = 'rgba(255,255,255,.06)';
+  Chart.defaults.plugins.legend.labels.boxWidth = 10; Chart.defaults.plugins.legend.labels.usePointStyle = true;
+  Chart.defaults.plugins.tooltip.backgroundColor = '#221e3a'; Chart.defaults.plugins.tooltip.borderColor = 'rgba(255,255,255,.12)';
+  Chart.defaults.plugins.tooltip.borderWidth = 1; Chart.defaults.plugins.tooltip.padding = 10;
+  Chart.defaults.plugins.tooltip.callbacks.label = c => ` ${c.dataset.label ? c.dataset.label + ': ' : (c.label ? c.label + ': ' : '')}${fmt(c.parsed.y ?? c.parsed.x ?? c.parsed)}`;
+}
+function grad(ctx, color, a1 = .45) {
+  const g = ctx.createLinearGradient(0, 0, 0, ctx.canvas.clientHeight || 300);
+  g.addColorStop(0, color + Math.round(a1 * 255).toString(16).padStart(2, '0')); g.addColorStop(1, color + '00'); return g;
+}
+function mkChart(canvas, cfg) { if (!window.Chart || !canvas) return null; const c = new Chart(canvas, cfg); charts.push(c); return c; }
+const moneyAxis = {ticks: {callback: v => short(v)}, grid: {color: 'rgba(255,255,255,.05)'}};
+function lineChart(canvas, labels, sets) {
+  const ctx = canvas.getContext('2d');
+  return mkChart(canvas, {type: 'line', data: {labels, datasets: sets.map((s, i) => ({label: s.label, data: s.data, borderColor: s.color, backgroundColor: grad(ctx, s.color, i ? .18 : .4),
+    fill: true, tension: .38, pointRadius: 0, pointHoverRadius: 5, borderWidth: 2.4}))},
+    options: {maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, scales: {x: {grid: {display: false}}, y: moneyAxis}}});
+}
+function barChart(canvas, labels, data, {horizontal = false, colors = PAL, label = ''} = {}) {
+  return mkChart(canvas, {type: 'bar', data: {labels, datasets: [{label, data, backgroundColor: labels.map((_, i) => colors[i % colors.length] + 'cc'),
+    hoverBackgroundColor: labels.map((_, i) => colors[i % colors.length]), borderRadius: 8, borderSkipped: false, maxBarThickness: 38}]},
+    options: {indexAxis: horizontal ? 'y' : 'x', maintainAspectRatio: false, plugins: {legend: {display: false}},
+      scales: horizontal ? {x: moneyAxis, y: {grid: {display: false}, ticks: {callback(v) { const l = this.getLabelForValue(v); return l.length > 26 ? l.slice(0, 25) + '…' : l; }}}}
+                         : {x: {grid: {display: false}}, y: moneyAxis}}});
+}
+function donut(canvas, labels, data, colors = PAL) {
+  return mkChart(canvas, {type: 'doughnut', data: {labels, datasets: [{data, backgroundColor: colors, borderColor: '#141127', borderWidth: 3, hoverOffset: 8}]},
+    options: {maintainAspectRatio: false, cutout: '64%', plugins: {legend: {position: 'right'}}}});
+}
+function spark(canvas, data, color) {
+  if (!canvas || !data.length) return;
+  const ctx = canvas.getContext('2d');
+  mkChart(canvas, {type: 'line', data: {labels: data.map((_, i) => i), datasets: [{data, borderColor: color, backgroundColor: grad(ctx, color, .35), fill: true, tension: .4, pointRadius: 0, borderWidth: 2}]},
+    options: {maintainAspectRatio: false, animation: false, plugins: {legend: {display: false}, tooltip: {enabled: false}}, scales: {x: {display: false}, y: {display: false}}}});
+}
+
+// ---------- Kirish ----------
+function renderLogin() {
+  killCharts();
+  $('#app').innerHTML = `<div class="login"><div class="card">
+    <div class="brand" style="padding:0 0 18px"><div class="logo">Y</div><div><b>YesPOS Analytics</b><small>Nazorat paneli</small></div></div>
+    <p class="muted" style="margin-top:0">Kirish havolasi va kodi <b>@Yespos_xisobkitob_bot</b> ga yuboriladi. Kod kelmasa, avval botga kirib /start bosing.</p>
+    <button class="primary" id="getcode" style="width:100%;justify-content:center">Telegramga kod yuborish</button>
+    <div id="codebox" class="hide">
+      <label>Kod (yoki Telegramdagi havolani bosing)</label><input id="code" inputmode="numeric" maxlength="6" placeholder="123456">
+      <button class="primary" id="go" style="width:100%;margin-top:12px;justify-content:center">Kirish</button>
+    </div></div></div>`;
+  $('#getcode').onclick = async () => {
+    $('#getcode').disabled = true;
+    try { await post('/api/auth/code', {}); toast('Kod Telegramga yuborildi'); $('#codebox').classList.remove('hide'); $('#code').focus(); }
+    finally { setTimeout(() => { const b = $('#getcode'); if (b) b.disabled = false; }, 30000); }
+  };
+  const go = async () => { await post('/api/auth/login', {code: $('#code').value}); renderApp(); };
+  $('#go').onclick = go; $('#code').onkeydown = e => e.key === 'Enter' && go();
+}
+
+// ---------- Karkas ----------
+const NAV = [
+  ['ASOSIY', [['dash', '◧', 'Dashboard'], ['sales', '📈', 'Savdo'], ['clients', '👥', 'Mijozlar qarzi'], ['goods', '📦', 'Tovar tahlili']]],
+  ["TA'MINOT", [['suppliers', '🚚', "Ta'minotchilar"], ['act', '🧾', 'Akt sverka']]],
+  ['AMALLAR', [['pay', '💳', "To'lov"], ['purchase', '➕', 'Tovar kirim'], ['writeoff', '➖', 'Tovar chiqim']]],
+];
+const TITLES = Object.fromEntries(NAV.flatMap(s => s[1]).map(([k, , t]) => [k, t]));
+let current = 'dash'; try { current = localStorage.getItem('tab') || 'dash'; } catch (e) {}
+if (!TITLES[current]) current = 'dash';
+let ORG = '';
+
+async function renderApp() {
+  const me = await api('/api/auth/me');
+  if (!me.auth) return renderLogin();
+  ORG = me.org || 'YesPOS';
+  $('#app').innerHTML = `<div class="layout">
+    <aside id="side"><div class="brand"><div class="logo">Y</div><div><b>YesPOS</b><small>Analytics</small></div></div>
+      <div class="nav">${NAV.map(([sec, items]) => `<div class="sec">${sec}</div>` + items.map(([k, ic, t]) => `<button data-t="${k}"><span class="ic">${ic}</span>${t}</button>`).join('')).join('')}</div>
+      <div class="side-foot"><b>🤖 Telegram bot</b><br><small>Ogohlantirishlar @Yespos_xisobkitob_bot ga keladi</small></div></aside>
+    <div class="main"><div class="top"><button class="burger" id="burger">☰</button><h1 id="title"></h1><span class="sp"></span>
+      <span class="pill"><i></i><span>YesPOS ulangan</span></span>
+      <div class="user"><div class="ava">${esc(ORG[0] || 'Y')}</div><div><b>${esc(ORG)}</b><small>Egasi</small></div></div>
+      <button id="logout" title="Chiqish">⎋</button></div>
+    <div class="content" id="main"></div></div></div>`;
+  $('#logout').onclick = async () => { await post('/api/auth/logout', {}); renderLogin(); };
+  $('#burger').onclick = () => $('#side').classList.toggle('open');
+  document.querySelectorAll('.nav button').forEach(b => b.onclick = () => { $('#side').classList.remove('open'); show(b.dataset.t); });
+  show(current);
+}
+function show(tab) {
+  current = tab; try { localStorage.setItem('tab', tab); } catch (e) {}
+  killCharts();
+  document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
+  $('#title').textContent = TITLES[tab];
+  const fn = {dash, sales, clients, goods, suppliers, act, pay, purchase: () => docForm('in'), writeoff: () => docForm('out')}[tab];
+  Promise.resolve(fn()).catch(() => {});
+}
+const M = () => $('#main');
+const loading = el => el.innerHTML = '<div class="loading">⏳ Yuklanmoqda...</div>';
+function chips(items, active, onPick) {
+  const d = document.createElement('div'); d.className = 'chips';
+  items.forEach(([k, t]) => { const b = document.createElement('button'); b.textContent = t; b.classList.toggle('on', k === active); b.onclick = () => onPick(k); d.appendChild(b); });
+  return d;
+}
+function table(cols, rows, footer) {
+  return `<div class="tw"><table><thead><tr>${cols.map(c => `<th class="${c[2] || ''}">${c[0]}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r => `<tr>${cols.map(c => `<td class="${c[2] || ''}">${c[1](r)}</td>`).join('')}</tr>`).join('') ||
+    `<tr><td colspan="${cols.length}" class="empty">Ma'lumot yo'q</td></tr>`}</tbody>
+    ${footer ? `<tfoot><tr>${footer.map((f, i) => `<td class="tot ${cols[i][2] || ''}">${f}</td>`).join('')}</tr></tfoot>` : ''}</table></div>`;
+}
+const xlBtn = key => `<a class="btn" href="/api/export/${key}.xlsx">📥 Excel</a>`;
+const kpi = (ic, lbl, val, sub = '', tag = '', id = '') => `<div class="card kpi"><div class="lbl"><span class="ic" style="width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:rgba(255,255,255,.07)">${ic}</span>${lbl} ${tag}</div>
+  <div class="kv"><div class="val">${val}</div>${id ? `<div class="sw"><canvas id="${id}"></canvas></div>` : ''}</div><div class="sub">${sub}</div></div>`;
+const cardHead = (ic, title, right = '') => `<div class="ch"><h2><span class="ic">${ic}</span>${title}</h2><span class="sp"></span>${right}</div>`;
+const WD = ['Yak', 'Du', 'Se', 'Chor', 'Pay', 'Ju', 'Shan'];
+
+// ---------- Modal ----------
+function modal(html) {
+  const bg = document.createElement('div'); bg.className = 'modal-bg';
+  bg.innerHTML = `<div class="modal">${html}</div>`;
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  const close = () => { bg.remove(); document.removeEventListener('keydown', onKey); };
+  bg.onclick = e => { if (e.target === bg || e.target.closest('[data-close]')) close(); };
+  document.addEventListener('keydown', onKey); document.body.appendChild(bg); return bg;
+}
+async function openDoc(id) {
+  const m = modal('<div class="loading">⏳ Yuklanmoqda...</div>');
+  try {
+    const d = await api('/api/doc?id=' + id);
+    $('.modal', m).innerHTML = `<div class="mh"><h2>📄 Kirim hujjati №${d.id}</h2><button data-close>✕</button></div>
+      <div class="mini"><div><small>Yetkazib beruvchi</small><b>${esc(d.supplier)}</b></div><div><small>Sana</small><b>${fdt(d.date)}</b></div>
+        <div><small>Summa (tannarx)</small><b class="gold">${fmt(d.total_cost)}</b></div><div><small>Sotuv narxida</small><b>${fmt(d.total_price)}</b></div></div>
+      <p class="muted">Kim: ${esc(d.author)}${d.note ? ' · Izoh: ' + esc(d.note) : ''}${d.total_payments ? " · Hujjat bo'yicha to'langan: " + fmt(d.total_payments) : ''}</p>
+      ${table([['#', r => d.items.indexOf(r) + 1], ['Tovar', r => esc(r.name)], ['Soni', r => fq(r.qty), 'n'], ['Tannarx', r => fmt(r.cost), 'n'], ['Summa', r => `<b>${fmt(r.sum)}</b>`, 'n'], ['Sotish narxi', r => fmt(r.price), 'n']],
+        d.items, ['', 'Jami', fq(d.items.reduce((a, r) => a + r.qty, 0)), '', fmt(d.total_cost), ''])}`;
+  } catch (e) { m.remove(); }
+}
+async function openPay(supplier, row) {
+  const m = modal('<div class="loading">⏳ Yuklanmoqda...</div>');
+  try {
+    const p = await api(`/api/pay-info?supplier=${supplier}&date=${encodeURIComponent(row.date)}&value=${row.debit}`);
+    $('.modal', m).innerHTML = `<div class="mh"><h2>💳 To'lov</h2><button data-close>✕</button></div>
+      <div class="mini"><div><small>Summa</small><b class="green">${fmt(row.debit)}</b></div><div><small>Sana</small><b>${fdt(row.date)}</b></div>
+      ${p.author ? `<div><small>Kim kiritgan</small><b>${esc(p.author)}</b></div>` : ''}
+      ${p.payment_type ? `<div><small>To'lov turi</small><b>${({1: 'Naqd', 2: 'Plastik'})[p.payment_type] || p.payment_type}</b></div>` : ''}</div>
+      ${p.comment ? `<p>Izoh: ${esc(p.comment)}</p>` : ''}${!p.author ? "<p class=\"muted\">Bu to'lov kirim hujjati orqali qilingan.</p>" : ''}`;
+  } catch (e) { m.remove(); }
+}
+
+// ---------- Dashboard ----------
+async function dash() {
+  const m = M();
+  m.innerHTML = `<div class="grid g4" id="kpis">${'<div class="card kpi"><div class="loading">⏳</div></div>'.repeat(4)}</div>
+    <div class="grid g21"><div class="card">${cardHead('📈', "Kunlik tushum va foyda (30 kun)")}<div class="chart lg"><canvas id="cDaily"></canvas></div></div>
+      <div class="card">${cardHead('💳', "To'lov turlari (bu oy)")}<div class="chart lg"><canvas id="cPay"></canvas></div></div></div>
+    <div class="grid g2"><div class="card">${cardHead('📅', 'Hafta kunlari bo\'yicha savdo')}<div class="chart"><canvas id="cWd"></canvas></div></div>
+      <div class="card">${cardHead('🕒', 'Soatlar bo\'yicha savdo')}<div class="chart"><canvas id="cHr"></canvas></div></div></div>
+    <div class="grid g4" id="kpis2"></div>
+    <div class="grid g2"><div class="card">${cardHead('🏆', "Eng ko'p tushum keltirgan tovarlar")}<div class="chart lg"><canvas id="cTop"></canvas></div></div>
+      <div class="card">${cardHead('🚚', "Ta'minotchilarga eng katta qarzlar")}<div class="chart lg"><canvas id="cSup"></canvas></div></div></div>
+    <div class="grid g12"><div class="card">${cardHead('⏰', 'Mijozlar qarzi muddati')}<div class="chart"><canvas id="cAge"></canvas></div></div>
+      <div class="card" id="topTable">${cardHead('📋', 'Top tovarlar jadvali')}<div class="loading">⏳</div></div></div>`;
+  const [today, month, ch, ov, top] = await Promise.all([api('/api/sales?period=today'), api('/api/sales?period=month'),
+    api('/api/charts?period=month&days=30'), api('/api/overview'), api('/api/top')]);
+  if (current !== 'dash') return;
+  const daily = ch.daily, inc = daily.map(d => d.income), prof = daily.map(d => d.profit);
+  const s = today.summary, mo = month.summary;
+  const margin = mo.income ? (mo.profit / mo.income * 100) : 0;
+  $('#kpis').innerHTML = kpi('💰', 'Bugungi tushum', fmt(s.income), `${s.receipts || 0} ta chek · o'rtacha ${fmt(s.avarage_receipt)}`, '', 'sp1')
+    + kpi('📈', 'Bugungi foyda', fmt(s.profit), `Marja: ${s.income ? (s.profit / s.income * 100).toFixed(1) : 0}%`, '', 'sp2')
+    + kpi('🗓', 'Shu oy tushum', short(mo.income), `${mo.receipts || 0} ta chek`, `<span class="tag v">${margin.toFixed(1)}% marja</span>`, 'sp3')
+    + kpi('💎', 'Shu oy foyda', short(mo.profit), `Qaytarishlar: ${fmt(mo.refund_total)}`, '', 'sp4');
+  spark($('#sp1'), inc.slice(-14), '#8b6cff'); spark($('#sp2'), prof.slice(-14), '#2dd4bf'); spark($('#sp3'), inc, '#f5c451'); spark($('#sp4'), prof, '#f472b6');
+  lineChart($('#cDaily'), daily.map(d => d.date.slice(8, 10) + '.' + d.date.slice(5, 7)), [{label: 'Tushum', data: inc, color: '#8b6cff'}, {label: 'Foyda', data: prof, color: '#2dd4bf'}]);
+  donut($('#cPay'), month.payment_types.map(p => p.name), month.payment_types.map(p => p.value));
+  const wd = [...ch.weekday].sort((a, b) => ((a.day_of_week + 6) % 7) - ((b.day_of_week + 6) % 7));
+  barChart($('#cWd'), wd.map(d => WD[d.day_of_week % 7] || d.day_of_week), wd.map(d => d.value));
+  barChart($('#cHr'), ch.hour.map(h => String(h.hour).padStart(2, '0') + ':00'), ch.hour.map(h => h.value), {colors: ['#4f8cff', '#8b6cff']});
+  $('#kpis2').innerHTML = kpi('👥', 'Mijozlar qarzi', fmt(ov.client_debt), `${ov.client_count} ta qarzdor`, ov.client_late ? `<span class="tag o">${ov.client_late} ta kechikkan</span>` : '<span class="tag g">kechikish yo\'q</span>')
+    + kpi('🚚', "Ta'minotchilarga qarz", short(ov.supplier_debt), `${ov.supplier_count} ta ta'minotchi`)
+    + kpi('🔴', 'Minus tovarlar', ov.neg_count, `Tannarxda ≈ ${fmt(ov.neg_value)}`, ov.neg_count ? '<span class="tag r">tekshiring</span>' : '')
+    + kpi('🧾', "O'rtacha chek (oy)", fmt(mo.avarage_receipt), `OFD: ${short(mo.ofd_total)}`);
+  const t10 = top.slice(0, 10);
+  barChart($('#cTop'), t10.map(t => t.item), t10.map(t => t.price), {horizontal: true, label: 'Tushum'});
+  barChart($('#cSup'), ov.supplier_top.map(t => t.name), ov.supplier_top.map(t => t.debt), {horizontal: true, label: 'Qarz', colors: ['#f472b6', '#fb923c', '#f5c451', '#8b6cff']});
+  const age = ov.aging;
+  if (age.some(a => a.count)) donut($('#cAge'), age.map(a => `${a.label} (${a.count})`), age.map(a => a.sum), ['#34d399', '#f5c451', '#fb923c', '#f87171']);
+  else $('#cAge').parentElement.innerHTML = '<div class="empty">✅ Qarzdor mijozlar yo\'q</div>';
+  $('#topTable').innerHTML = cardHead('📋', "Top tovarlar (30 kun)") + table([['Tovar', r => esc(r.item)], ['Soni', r => fq(r.qty), 'n'], ['Tushum', r => `<b>${fmt(r.price)}</b>`, 'n'], ['Foyda', r => `<span class="green">${fmt(r.profit)}</span>`, 'n'], ['Qoldiq', r => fq(r.stock), 'n']], top.slice(0, 15));
+}
+
+// ---------- Savdo ----------
+let salesPeriod = 'today';
+async function sales() {
+  const m = M();
+  m.innerHTML = `<div class="card" style="margin-bottom:16px"><div class="ch"><h2><span class="ic">📊</span>Davr</h2><span class="sp"></span><span id="sp"></span></div><div id="per"></div></div>
+    <div class="grid g4" id="skpi"><div class="card loading">⏳</div></div>
+    <div class="grid g21"><div class="card">${cardHead('📈', 'Kunlik dinamika')}<div class="chart lg"><canvas id="sDaily"></canvas></div></div>
+      <div class="card">${cardHead('💳', "To'lov turlari")}<div class="chart lg"><canvas id="sPay"></canvas></div><div id="sPayT"></div></div></div>
+    <div class="card" id="sTop">${cardHead('🏆', "Eng ko'p tushum (30 kun)")}<div class="loading">⏳</div></div>`;
+  $('#per').appendChild(chips([['today', 'Bugun'], ['yesterday', 'Kecha'], ['week', 'Shu hafta'], ['month', 'Shu oy'], ['prevmonth', "O'tgan oy"], ['year', 'Shu yil']], salesPeriod, k => { salesPeriod = k; show('sales'); }));
+  const [d, ch, t] = await Promise.all([api('/api/sales?period=' + salesPeriod), api('/api/charts?period=' + salesPeriod), api('/api/top')]);
+  if (current !== 'sales') return;
+  const s = d.summary;
+  $('#sp').innerHTML = `<span class="muted">${fd(d.from)} — ${fd(d.to)}</span>`;
+  $('#skpi').innerHTML = kpi('💰', 'Tushum', fmt(s.income), `${s.receipts || 0} ta chek`) + kpi('📈', 'Foyda', `<span class="green">${fmt(s.profit)}</span>`, `Marja: ${s.income ? (s.profit / s.income * 100).toFixed(1) : 0}%`)
+    + kpi('🧾', "O'rtacha chek", fmt(s.avarage_receipt), `OFD: ${fmt(s.ofd_total)} (${s.ofd_receipts || 0} chek)`) + kpi('↩️', 'Qaytarishlar', `<span class="red">${fmt(s.refund_total)}</span>`, `${s.refunds || 0} ta`);
+  lineChart($('#sDaily'), ch.daily.map(x => x.date.slice(8, 10) + '.' + x.date.slice(5, 7)), [{label: 'Tushum', data: ch.daily.map(x => x.income), color: '#8b6cff'}, {label: 'Foyda', data: ch.daily.map(x => x.profit), color: '#2dd4bf'}]);
+  donut($('#sPay'), d.payment_types.map(p => p.name), d.payment_types.map(p => p.value));
+  $('#sTop').innerHTML = cardHead('🏆', "Eng ko'p tushum (30 kun)") + table([['#', r => t.indexOf(r) + 1], ['Tovar', r => esc(r.item)], ['Soni', r => fq(r.qty), 'n'], ['Tushum', r => `<b>${fmt(r.price)}</b>`, 'n'], ['Foyda', r => `<span class="green">${fmt(r.profit)}</span>`, 'n'], ['Qoldiq', r => fq(r.stock), 'n']], t);
+}
+
+// ---------- Mijozlar ----------
+async function clients() {
+  const m = M(); loading(m);
+  const d = await api('/api/client-debts'); if (current !== 'clients') return;
+  const rows = d.rows, th = d.thresholds;
+  const total = rows.reduce((a, r) => a + r.ending_balance, 0);
+  const color = r => r.days >= th[th.length - 1] ? 'red' : r.days >= th[0] ? 'orange' : 'green';
+  const bucket = t => rows.filter(r => r.days >= t);
+  m.innerHTML = `<div class="grid g4">${kpi('💰', 'Jami qarz', fmt(total), `${rows.length} ta qarzdor`)}
+    ${th.slice().reverse().map(t => { const g = bucket(t); return kpi(t === th[th.length - 1] ? '🔴' : '🟠', `${t}+ kun cho'zilgan`, `${g.length} ta`, fmt(g.reduce((a, r) => a + r.ending_balance, 0)) + " so'm"); }).join('')}</div>
+    <div class="grid g12"><div class="card">${cardHead('⏰', 'Qarz muddati')}<div class="chart"><canvas id="cAge"></canvas></div></div>
+    <div class="card">${cardHead('👥', 'Eng katta qarzdorlar')}<div class="chart"><canvas id="cTopD"></canvas></div></div></div>
+    <div class="card">${cardHead('📋', 'Qarzdor mijozlar', xlBtn('clients'))}
+    ${table([['Mijoz', r => esc(r.name)], ['Telefon', r => esc(r.phone)], ['Qarz', r => `<b>${fmt(r.ending_balance)}</b>`, 'n'],
+      ['Necha kun', r => `<span class="tag ${({red: 'r', orange: 'o', green: 'g'})[color(r)]}">${r.days} kun</span>`, 'n'], ['Eng eski qarz', r => fd(r.oldest_unpaid)], ["Oxirgi to'lov", r => fd(r.last_payment)]], rows)}</div>`;
+  if (!rows.length) { $('#cAge').parentElement.innerHTML = $('#cTopD').parentElement.innerHTML = '<div class="empty">✅ Qarzdor mijozlar yo\'q</div>'; return; }
+  const edges = [0, ...th], labels = [], vals = [];
+  edges.forEach((lo, i) => { const hi = edges[i + 1]; const g = rows.filter(r => r.days >= lo && (hi == null || r.days < hi)); labels.push(hi ? `${lo}-${hi - 1} kun` : `${lo}+ kun`); vals.push(g.reduce((a, r) => a + r.ending_balance, 0)); });
+  donut($('#cAge'), labels, vals, ['#34d399', '#f5c451', '#fb923c', '#f87171']);
+  const top = [...rows].sort((a, b) => b.ending_balance - a.ending_balance).slice(0, 10);
+  barChart($('#cTopD'), top.map(r => r.name), top.map(r => r.ending_balance), {horizontal: true, label: 'Qarz'});
+}
+
+// ---------- Tovarlar ----------
+let goodsKind = 'neg';
+async function goods() {
+  const m = M();
+  m.innerHTML = `<div class="card" style="margin-bottom:16px" id="gk"></div><div id="gb"><div class="loading">⏳ Yuklanmoqda...</div></div>`;
+  $('#gk').appendChild(chips([['neg', '🔴 Minus tovarlar'], ['unsold', '🧊 Umuman sotilmayotgan'], ['slowqty', '🐢 Kam sotilayotgan (soni)'], ['slowrev', '💸 Kam tushum (summa)']], goodsKind, k => { goodsKind = k; show('goods'); }));
+  const d = await api('/api/goods/' + goodsKind); if (current !== 'goods') return;
+  const b = $('#gb');
+  if (goodsKind === 'neg') {
+    const val = d.reduce((a, r) => a - r.stock * (r.cost || 0), 0);
+    const cats = {}; d.forEach(r => cats[r.category_name || '—'] = (cats[r.category_name || '—'] || 0) + 1);
+    const ce = Object.entries(cats).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    b.innerHTML = `<div class="grid g3">${kpi('🔴', 'Minus tovarlar', d.length + ' ta')}${kpi('💸', 'Tannarxdagi qiymati', fmt(val))}${kpi('📂', 'Kategoriyalar', ce.length)}</div>
+      <div class="grid g12"><div class="card">${cardHead('📂', 'Kategoriyalar bo\'yicha')}<div class="chart"><canvas id="g1"></canvas></div></div>
+      <div class="card">${cardHead('📉', "Eng katta minuslar")}<div class="chart"><canvas id="g2"></canvas></div></div></div>
+      <div class="card">${cardHead('📋', 'Minus qoldiqli tovarlar', xlBtn('neg'))}${table([['Tovar', r => esc(r.name)], ['SKU', r => esc(r.sku)], ['Kategoriya', r => esc(r.category_name)], ['Qoldiq', r => `<b class="red">${fq(r.stock)}</b>`, 'n'], ['Tannarx', r => fmt(r.cost), 'n'], ['Narx', r => fmt(r.price), 'n']], d)}</div>`;
+    if (d.length) { donut($('#g1'), ce.map(c => c[0]), ce.map(c => c[1])); const w = [...d].sort((a, b) => a.stock * (a.cost || 1) - b.stock * (b.cost || 1)).slice(0, 10);
+      barChart($('#g2'), w.map(r => r.name), w.map(r => -r.stock * (r.cost || 0)), {horizontal: true, label: 'Tannarxda', colors: ['#f87171', '#fb923c']}); }
+  } else if (goodsKind === 'unsold') {
+    const fr = d.rows.reduce((a, r) => a + r.frozen, 0), t = d.rows.slice(0, 12);
+    b.innerHTML = `<div class="grid g3">${kpi('🧊', `${d.days} kunda sotilmagan`, d.rows.length + ' ta')}${kpi('💰', 'Muzlagan pul (tannarx)', `<span class="red">${short(fr)}</span>`, fmt(fr) + " so'm")}${kpi('📦', 'Jami qoldiq (dona)', fmt(d.rows.reduce((a, r) => a + r.stock, 0)))}</div>
+      <div class="card" style="margin-bottom:16px">${cardHead('💰', "Eng ko'p pul muzlab qolgan tovarlar")}<div class="chart lg"><canvas id="g1"></canvas></div></div>
+      <div class="card">${cardHead('📋', 'Sotilmayotgan tovarlar', xlBtn('unsold'))}${table([['Tovar', r => esc(r.name)], ['SKU', r => esc(r.sku)], ['Qoldiq', r => fq(r.stock), 'n'], ['Tannarx', r => fmt(r.cost), 'n'], ['Narx', r => fmt(r.price), 'n'], ['Muzlagan', r => `<b>${fmt(r.frozen)}</b>`, 'n']], d.rows)}</div>`;
+    barChart($('#g1'), t.map(r => r.name), t.map(r => r.frozen), {horizontal: true, label: 'Muzlagan', colors: ['#38bdf8', '#8b6cff']});
+  } else {
+    const isQ = goodsKind === 'slowqty', t = d.rows.slice(0, 12);
+    b.innerHTML = `<div class="card" style="margin-bottom:16px">${cardHead(isQ ? '🐢' : '💸', (isQ ? "Eng kam sotilayotgan (soni bo'yicha)" : "Eng kam tushum (summa bo'yicha)") + `, ${d.days} kun`)}<div class="chart lg"><canvas id="g1"></canvas></div></div>
+      <div class="card">${cardHead('📋', "Ro'yxat", xlBtn(goodsKind))}${table([['Tovar', r => esc(r.item)], ['SKU', r => esc(r.sku)], ['Sotildi', r => fq(r.qty), 'n'], ['Tushum', r => fmt(r.price), 'n'], ['Foyda', r => fmt(r.profit), 'n'], ['Qoldiq', r => fq(r.stock), 'n']], d.rows.slice(0, 300))}</div>`;
+    barChart($('#g1'), t.map(r => r.item), t.map(r => isQ ? r.qty : r.price), {horizontal: true, label: isQ ? 'Sotildi' : 'Tushum', colors: ['#f5c451', '#fb923c']});
+  }
+}
+
+// ---------- Ta'minotchilar ----------
+async function suppliers() {
+  const m = M(); loading(m);
+  const [d, pays] = await Promise.all([api('/api/supplier-debts'), api('/api/supplier-payments')]); if (current !== 'suppliers') return;
+  const owe = d.filter(r => r.debt > 0), adv = d.filter(r => r.debt < 0), t10 = owe.slice(0, 10);
+  const byDay = {}; pays.forEach(p => { const k = String(p.created_date).slice(0, 10); byDay[k] = (byDay[k] || 0) + p.value; });
+  const days = Object.keys(byDay).sort();
+  m.innerHTML = `<div class="grid g4">${kpi('🚚', 'Jami qarzimiz', `<span class="red">${short(owe.reduce((a, r) => a + r.debt, 0))}</span>`, fmt(owe.reduce((a, r) => a + r.debt, 0)) + " so'm")}
+    ${kpi('🏢', "Ta'minotchilar", owe.length, 'qarzimiz bor')}${kpi('↪️', "Oldindan to'langan", `<span class="green">${fmt(-adv.reduce((a, r) => a + r.debt, 0))}</span>`, adv.length + ' ta')}
+    ${kpi('💳', "30 kunda to'langan", short(pays.reduce((a, p) => a + p.value, 0)), pays.length + " ta to'lov")}</div>
+    <div class="grid g2"><div class="card">${cardHead('📊', 'Eng katta qarzlar')}<div class="chart lg"><canvas id="s1"></canvas></div></div>
+      <div class="card">${cardHead('💳', "Kunlik to'lovlar (30 kun)")}<div class="chart lg"><canvas id="s2"></canvas></div></div></div>
+    <div class="card" style="margin-bottom:16px">${cardHead('📋', "Ta'minotchilar qarzi", xlBtn('supdebts'))}
+    ${table([['Yetkazib beruvchi', r => esc(r.name)], ['Bizning qarz', r => `<b class="${r.debt > 0 ? 'red' : 'green'}">${fmt(r.debt)}</b>`, 'n'],
+      ['', r => `<button data-act="${r.id}" data-n="${esc(r.name)}">🧾 Akt</button> <button data-pay="${r.id}" data-n="${esc(r.name)}">💳 To'lov</button>`, 'n']], d)}</div>
+    <div class="card">${cardHead('🕒', "Oxirgi to'lovlar (30 kun)")}${table([['Sana', r => fdt(r.created_date)], ['Yetkazib beruvchi', r => esc(r.company_name)], ['Summa', r => `<b class="green">${fmt(r.value)}</b>`, 'n'], ['Kim', r => esc(r.author)]], pays)}</div>`;
+  barChart($('#s1'), t10.map(r => r.name), t10.map(r => r.debt), {horizontal: true, label: 'Qarz', colors: ['#f472b6', '#8b6cff', '#4f8cff']});
+  barChart($('#s2'), days.map(k => k.slice(8, 10) + '.' + k.slice(5, 7)), days.map(k => byDay[k]), {label: "To'lov", colors: ['#2dd4bf']});
+  m.querySelectorAll('[data-act]').forEach(b => b.onclick = () => { actSup = {id: +b.dataset.act, company_name: b.dataset.n}; show('act'); });
+  m.querySelectorAll('[data-pay]').forEach(b => b.onclick = () => { paySup = {id: +b.dataset.pay, company_name: b.dataset.n}; show('pay'); });
+}
+
+// qidiruvli tanlash
+function picker(el, url, label, onPick, render = x => esc(x.company_name)) {
+  el.innerHTML = `<label>${label}</label><div class="dd"><input placeholder="🔍 Qidirish..." autocomplete="off"><ul class="hide"></ul></div>`;
+  const inp = $('input', el), ul = $('ul', el); let tm, list = [];
+  inp.oninput = () => { clearTimeout(tm); tm = setTimeout(async () => {
+    const q = inp.value.trim(); if (!q) { ul.classList.add('hide'); return; }
+    list = await api(url + encodeURIComponent(q));
+    ul.innerHTML = list.map((x, i) => `<li data-i="${i}">${render(x)}</li>`).join('') || '<li class="muted">Topilmadi</li>';
+    ul.classList.remove('hide');
+    ul.querySelectorAll('li[data-i]').forEach(li => li.onclick = () => { ul.classList.add('hide'); onPick(list[+li.dataset.i], inp); });
+  }, 300); };
+  inp.onkeydown = e => { if (e.key === 'Enter') { const f = ul.querySelector('li[data-i]'); if (f) f.click(); } };
+  return inp;
+}
+
+// ---------- Akt sverka ----------
+let actSup = null;
+async function act() {
+  const m = M();
+  const today = todayStr(), first = today.slice(0, 8) + '01';
+  m.innerHTML = `<div class="card" style="margin-bottom:16px">${cardHead('🧾', 'Akt sverka parametrlari')}
+    <div class="row"><div id="asup"></div><div><label>Dan</label><input type="date" id="af" value="${first}"></div><div><label>Gacha</label><input type="date" id="at" value="${today}"></div>
+    <div style="flex:0"><button class="primary" id="ago">Ko'rsatish</button></div><div style="flex:0"><button id="axl">📥 Excel</button></div></div>
+    <p id="asel" class="muted"></p><div id="aper"></div></div><div id="ares"></div>`;
+  const setSel = () => $('#asel').innerHTML = actSup ? `Tanlangan: <b style="color:#fff">${esc(actSup.company_name)}</b>` : 'Yetkazib beruvchini tanlang';
+  setSel();
+  picker($('#asup'), '/api/suppliers?q=', 'Yetkazib beruvchi', (s, inp) => { actSup = s; inp.value = s.company_name; setSel(); });
+  const setRange = k => { const n = new Date(), p = s => new Date(s - s.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); let f = new Date(n.getFullYear(), n.getMonth(), 1), t = n;
+    if (k === 'prevmonth') { f = new Date(n.getFullYear(), n.getMonth() - 1, 1); t = new Date(n.getFullYear(), n.getMonth(), 0); }
+    if (k === '3m') f = new Date(n - 90 * 864e5); if (k === 'year') f = new Date(n.getFullYear(), 0, 1); if (k === 'all') f = new Date(2020, 0, 1);
+    $('#af').value = p(f); $('#at').value = p(t); };
+  $('#aper').appendChild(chips([['month', 'Shu oy'], ['prevmonth', "O'tgan oy"], ['3m', 'Oxirgi 3 oy'], ['year', 'Shu yil'], ['all', 'Hammasi']], null, setRange));
+  const qs = () => `supplier=${actSup.id}&from=${$('#af').value}&to=${$('#at').value}&name=${encodeURIComponent(actSup.company_name)}`;
+  $('#axl').onclick = () => { if (!actSup) return toast('Yetkazib beruvchini tanlang', true); location.href = '/api/act.xlsx?' + qs(); };
+  $('#ago').onclick = async () => {
+    if (!actSup) return toast('Yetkazib beruvchini tanlang', true);
+    killCharts();
+    const r = $('#ares'); r.innerHTML = '<div class="card loading">⏳ Yuklanmoqda...</div>';
+    const a = await api('/api/act?' + qs());
+    const st = a.closing < 0 ? `<span class="tag r">Bizning qarz: ${fmt(-a.closing)}</span>` : a.closing > 0 ? `<span class="tag g">Ular bizga qarz: ${fmt(a.closing)}</span>` : '<span class="tag v">Qarz yo\'q</span>';
+    r.innerHTML = `<div class="grid g4">${kpi('📌', "Boshlang'ich qoldiq", fmt(a.opening), fd(a.from))}${kpi('📦', 'Kirim (tovar olindi)', `<span class="gold">${fmt(a.credit)}</span>`, a.rows.filter(x => x.credit).length + ' ta hujjat')}
+      ${kpi('💳', "To'landi", `<span class="green">${fmt(a.debit)}</span>`, a.rows.filter(x => x.debit).length + " ta to'lov")}${kpi('🧮', 'Oxirgi qoldiq', fmt(a.closing), fd(a.to), st)}</div>
+      <div class="card" style="margin-bottom:16px">${cardHead('📈', 'Qoldiq dinamikasi')}<div class="chart"><canvas id="aBal"></canvas></div></div>
+      <div class="card">${cardHead('📋', esc(actSup.company_name), '<span class="muted">Ichini ko\'rish uchun qatorni bosing</span>')}
+      ${table([['Sana', x => fdt(x.date)], ['Hujjat', x => esc(x.document) + (x.doc || x.kind === 'pay' ? ' <span class="muted">›</span>' : '')], ["Debet (to'lov)", x => x.debit ? `<span class="green">${fmt(x.debit)}</span>` : '', 'n'], ['Kredit (tovar)', x => x.credit ? `<span class="gold">${fmt(x.credit)}</span>` : '', 'n'], ['Qoldiq', x => fmt(x.balance), 'n']],
+        a.rows, ['', 'Davr aylanmasi', fmt(a.debit), fmt(a.credit), fmt(a.closing)])}</div>`;
+    const sup = actSup.id;
+    r.querySelectorAll('tbody tr').forEach((tr, i) => { const x = a.rows[i]; if (!x || !(x.doc || x.kind === 'pay')) return;
+      tr.classList.add('click'); tr.onclick = () => x.doc ? openDoc(x.doc) : openPay(sup, x); });
+    if (a.rows.length) lineChart($('#aBal'), [fd(a.from), ...a.rows.map(x => fd(x.date))], [{label: 'Qoldiq', data: [a.opening, ...a.rows.map(x => x.balance)], color: '#f472b6'}]);
+    else $('#aBal').parentElement.innerHTML = '<div class="empty">Bu davrda harakat yo\'q</div>';
+  };
+  if (actSup) $('#ago').click();
+}
+
+// ---------- To'lov ----------
+let paySup = null;
+async function pay() {
+  const m = M();
+  m.innerHTML = `<div class="grid g21"><div class="card form">${cardHead('💳', "Yetkazib beruvchiga to'lov")}
+    <p class="muted" style="margin-top:0">To'lov YesPOS'ga yoziladi va ta'minotchi qarzidan ayriladi.</p>
+    <div id="psup"></div><p id="psel" class="muted"></p>
+    <div class="row"><div><label>Summa (so'm)</label><input id="pam" inputmode="decimal" placeholder="1 500 000"></div>
+      <div><label>To'lov sanasi</label><input type="date" id="pdate"></div><div><label>To'lov turi</label><select id="ppt"></select></div></div>
+    <div id="pplan" class="plan hide"></div>
+    <button class="primary" id="pgo" style="margin-top:18px;width:100%;justify-content:center">To'lovni kiritish</button></div>
+    <div class="card">${cardHead('ℹ️', 'Sana haqida')}<p class="muted" style="line-height:1.6;margin:0">Bugungi sana — oddiy to'lov.<br><br>Boshqa sana tanlansa, to'lov shu ta'minotchining to'lanmagan <b style="color:#fff">kirim hujjatlariga</b> bog'lanib, aynan o'sha sana bilan aktga tushadi. Qaysi hujjatga qancha tushishi oldindan ko'rsatiladi.</p></div></div>`;
+  const debts = await api('/api/supplier-debts');
+  const setSel = () => { const d = paySup && debts.find(x => x.id === paySup.id);
+    $('#psel').innerHTML = paySup ? `Tanlangan: <b style="color:#fff">${esc(paySup.company_name)}</b> · hozirgi qarzimiz: <b class="red">${fmt(d ? d.debt : 0)}</b>` : ''; };
+  $('#pdate').value = todayStr(); $('#pdate').max = todayStr();
+  let planTm;
+  const amountVal = () => parseFloat($('#pam').value.replace(/\s/g, '').replace(',', '.'));
+  const showPlan = () => { clearTimeout(planTm); planTm = setTimeout(async () => {
+    const box = $('#pplan'), date = $('#pdate').value, amount = amountVal();
+    if (!paySup || !(amount > 0) || !date || date === todayStr()) { box.classList.add('hide'); return; }
+    box.classList.remove('hide'); box.textContent = '⏳ Hujjatlarga taqsimlanmoqda...';
+    try {
+      const p = await api(`/api/pay-plan?supplier=${paySup.id}&amount=${amount}&date=${date}`);
+      box.innerHTML = `📅 <b>${date.split('-').reverse().join('.')}</b> sanasi bilan yoziladi va kirim hujjatlariga bog'lanadi:<br>` +
+        p.plan.map(x => `№${x.doc} (${fd(x.date)}) — <b>${fmt(x.sum)}</b>`).join('<br>') +
+        (p.left > 0.5 ? `<br><b class="red">Taqsimlanmadi: ${fmt(p.left)} — to'lanmagan hujjatlar yetarli emas</b>` : '');
+    } catch (e) { box.classList.add('hide'); }
+  }, 400); };
+  $('#pam').oninput = showPlan; $('#pdate').onchange = showPlan;
+  picker($('#psup'), '/api/suppliers?q=', 'Yetkazib beruvchi', (s, inp) => { paySup = s; inp.value = s.company_name; setSel(); showPlan(); });
+  setSel(); showPlan();
+  const pts = await api('/api/payment-types');
+  $('#ppt').innerHTML = pts.map(p => `<option value="${p.id}">${esc(p.name_uz || p.name)}</option>`).join('');
+  $('#pgo').onclick = async () => {
+    const amount = amountVal();
+    if (!paySup) return toast('Yetkazib beruvchini tanlang', true);
+    if (!(amount > 0)) return toast('Summani kiriting', true);
+    const ptn = $('#ppt').selectedOptions[0].textContent, date = $('#pdate').value;
+    if (!confirm(`${paySup.company_name} ga ${fmt(amount)} so'm (${ptn}), sana ${date.split('-').reverse().join('.')}, to'lov YesPOS'ga kiritilsinmi?`)) return;
+    $('#pgo').disabled = true;
+    try { await post('/api/pay', {supplier: paySup.id, supplier_name: paySup.company_name, amount, date, payment_type: +$('#ppt').value, payment_type_name: ptn});
+      toast("✅ To'lov kiritildi"); paySup = null; show('pay'); } finally { const b = $('#pgo'); if (b) b.disabled = false; }
+  };
+}
+
+// ---------- Kirim / Chiqim ----------
+async function docForm(kind) {
+  const isIn = kind === 'in', m = M(); let sup = null; const items = [];
+  m.innerHTML = `<div class="card">${cardHead(isIn ? '➕' : '➖', isIn ? 'Tovar kirim (prixod)' : 'Tovar chiqim (hisobdan chiqarish)')}
+    <p class="muted" style="margin-top:0">Hujjat YesPOS'da yaratiladi va darhol o'tkaziladi — ombor qoldig'i o'zgaradi.</p>
+    <div class="row">${isIn ? '<div id="dsup"></div><div style="max-width:220px"><label>Kirim sanasi</label><input type="date" id="ddate"></div>'
+      : `<div style="max-width:260px"><label>Chiqim turi</label><select id="dtype"><option value="8">Yo'qotish</option><option value="9">Buzilgan tovar</option></select></div>`}
+      <div id="ditem"></div></div>
+    ${isIn ? '<p id="dsel" class="muted"></p>' : ''}
+    <div id="dlist" style="margin-top:16px"></div>
+    <div class="row" style="margin-top:6px"><div><label>Izoh</label><input id="dnote" placeholder="ixtiyoriy"></div>
+      <div style="flex:0"><button class="primary" id="dgo">Saqlash va o'tkazish</button></div></div></div>`;
+  if (isIn) { $('#ddate').value = $('#ddate').max = todayStr(); picker($('#dsup'), '/api/suppliers?q=', 'Yetkazib beruvchi', (s, inp) => { sup = s; inp.value = s.company_name; $('#dsel').innerHTML = `Tanlangan: <b style="color:#fff">${esc(s.company_name)}</b>`; }); }
+  picker($('#ditem'), '/api/items?q=', 'Tovar (nomi yoki shtrix-kodi)', (it, inp) => {
+    const ex = items.find(x => x.item === it.id);
+    if (ex) ex.qty += 1; else items.push({item: it.id, name: it.name, unit_type: it.unit_type, stock: it.stock, qty: 1, cost: it.last_incomming_price || it.cost || 0, price: it.price || 0});
+    inp.value = ''; draw(); inp.focus();
+  }, it => `${esc(it.name)} <span class="muted">· qoldiq ${fq(it.stock)} · ${fmt(it.price)}</span>`);
+  function draw() {
+    const cols = [['Tovar', r => esc(r.name) + `<br><small class="muted">qoldiq ${fq(r.stock)}</small>`], ['Miqdor', (r, i) => `<input data-i="${i}" data-f="qty" value="${r.qty}" style="width:90px">`, 'n']];
+    if (isIn) cols.push(['Tannarx', (r, i) => `<input data-i="${i}" data-f="cost" value="${r.cost}" style="width:120px">`, 'n'], ['Sotish narxi', (r, i) => `<input data-i="${i}" data-f="price" value="${r.price}" style="width:120px">`, 'n'], ['Summa', r => `<b>${fmt(r.qty * r.cost)}</b>`, 'n']);
+    cols.push(['', (r, i) => `<button class="danger" data-del="${i}">✕</button>`, 'n']);
+    const total = items.reduce((a, r) => a + r.qty * r.cost, 0);
+    $('#dlist').innerHTML = items.length ? `<div class="tw"><table><thead><tr>${cols.map(c => `<th class="${c[2] || ''}">${c[0]}</th>`).join('')}</tr></thead>
+      <tbody>${items.map((r, i) => `<tr>${cols.map(c => `<td class="${c[2] || ''}">${c[1](r, i)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+      ${isIn ? `<p class="tot" style="text-align:right;font-size:16px">Jami: <span class="gold">${fmt(total)}</span> so'm</p>` : ''}` : '<div class="empty">Tovar qo\'shilmagan — yuqorida qidiring</div>';
+    $('#dlist').querySelectorAll('input[data-i]').forEach(inp => inp.onchange = () => { const v = parseFloat(inp.value.replace(',', '.')); items[+inp.dataset.i][inp.dataset.f] = v >= 0 ? v : 0; draw(); });
+    $('#dlist').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { items.splice(+b.dataset.del, 1); draw(); });
+  }
+  draw();
+  $('#dgo').onclick = async () => {
+    if (isIn && !sup) return toast('Yetkazib beruvchini tanlang', true);
+    if (!items.length) return toast("Tovar qo'shing", true);
+    if (items.some(r => !(r.qty > 0))) return toast("Miqdor 0 dan katta bo'lsin", true);
+    const total = items.reduce((a, r) => a + r.qty * r.cost, 0);
+    const msg = isIn ? `${sup.company_name} dan ${items.length} xil tovar, jami ${fmt(total)} so'm, sana ${$('#ddate').value.split('-').reverse().join('.')}, kirim qilinsinmi?` : `${items.length} xil tovar hisobdan chiqarilsinmi?`;
+    if (!confirm(msg + "\nHujjat YesPOS'da darhol o'tkaziladi.")) return;
+    $('#dgo').disabled = true;
+    try {
+      const r = isIn ? await post('/api/purchase', {supplier: sup.id, supplier_name: sup.company_name, items, date: $('#ddate').value, note: $('#dnote').value})
+                     : await post('/api/writeoff', {type: +$('#dtype').value, items, note: $('#dnote').value});
+      toast(r.id ? `✅ Hujjat №${r.id} yaratildi va o'tkazildi` : "⚠️ Hujjat yaratildi, YesPOS'da tekshiring");
+      docForm(kind);
+    } finally { const b = $('#dgo'); if (b) b.disabled = false; }
+  };
+}
+
+(async () => {
+  const code = new URLSearchParams(location.search).get('code');
+  if (code) { history.replaceState(null, '', location.pathname); try { await post('/api/auth/login', {code}); } catch (e) {} }
+  renderApp().catch(() => {});
+})();
+</script>
+</body>
+</html>

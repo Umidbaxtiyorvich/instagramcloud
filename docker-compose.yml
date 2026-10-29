@@ -1,0 +1,63 @@
+# Butun tizim bitta serverda: baza, sayt (Miya, botlar, miya-tg), HTTPS va kunlik zaxira.
+# Ishga tushirish: deploy/ORACLE.md
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: instagramcloud
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: instagramcloud
+    volumes:
+      - dbdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U instagramcloud"]
+      interval: 10s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://instagramcloud:${DB_PASSWORD}@db:5432/instagramcloud
+      APP_URL: https://${DOMAIN}
+      PORT: "3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+    depends_on:
+      - app
+
+  # har kuni baza nusxasi ./backups ga, 14 kundan eskilari o'chadi
+  backup:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./backups:/backups
+    entrypoint: >
+      sh -c 'while true; do
+        pg_dump -h db -U instagramcloud instagramcloud | gzip > /backups/db-$$(date +%F).sql.gz;
+        find /backups -name "db-*.sql.gz" -mtime +14 -delete;
+        sleep 86400; done'
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  dbdata:
+  caddydata:
