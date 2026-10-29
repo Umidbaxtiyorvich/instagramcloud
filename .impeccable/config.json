@@ -44,6 +44,15 @@
         ],
         "createdAt": "2026-10-29T12:59:41.156Z",
         "reason": "Claude decided: the soft blue card/button shadows are the Instagram Cloud dashboard's own --shadow on a light background, which the user asked to match"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "yespos-bot/web/qarz.html"
+        ],
+        "createdAt": "2026-10-29T13:07:31.072Z",
+        "reason": "Claude decided: soft blue shadows are the Instagram Cloud dashboard's own --shadow on a light background, which the user asked to match"
       }
     ]
   }
