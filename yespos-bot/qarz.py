@@ -83,12 +83,25 @@ def _izohlar() -> dict:
         return {}
 
 
-def _izoh_saqla(pay_id, izoh: str | None):
+def _qayd(iz: dict, pay_id) -> dict:
+    """to'lov id → {izoh, sana}; eski yozuvlarda qiymat oddiy matn (izoh) bo'lgan."""
+    v = iz.get(str(pay_id))
+    return {"izoh": v} if isinstance(v, str) else (v or {})
+
+
+# YesPOS oddiy to'lovga sana qo'ydirmaydi (sanali to'lov faqat kirim hujjatiga bog'lanadi, «Qarz»da hujjat yo'q),
+# shuning uchun qarzning haqiqiy sanasi shu yerda saqlanadi va sahifalarda YesPOS sanasi o'rniga ko'rsatiladi.
+def _izoh_saqla(pay_id, izoh: str | None = None, sana: str | None = None, ochir=False):
     iz = _izohlar()
-    if izoh:
-        iz[str(pay_id)] = izoh
-    else:
+    q = {} if ochir else _qayd(iz, pay_id)
+    if not ochir:
+        q["izoh"] = izoh or ""
+        if sana is not None:
+            q["sana"] = sana
+    if ochir or not (q.get("izoh") or q.get("sana")):
         iz.pop(str(pay_id), None)
+    else:
+        iz[str(pay_id)] = q
     with open(IZOH_FAYL, "w", encoding="utf-8") as f:
         json.dump(iz, f, ensure_ascii=False)
 
@@ -122,8 +135,11 @@ async def akt(frm: datetime, to: datetime) -> dict:
                 p = min(mos, key=lambda p: abs((an.parse_dt(p["created_date"]) - r["date"]).total_seconds()))
                 band.add(p.get("id"))
                 # tahrirlash/o'chirish uchun — shu qator qaysi YesPOS to'lovi
-                r["id"], r["tur"] = p.get("id"), p.get("payment_type")
-                izoh = izohlar.get(str(p.get("id"))) or (p.get("comment") or "").strip()
+                r["id"], r["tur"], r["yp"] = p.get("id"), p.get("payment_type"), r["date"]
+                q = _qayd(izohlar, p.get("id"))
+                izoh = q.get("izoh") or (p.get("comment") or "").strip()
+                if q.get("sana"):
+                    r["date"] = datetime.fromisoformat(q["sana"])
             if not izoh:
                 yaqin = [j for j in jurnal if abs(j["summa"] - qiymat) < 0.5
                          and abs((datetime.fromisoformat(j["vaqt"]) - r["date"]).total_seconds()) < 3 * 86400]
@@ -133,6 +149,7 @@ async def akt(frm: datetime, to: datetime) -> dict:
             d = hujjatlar[r["doc"]]
             izoh = (d.get("note") or d.get("comment") or "").strip()
         r["izoh"] = izoh
+    a["rows"].sort(key=lambda r: r["date"])
     return {"kontragent": k["name"], "from": frm, "to": to, **a}
 
 
@@ -205,14 +222,11 @@ async def tolov(request):
             raise YesPosError("Kelajakdagi sana bo'lmaydi")
         if d != an.now().date():
             sana = datetime(d.year, d.month, d.day, 12, 0, tzinfo=config.TZ)
-    if sana:
-        await an.pay_dated(k["id"], summa, tur, sana, izoh or "Qarz sayti")
-    else:
-        await api.pay_to_supplier(k["id"], summa, tur, izoh)
-    if izoh:
-        yangi = await _topish(k["id"], summa, sana or an.now(), eng_yangi=True)
+    await api.pay_to_supplier(k["id"], summa, tur, izoh)
+    if izoh or sana:
+        yangi = await _topish(k["id"], summa, an.now(), eng_yangi=True)
         if yangi:
-            _izoh_saqla(yangi["id"], izoh)
+            _izoh_saqla(yangi["id"], izoh, sana.isoformat() if sana else None)
     _jurnalga({"vaqt": (sana or an.now()).isoformat(), "summa": summa, "tur": tur, "izoh": izoh,
                "kim": (_ctx["sessiya"](request) or {}).get("device", "")})
     _ctx["drop"]("supdebts")
@@ -259,7 +273,7 @@ async def ochir(request):
     if not p:
         raise YesPosError("Bu to'lov «Qarz» kontragentida topilmadi")
     await api.delete_supplier_pay(pay_id)
-    _izoh_saqla(pay_id, None)
+    _izoh_saqla(pay_id, ochir=True)
     _ctx["drop"]("supdebts")
     await _ctx["broadcast"](_ctx["bot"], f"✅ Qarz qaytarildi (o'chirildi): {an.money(p.get('value'))} so'm")
     return _ctx["jres"]({"ok": True})

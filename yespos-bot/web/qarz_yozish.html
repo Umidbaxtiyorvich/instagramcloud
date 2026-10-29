@@ -164,7 +164,7 @@ $('#royxat').onclick = async e => {
     if (!confirm(`${pul(x.debit)} so'm qarz qaytarildimi? Yozuv YesPOS'dan o'chiriladi.`)) return;
     b.disabled = true;
     try {
-      await api(`/api/qarz/tolov/${x.id}?sana=${encodeURIComponent(x.date)}`, {method: 'DELETE'});
+      await api(`/api/qarz/tolov/${x.id}?sana=${encodeURIComponent(x.yp || x.date)}`, {method: 'DELETE'});
       royxat();
     } catch (err) { if (err.message !== 'auth') { alert(err.message); b.disabled = false; } }
   } else if (b.dataset.a === 'tahrir') {
@@ -182,7 +182,7 @@ $('#royxat').onclick = async e => {
     if (!summa) return;
     b.disabled = true;
     try {
-      await api(`/api/qarz/tolov/${x.id}`, {method: 'PUT', body: JSON.stringify({summa, tur: +q.querySelector('.t-tur').value, izoh: q.querySelector('.t-izoh').value, sana: x.date})});
+      await api(`/api/qarz/tolov/${x.id}`, {method: 'PUT', body: JSON.stringify({summa, tur: +q.querySelector('.t-tur').value, izoh: q.querySelector('.t-izoh').value, sana: x.yp || x.date})});
       royxat();
     } catch (err) { if (err.message !== 'auth') { alert(err.message); b.disabled = false; } }
   }
