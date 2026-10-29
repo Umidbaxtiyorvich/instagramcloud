@@ -98,10 +98,26 @@ def _izoh_saqla(pay_id, izoh: str | None = None, sana: str | None = None, ochir=
         q["izoh"] = izoh or ""
         if sana is not None:
             q["sana"] = sana
-    if ochir or not (q.get("izoh") or q.get("sana")):
+    if ochir or not (q.get("izoh") or q.get("sana") or q.get("qaytdi")):
         iz.pop(str(pay_id), None)
     else:
         iz[str(pay_id)] = q
+    with open(IZOH_FAYL, "w", encoding="utf-8") as f:
+        json.dump(iz, f, ensure_ascii=False)
+
+
+# «Qaytardi» belgisi (✓): yozuv YesPOS'da qoladi, faqat qaytarilgan deb belgilanadi va jami qarzga kirmaydi
+def _belgi_saqla(pay_id, qaytdi: bool):
+    iz = _izohlar()
+    q = _qayd(iz, pay_id)
+    if qaytdi:
+        q["qaytdi"] = an.now().isoformat(timespec="seconds")
+    else:
+        q.pop("qaytdi", None)
+    if q.get("izoh") or q.get("sana") or q.get("qaytdi"):
+        iz[str(pay_id)] = q
+    else:
+        iz.pop(str(pay_id), None)
     with open(IZOH_FAYL, "w", encoding="utf-8") as f:
         json.dump(iz, f, ensure_ascii=False)
 
@@ -140,6 +156,7 @@ async def akt(frm: datetime, to: datetime) -> dict:
                 izoh = q.get("izoh") or (p.get("comment") or "").strip()
                 if q.get("sana"):
                     r["date"] = datetime.fromisoformat(q["sana"])
+                r["qaytdi"] = q.get("qaytdi")
             if not izoh:
                 yaqin = [j for j in jurnal if abs(j["summa"] - qiymat) < 0.5
                          and abs((datetime.fromisoformat(j["vaqt"]) - r["date"]).total_seconds()) < 3 * 86400]
@@ -150,7 +167,9 @@ async def akt(frm: datetime, to: datetime) -> dict:
             izoh = (d.get("note") or d.get("comment") or "").strip()
         r["izoh"] = izoh
     a["rows"].sort(key=lambda r: r["date"])
-    return {"kontragent": k["name"], "from": frm, "to": to, **a}
+    # qaytarilmagan qarz (davr ichida; sahifa uni «Hammasi»da butun tarix uchun ko'rsatadi)
+    qolgan = sum(r["debit"] for r in a["rows"] if r["debit"] > 0 and not r.get("qaytdi"))
+    return {"kontragent": k["name"], "from": frm, "to": to, "qolgan": qolgan, **a}
 
 
 def _html(nom: str):
@@ -171,6 +190,24 @@ async def korish_sahifa(request):
     if not _kalit_togri(request):
         raise web.HTTPNotFound()
     return _html("qarz.html")
+
+
+async def _belgi(request):
+    b = await request.json()
+    k = await kontragent()
+    pay_id = int(b["id"])
+    vaqt = an.parse_dt(b["sana"]) if b.get("sana") else an.now()
+    p = await _topish(k["id"], None, vaqt, pay_id=pay_id)
+    if not p:
+        raise YesPosError("Bu yozuv «Qarz» kontragentida topilmadi")
+    _belgi_saqla(pay_id, bool(b.get("qaytdi")))
+    return _ctx["jres"]({"ok": True})
+
+
+async def korish_belgi(request):
+    if not _kalit_togri(request):
+        raise web.HTTPNotFound()
+    return await _belgi(request)
 
 
 async def korish_akt(request):
@@ -319,6 +356,9 @@ def setup(app: web.Application, **ctx):
     r = app.router
     r.add_get("/qarz/{kalit}", korish_sahifa)
     r.add_get("/qarz/{kalit}/akt", korish_akt)
+    r.add_post("/qarz/{kalit}/belgi", korish_belgi)
+    r.add_post("/api/qarz/belgi", _belgi)
+    r.add_get("/qarz.css", lambda request: web.FileResponse(os.path.join(STATIC, "qarz.css"), headers={"Cache-Control": "no-cache"}))
     r.add_get("/qarz-yozish", yozish_sahifa)
     r.add_get("/api/qarz/info", info)
     r.add_get("/api/qarz/akt", akt_ichki)

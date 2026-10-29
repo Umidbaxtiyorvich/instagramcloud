@@ -5,86 +5,78 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Qarz yozish</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/qarz.css">
 <style>
-:root{--bg:#0b0a16;--card:rgba(255,255,255,.045);--line:rgba(255,255,255,.09);--text:#ecebf7;--muted:#9a97b8;
-  --red:#f87171;--green:#34d399;--gold:#f5c451}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-main{max-width:760px;margin:0 auto;padding:20px 16px 40px}
-h1{font-size:20px;margin:0 0 2px}
-h2{font-size:15px;margin:22px 0 8px}
-.sub{color:var(--muted);font-size:13px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:14px}
-.qoldiq{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.qoldiq b{font-size:22px;font-variant-numeric:tabular-nums}
-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-label{display:flex;flex-direction:column;gap:4px;color:var(--muted);font-size:12px}
-label.keng{grid-column:1/-1}
-input,select,textarea{background:#14122a;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;font-size:15px}
-textarea{min-height:64px;resize:vertical}
-button{background:#5b3fd9;color:#fff;border:0;border-radius:10px;padding:12px 16px;font:inherit;font-weight:600;cursor:pointer}
-button:disabled{opacity:.6;cursor:wait}
-button.oddiy{background:var(--card);border:1px solid var(--line);color:var(--text);padding:8px 12px;font-weight:500}
-.yuborish{grid-column:1/-1}
-.xabar{grid-column:1/-1;font-size:13px}
-.ok{color:var(--green)}.xato{color:var(--red)}
-.havola{display:flex;gap:8px;align-items:center}
-.havola input{flex:1;font-size:12px}
-.qator{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;padding:9px 0;border-bottom:1px solid var(--line)}
-.qator:last-child{border-bottom:0}
-.qator small{color:var(--muted)}
-.qator .s{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.qator .izoh{grid-column:2/-1;color:var(--gold);font-size:13px}
-.kirim{color:var(--red)}.tolov{color:var(--green)}
-.holat{color:var(--muted);text-align:center;padding:20px 0}
-.amal{grid-column:2/-1;display:flex;gap:6px;justify-content:flex-end}
-.amal button{background:transparent;border:1px solid var(--line);color:var(--text);padding:4px 10px;font-size:12px;font-weight:500}
-.amal button.ochir{color:var(--green)}
-.tahrir{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
-.tahrir textarea{grid-column:1/-1;min-height:48px}
-.tahrir .tugmalar{grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end}
-@media (max-width:560px){form{grid-template-columns:1fr}}
+.forma { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.forma .keng { grid-column: 1 / -1; }
+.forma textarea { min-height: 70px; resize: vertical; }
+.havola { display: flex; gap: 8px; }
+.havola input { font-size: 13px; }
+.tahrir { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 8px; }
+.tahrir textarea { grid-column: 1 / -1; min-height: 50px; }
+.tahrir .tugmalar { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end; }
+@media (max-width: 680px) { .forma { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <main>
-  <h1 id="nom">Qarz</h1>
-  <div class="sub">Qarz yozish · YesPOS'ga darhol yoziladi. Qarz qaytsa — «Qaytardi» bilan o'chiring</div>
-  <div id="ichki" hidden>
-    <div class="card qoldiq"><span>Jami qarz</span><b id="qoldiq">—</b></div>
+  <section class="glass bosh">
+    <div>
+      <div class="display" style="font-size:15px">instagram<span class="gradient-text">cloud</span> · YesPOS</div>
+      <h1 class="display" id="nom">Qarz yozish</h1>
+      <p class="muted">YesPOS'ga darhol yoziladi · qarz qaytsa — ✓ qo'ying (sariq bo'ladi)</p>
+    </div>
+    <div class="jami"><small>Qolgan qarz</small><b id="qolgan">—</b><span id="qaytgan"></span></div>
+  </section>
 
-    <div class="card">
-      <form id="forma">
+  <div id="ichki" hidden>
+    <section class="glass">
+      <form class="forma" id="forma">
         <label>Summa (so'm)<input id="summa" inputmode="numeric" autocomplete="off" placeholder="500 000" required></label>
         <label>To'lov turi<select id="tur" required></select></label>
         <label>Sana<input type="date" id="sana" required></label>
-        <label class="keng">Izoh — kim, nima uchun<textarea id="izoh" maxlength="300" placeholder="Masalan: Alisher aka, 12-oktabrdagi qarz qaytdi"></textarea></label>
-        <button class="yuborish" id="btn">Qarzni yozish</button>
-        <div class="xabar" id="xabar"></div>
+        <label class="keng">Izoh — kim, nima uchun<textarea id="izoh" maxlength="300" placeholder="Masalan: Alisher aka, ertaga beraman degan"></textarea></label>
+        <div class="keng" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary" id="btn">Qarzni yozish</button>
+          <span id="xabar"></span>
+        </div>
       </form>
-    </div>
+    </section>
 
-    <div class="card">
-      <div class="sub" style="margin-bottom:6px">Faqat ko'rish uchun havola (parolsiz — kimga bersangiz, akt sverkani ko'radi, o'zgartira olmaydi)</div>
-      <div class="havola"><input id="havola" readonly><button class="oddiy" id="nusxa" type="button">Nusxalash</button></div>
-    </div>
+    <section class="glass">
+      <label>Faqat ko'rish uchun havola — kimga bersangiz, qarzlarni ko'radi va ✓ qo'ya oladi
+        <span class="havola"><input id="havola" readonly><button class="btn btn-ghost btn-kichik" id="nusxa" type="button">Nusxalash</button></span>
+      </label>
+    </section>
 
-    <h2>Oxirgi qarzlar</h2>
-    <div class="card" id="royxat"><div class="holat">Yuklanmoqda…</div></div>
+    <section class="glass filtr">
+      <input id="qidir" type="search" placeholder="Ism yoki izoh bo'yicha qidirish" aria-label="Qidirish">
+      <div class="qator" id="holat">
+        <button class="chip faol" data-h="qolgan">Qaytarilmagan</button>
+        <button class="chip" data-h="qaytgan">Qaytarilgan</button>
+        <button class="chip" data-h="hammasi">Hammasi</button>
+        <span class="natija" id="natija"></span>
+      </div>
+    </section>
+
+    <section class="glass royxat" id="royxat"><div class="bosh-holat">Yuklanmoqda…</div></section>
   </div>
-  <div id="kirish" class="card" hidden>
-    Bu sahifa uchun avval YesPOS saytiga kiring (Telegram kodi bilan).
-    <p><a id="kirishHavola" style="color:#b9a8ff">YesPOS saytiga kirish →</a></p>
-  </div>
+
+  <section class="glass" id="kirish" hidden>
+    <p>Bu sahifa uchun avval YesPOS saytiga kiring (Telegram kodi bilan).</p>
+    <a class="btn btn-primary" id="kirishHavola">YesPOS saytiga kirish →</a>
+  </section>
 </main>
 <script>
 const $ = s => document.querySelector(s);
 const pul = v => Math.round(Number(v) || 0).toLocaleString('ru-RU').replace(/,/g, ' ');
-const sana = s => new Date(s).toLocaleString('ru-RU', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
+const kunMatn = s => new Date(s).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: 'numeric'});
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const bugun = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
-let turlar = [], qatorlar = [];
 const asosiy = location.pathname.replace(/\/qarz-yozish\/?$/, '') || '/';
+let turlar = [], qarzlar = [], holat = 'qolgan';
 
 async function api(path, opts) {
   const r = await fetch(path, {credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, ...opts});
@@ -94,20 +86,31 @@ async function api(path, opts) {
   return d;
 }
 
+function chiz() {
+  const q = $('#qidir').value.trim().toLowerCase();
+  const rows = qarzlar.filter(x =>
+    (holat === 'hammasi' || (holat === 'qaytgan') === !!x.qaytdi) && (!q || (x.izoh || '').toLowerCase().includes(q)));
+  $('#natija').textContent = rows.length ? `${rows.length} ta · ${pul(rows.reduce((t, x) => t + x.debit, 0))} so'm` : '';
+  $('#royxat').innerHTML = rows.length ? `<div class="yozuv sarlavha"><span>✓</span><span>Sana</span><span style="text-align:right">Qarz</span><span>Izoh</span><span></span></div>` +
+    [...rows].reverse().map(x => `<div class="yozuv ${x.qaytdi ? 'qaytdi' : ''}" data-id="${x.id}">
+      <span class="belgi">${x.id ? `<input type="checkbox" ${x.qaytdi ? 'checked' : ''} aria-label="Qaytardi">` : ''}</span>
+      <span class="sana">${kunMatn(x.date)}</span>
+      <span class="summa">${pul(x.debit)}</span>
+      <span class="izoh">${esc(x.izoh)}</span>
+      <span class="amallar">${x.id ? `<button type="button" class="btn btn-ghost btn-kichik" data-a="tahrir">✏️</button><button type="button" class="btn btn-ghost btn-kichik" data-a="ochir" title="YesPOS'dan o'chirish">🗑</button>` : ''}</span>
+    </div>`).join('') : '<div class="bosh-holat">Topilmadi</div>';
+}
+
 async function royxat() {
   try {
     const d = await api('/api/qarz/akt');
-    $('#qoldiq').textContent = `${pul(d.closing)} so'm`;
-    $('#qoldiq').className = 'kirim';
-    qatorlar = d.rows.filter(x => x.debit > 0).reverse().slice(0, 30);
-    $('#royxat').innerHTML = qatorlar.length ? qatorlar.map((x, i) => `<div class="qator" data-i="${i}">
-        <small>${sana(x.date)}</small><span></span>
-        <span class="s kirim">${pul(x.debit)}</span>
-        ${x.izoh ? `<span class="izoh">${esc(x.izoh)}</span>` : ''}
-        ${x.id ? `<div class="amal"><button type="button" data-a="tahrir">✏️ Tahrirlash</button><button type="button" class="ochir" data-a="ochir">✅ Qaytardi (o'chirish)</button></div>` : ''}</div>`).join('')
-      : '<div class="holat">Hali qarz yo\'q</div>';
+    qarzlar = d.rows.filter(x => x.debit > 0);
+    const qaytgan = qarzlar.filter(x => x.qaytdi);
+    $('#qolgan').textContent = `${pul(d.qolgan)} so'm`;
+    $('#qaytgan').textContent = qaytgan.length ? `Qaytarilgan: ${qaytgan.length} ta, ${pul(qaytgan.reduce((t, x) => t + x.debit, 0))} so'm` : '';
+    chiz();
   } catch (e) {
-    if (e.message !== 'auth') $('#royxat').innerHTML = `<div class="holat">⚠️ ${esc(e.message)}</div>`;
+    if (e.message !== 'auth') $('#royxat').innerHTML = `<div class="bosh-holat xato">⚠️ ${esc(e.message)}</div>`;
   }
 }
 
@@ -116,11 +119,11 @@ async function boshla() {
   try {
     const d = await api('/api/qarz/info');
     $('#ichki').hidden = false;
-    $('#nom').textContent = d.kontragent;
+    $('#nom').textContent = `${d.kontragent} — qarz yozish`;
     document.title = `${d.kontragent} — qarz yozish`;
     $('#havola').value = d.korish;
     turlar = d.turlar;
-    $('#tur').innerHTML = d.turlar.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+    $('#tur').innerHTML = d.turlar.map(t => `<option value="${t.id}" ${/долг|qarz/i.test(t.name) ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
     $('#sana').value = $('#sana').max = bugun();
     royxat();
   } catch (e) {
@@ -128,20 +131,23 @@ async function boshla() {
   }
 }
 
-$('#summa').oninput = e => {
-  const raqam = e.target.value.replace(/\D/g, '');
-  e.target.value = raqam ? Number(raqam).toLocaleString('ru-RU').replace(/,/g, ' ') : '';
-};
+$('#summa').oninput = e => { const r = e.target.value.replace(/\D/g, ''); e.target.value = r ? pul(r) : ''; };
 $('#nusxa').onclick = async () => {
   try { await navigator.clipboard.writeText($('#havola').value); $('#nusxa').textContent = 'Nusxalandi ✓'; }
   catch { $('#havola').select(); }
 };
+$('#qidir').oninput = chiz;
+document.querySelectorAll('#holat .chip').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#holat .chip').forEach(x => x.classList.toggle('faol', x === b));
+  holat = b.dataset.h; chiz();
+});
+
 $('#forma').onsubmit = async e => {
   e.preventDefault();
   const summa = Number($('#summa').value.replace(/\D/g, ''));
   if (!summa) return;
   const tur = $('#tur').selectedOptions[0];
-  if (!confirm(`${pul(summa)} so'm (${tur.textContent}) to'lov YesPOS'ga yozilsinmi?`)) return;
+  if (!confirm(`${pul(summa)} so'm qarz (${tur.textContent}) YesPOS'ga yozilsinmi?`)) return;
   $('#btn').disabled = true; $('#xabar').textContent = '';
   try {
     await api('/api/qarz/tolov', {method: 'POST', body: JSON.stringify({summa, tur: +tur.value, sana: $('#sana').value, izoh: $('#izoh').value})});
@@ -154,26 +160,36 @@ $('#forma').onsubmit = async e => {
     $('#btn').disabled = false;
   }
 };
-// ro'yxatdagi to'lovni tahrirlash / o'chirish (faqat to'lovlar — kirim hujjatlari YesPOS'ning o'zida)
+
+// ✓ — qaytardi; ✏️ — summa, tur, izoh; 🗑 — YesPOS'dan butunlay o'chirish
+$('#royxat').onchange = async e => {
+  const c = e.target.closest('input[type=checkbox]');
+  const q = e.target.closest('.yozuv');
+  if (!c || !q) return;
+  const x = qarzlar.find(r => String(r.id) === q.dataset.id);
+  c.disabled = true;
+  try {
+    await api('/api/qarz/belgi', {method: 'POST', body: JSON.stringify({id: x.id, qaytdi: c.checked, sana: x.yp || x.date})});
+    royxat();
+  } catch (err) { if (err.message !== 'auth') { c.checked = !c.checked; c.disabled = false; alert(err.message); } }
+};
 $('#royxat').onclick = async e => {
   const b = e.target.closest('button');
-  const q = e.target.closest('.qator');
+  const q = e.target.closest('.yozuv');
   if (!b || !q) return;
-  const x = qatorlar[+q.dataset.i];
+  const x = qarzlar.find(r => String(r.id) === q.dataset.id);
   if (b.dataset.a === 'ochir') {
-    if (!confirm(`${pul(x.debit)} so'm qarz qaytarildimi? Yozuv YesPOS'dan o'chiriladi.`)) return;
+    if (!confirm(`${pul(x.debit)} so'm qarz YesPOS'dan butunlay o'chirilsinmi? (Qaytgan bo'lsa, ✓ qo'yish kifoya.)`)) return;
     b.disabled = true;
-    try {
-      await api(`/api/qarz/tolov/${x.id}?sana=${encodeURIComponent(x.yp || x.date)}`, {method: 'DELETE'});
-      royxat();
-    } catch (err) { if (err.message !== 'auth') { alert(err.message); b.disabled = false; } }
+    try { await api(`/api/qarz/tolov/${x.id}?sana=${encodeURIComponent(x.yp || x.date)}`, {method: 'DELETE'}); royxat(); }
+    catch (err) { if (err.message !== 'auth') { alert(err.message); b.disabled = false; } }
   } else if (b.dataset.a === 'tahrir') {
     if (q.querySelector('.tahrir')) return;
     q.insertAdjacentHTML('beforeend', `<div class="tahrir">
       <input class="t-summa" inputmode="numeric" value="${pul(x.debit)}" aria-label="Summa">
       <select class="t-tur" aria-label="To'lov turi">${turlar.map(t => `<option value="${t.id}" ${t.id === x.tur ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
       <textarea class="t-izoh" maxlength="300" placeholder="Izoh" aria-label="Izoh">${esc(x.izoh)}</textarea>
-      <div class="tugmalar"><button type="button" class="oddiy" data-a="bekor">Bekor</button><button type="button" data-a="saqla">Saqlash</button></div></div>`);
+      <div class="tugmalar"><button type="button" class="btn btn-ghost btn-kichik" data-a="bekor">Bekor</button><button type="button" class="btn btn-primary btn-kichik" data-a="saqla">Saqlash</button></div></div>`);
     q.querySelector('.t-summa').oninput = ev => { const r = ev.target.value.replace(/\D/g, ''); ev.target.value = r ? pul(r) : ''; };
   } else if (b.dataset.a === 'bekor') {
     q.querySelector('.tahrir').remove();

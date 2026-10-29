@@ -1,0 +1,50 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-10-28T12:27:06.416Z",
+        "reason": "Claude decided: yespos-bot/web/index.html (existing YesPOS dashboard) already uses Inter; the Qarz pages match it"
+      },
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "yespos-bot/web/qarz.css"
+        ],
+        "createdAt": "2026-10-29T12:58:10.734Z",
+        "reason": "Claude decided: the user asked these pages to look like the Instagram Cloud dashboard, whose logo uses the same .gradient-text (src/app/globals.css)"
+      },
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "yespos-bot/web/qarz.html"
+        ],
+        "createdAt": "2026-10-29T12:58:49.762Z",
+        "reason": "Claude decided: brand logo 'instagramcloud' copied from the Instagram Cloud dashboard the user asked to match"
+      },
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "yespos-bot/web/qarz_yozish.html"
+        ],
+        "createdAt": "2026-10-29T12:59:40.936Z",
+        "reason": "Claude decided: brand logo copied from the Instagram Cloud dashboard the user asked to match"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "yespos-bot/web/qarz_yozish.html"
+        ],
+        "createdAt": "2026-10-29T12:59:41.156Z",
+        "reason": "Claude decided: the soft blue card/button shadows are the Instagram Cloud dashboard's own --shadow on a light background, which the user asked to match"
+      }
+    ]
+  }
+}

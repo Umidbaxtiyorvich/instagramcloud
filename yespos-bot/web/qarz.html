@@ -5,89 +5,108 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Qarzlar</title>
-<style>
-:root{--bg:#0b0a16;--card:rgba(255,255,255,.045);--line:rgba(255,255,255,.09);--text:#ecebf7;--muted:#9a97b8;
-  --red:#f87171;--gold:#f5c451}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-main{max-width:900px;margin:0 auto;padding:20px 16px 40px}
-h1{font-size:20px;margin:0 0 2px}
-.sub{color:var(--muted);font-size:13px}
-.top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:16px}
-.jami{text-align:right}
-.jami small{color:var(--muted)}
-.jami b{display:block;font-size:28px;color:var(--red);font-variant-numeric:tabular-nums}
-.davr{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
-.davr button,.davr input{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:7px 11px;font:inherit}
-.davr button{cursor:pointer}
-.davr button.faol{background:#5b3fd9;border-color:#5b3fd9;color:#fff}
-.davr span{color:var(--muted);font-size:13px;margin-left:auto}
-table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
-th,td{padding:9px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
-th{color:var(--muted);font-weight:600;font-size:12px}
-td.s{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--red)}
-.izoh{color:var(--gold)}
-.holat{color:var(--muted);padding:30px 0;text-align:center}
-@media (max-width:640px){
-  thead{display:none}
-  table,tbody,tr,td{display:block;width:100%}
-  tr{border-bottom:1px solid var(--line);padding:8px 4px}
-  td{border:0;padding:2px 8px}
-  td.s{text-align:left}
-  td[data-n]::before{content:attr(data-n) ": ";color:var(--muted)}
-}
-</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/qarz.css">
 </head>
 <body>
 <main>
-  <div class="top">
-    <div><h1 id="nom">Qarz</h1><div class="sub">Qarzlar ro'yxati · faqat ko'rish uchun</div></div>
-    <div class="jami"><small>Jami qarz</small><b id="jami">—</b></div>
-  </div>
-  <div class="davr">
-    <button data-d="hammasi" class="faol">Hammasi</button>
-    <button data-d="oy">Bu oy</button>
-    <button data-d="otgan">O'tgan oy</button>
-    <button data-d="yil">Bu yil</button>
-    <input type="date" id="dan" aria-label="Boshlanish sanasi"> <input type="date" id="gacha" aria-label="Tugash sanasi">
-    <span id="soni"></span>
-  </div>
-  <div id="joy"><div class="holat">Yuklanmoqda…</div></div>
+  <section class="glass bosh">
+    <div>
+      <div class="display" style="font-size:15px">instagram<span class="gradient-text">cloud</span> · YesPOS</div>
+      <h1 class="display" id="nom">Qarz</h1>
+      <p class="muted">Qarzlar ro'yxati · qarz qaytsa, oldidagi katakka ✓ qo'ying</p>
+    </div>
+    <div class="jami"><small>Qolgan qarz</small><b id="qolgan">—</b><span id="qaytgan"></span></div>
+  </section>
+
+  <section class="glass filtr">
+    <input id="qidir" type="search" placeholder="Ism yoki izoh bo'yicha qidirish — masalan: baxtiyor, klint, soyabon" aria-label="Qidirish">
+    <div class="qator" id="holat">
+      <button class="chip faol" data-h="qolgan">Qaytarilmagan</button>
+      <button class="chip" data-h="qaytgan">Qaytarilgan</button>
+      <button class="chip" data-h="hammasi">Hammasi</button>
+    </div>
+    <div class="qator" id="davr">
+      <button class="chip faol" data-d="hammasi">Butun davr</button>
+      <button class="chip" data-d="oy">Bu oy</button>
+      <button class="chip" data-d="otgan">O'tgan oy</button>
+      <button class="chip" data-d="yil">Bu yil</button>
+      <input type="date" id="dan" aria-label="Boshlanish sanasi"> <input type="date" id="gacha" aria-label="Tugash sanasi">
+      <span class="natija" id="natija"></span>
+    </div>
+  </section>
+
+  <section class="glass royxat" id="joy"><div class="bosh-holat">Yuklanmoqda…</div></section>
 </main>
 <script>
-// YesPOS'da har bir «Оплата» — berilgan qarz; qarz qaytsa yozuv o'chiriladi. Kirim yozilmaydi.
+// YesPOS'da har bir «Оплата» — berilgan qarz. Qaytsa — ✓ (yozuv o'chmaydi, sariq bo'ladi va qolgan qarzga kirmaydi).
 const $ = s => document.querySelector(s);
 const pul = v => Math.round(Number(v) || 0).toLocaleString('ru-RU').replace(/,/g, ' ');
-const sana = s => new Date(s).toLocaleString('ru-RU', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
+const kunMatn = s => new Date(s).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: 'numeric'});
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const kun = d => new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+const asos = location.pathname.replace(/\/$/, '');
+let qarzlar = [], holat = 'qolgan';
+
+function chiz() {
+  const q = $('#qidir').value.trim().toLowerCase();
+  const rows = qarzlar.filter(x =>
+    (holat === 'hammasi' || (holat === 'qaytgan') === !!x.qaytdi) && (!q || (x.izoh || '').toLowerCase().includes(q)));
+  const jami = rows.reduce((t, x) => t + x.debit, 0);
+  $('#natija').textContent = rows.length ? `${rows.length} ta · ${pul(jami)} so'm` : '';
+  if (!rows.length) { $('#joy').innerHTML = '<div class="bosh-holat">Topilmadi</div>'; return; }
+  $('#joy').innerHTML = `<div class="yozuv sarlavha"><span>✓</span><span>Sana</span><span style="text-align:right">Qarz</span><span>Izoh</span><span></span></div>` +
+    [...rows].reverse().map(x => `<div class="yozuv ${x.qaytdi ? 'qaytdi' : ''}">
+      <span class="belgi">${x.id ? `<input type="checkbox" data-id="${x.id}" ${x.qaytdi ? 'checked' : ''} aria-label="Qaytardi">` : ''}</span>
+      <span class="sana">${kunMatn(x.date)}</span>
+      <span class="summa">${pul(x.debit)}</span>
+      <span class="izoh">${esc(x.izoh)}</span><span></span></div>`).join('');
+}
 
 async function yukla(dan, gacha) {
-  $('#joy').innerHTML = '<div class="holat">Yuklanmoqda…</div>';
-  const q = dan ? `?from=${dan}&to=${gacha}` : '';
+  $('#joy').innerHTML = '<div class="bosh-holat">Yuklanmoqda…</div>';
   try {
-    const r = await fetch(location.pathname.replace(/\/$/, '') + '/akt' + q);
+    const r = await fetch(asos + '/akt' + (dan ? `?from=${dan}&to=${gacha}` : ''));
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'Xato');
     $('#nom').textContent = d.kontragent;
     document.title = `${d.kontragent} — qarzlar`;
-    const rows = d.rows.filter(x => x.debit > 0);
-    // tepada — hozirgi umumiy qarz: faqat «Hammasi» yuklanganda yangilanadi (davr filtri unga ta'sir qilmaydi)
-    if (!dan) $('#jami').textContent = `${pul(d.closing)} so'm`;
-    $('#soni').textContent = rows.length ? `${rows.length} ta qarz, ${pul(d.debit)} so'm` : '';
-    if (!rows.length) { $('#joy').innerHTML = '<div class="holat">Bu davrda qarz yo\'q</div>'; return; }
-    $('#joy').innerHTML = `<table><thead><tr><th>Sana</th><th>Qarz</th><th>Izoh</th></tr></thead><tbody>${
-      [...rows].reverse().map(x => `<tr>
-        <td data-n="Sana">${sana(x.date)}</td>
-        <td class="s" data-n="Qarz">${pul(x.debit)}</td>
-        <td class="izoh" data-n="Izoh">${esc(x.izoh)}</td></tr>`).join('')}</tbody></table>`;
+    qarzlar = d.rows.filter(x => x.debit > 0);
+    if (!dan) { // tepadagi jami — butun tarix bo'yicha
+      const qaytgan = qarzlar.filter(x => x.qaytdi);
+      $('#qolgan').textContent = `${pul(d.qolgan)} so'm`;
+      $('#qaytgan').textContent = qaytgan.length ? `Qaytarilgan: ${qaytgan.length} ta, ${pul(qaytgan.reduce((t, x) => t + x.debit, 0))} so'm` : '';
+    }
+    chiz();
   } catch (e) {
-    $('#joy').innerHTML = `<div class="holat">⚠️ ${esc(e.message)}</div>`;
+    $('#joy').innerHTML = `<div class="bosh-holat xato">⚠️ ${esc(e.message)}</div>`;
   }
 }
 
-document.querySelectorAll('.davr button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('.davr button').forEach(x => x.classList.toggle('faol', x === b));
+$('#joy').onchange = async e => {
+  const c = e.target.closest('input[type=checkbox]');
+  if (!c) return;
+  const x = qarzlar.find(q => String(q.id) === c.dataset.id);
+  c.disabled = true;
+  try {
+    const r = await fetch(asos + '/belgi', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: x.id, qaytdi: c.checked, sana: x.yp || x.date})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Xato');
+    x.qaytdi = c.checked ? new Date().toISOString() : null;
+    const dan = $('#dan').value, gacha = $('#gacha').value;
+    dan && gacha ? (chiz(), yukla()) : yukla(); // tepadagi jamini ham yangilaymiz
+  } catch (err) {
+    c.checked = !c.checked; c.disabled = false; alert(err.message);
+  }
+};
+$('#qidir').oninput = chiz;
+document.querySelectorAll('#holat .chip').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#holat .chip').forEach(x => x.classList.toggle('faol', x === b));
+  holat = b.dataset.h; chiz();
+});
+document.querySelectorAll('#davr .chip').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#davr .chip').forEach(x => x.classList.toggle('faol', x === b));
   const t = new Date(), y = t.getFullYear(), m = t.getMonth();
   const d = {oy: [new Date(y, m, 1), t], otgan: [new Date(y, m - 1, 1), new Date(y, m, 0)], yil: [new Date(y, 0, 1), t]}[b.dataset.d];
   $('#dan').value = d ? kun(d[0]) : ''; $('#gacha').value = d ? kun(d[1]) : '';
@@ -95,7 +114,7 @@ document.querySelectorAll('.davr button').forEach(b => b.onclick = () => {
 });
 ['#dan', '#gacha'].forEach(s => $(s).onchange = () => {
   if (!$('#dan').value || !$('#gacha').value) return;
-  document.querySelectorAll('.davr button').forEach(x => x.classList.remove('faol'));
+  document.querySelectorAll('#davr .chip').forEach(x => x.classList.remove('faol'));
   yukla($('#dan').value, $('#gacha').value);
 });
 yukla();
