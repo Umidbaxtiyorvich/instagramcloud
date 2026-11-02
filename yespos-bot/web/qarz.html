@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Qarzlar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/qarz.css">
+</head>
+<body>
+<main>
+  <section class="glass bosh">
+    <div>
+      <div class="display" style="font-size:15px">instagram<span class="gradient-text">cloud</span> · YesPOS</div>
+      <h1 class="display" id="nom">Qarz</h1>
+      <p class="muted">Qarzlar ro'yxati · qarz qaytsa, oldidagi katakka ✓ qo'ying</p>
+    </div>
+    <div class="jami"><small>Qolgan qarz</small><b id="qolgan">—</b><span id="qaytgan"></span></div>
+  </section>
+
+  <section class="glass filtr">
+    <input id="qidir" type="search" placeholder="Ism yoki izoh bo'yicha qidirish — masalan: baxtiyor, klint, soyabon" aria-label="Qidirish">
+    <div class="qator" id="holat">
+      <button class="chip faol" data-h="qolgan">Qaytarilmagan</button>
+      <button class="chip" data-h="qaytgan">Qaytarilgan</button>
+      <button class="chip" data-h="hammasi">Hammasi</button>
+    </div>
+    <div class="qator" id="davr">
+      <button class="chip faol" data-d="hammasi">Butun davr</button>
+      <button class="chip" data-d="oy">Bu oy</button>
+      <button class="chip" data-d="otgan">O'tgan oy</button>
+      <button class="chip" data-d="yil">Bu yil</button>
+      <input type="date" id="dan" aria-label="Boshlanish sanasi"> <input type="date" id="gacha" aria-label="Tugash sanasi">
+      <span class="natija" id="natija"></span>
+    </div>
+  </section>
+
+  <section class="glass royxat" id="joy"><div class="bosh-holat">Yuklanmoqda…</div></section>
+</main>
+<script>
+// YesPOS'da har bir «Оплата» — berilgan qarz. Qaytsa — ✓ (yozuv o'chmaydi, sariq bo'ladi va qolgan qarzga kirmaydi).
+const $ = s => document.querySelector(s);
+const pul = v => Math.round(Number(v) || 0).toLocaleString('ru-RU').replace(/,/g, ' ');
+const kunMatn = s => new Date(s).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: 'numeric'});
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const kun = d => new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+const asos = location.pathname.replace(/\/$/, '');
+let qarzlar = [], holat = 'qolgan';
+
+function chiz() {
+  const q = $('#qidir').value.trim().toLowerCase();
+  const rows = qarzlar.filter(x =>
+    (holat === 'hammasi' || (holat === 'qaytgan') === !!x.qaytdi) && (!q || (x.izoh || '').toLowerCase().includes(q)));
+  const jami = rows.reduce((t, x) => t + x.debit, 0);
+  $('#natija').textContent = rows.length ? `${rows.length} ta · ${pul(jami)} so'm` : '';
+  if (!rows.length) { $('#joy').innerHTML = '<div class="bosh-holat">Topilmadi</div>'; return; }
+  $('#joy').innerHTML = `<div class="yozuv sarlavha"><span>✓</span><span>Sana</span><span style="text-align:right">Qarz</span><span>Izoh</span><span></span></div>` +
+    [...rows].reverse().map(x => `<div class="yozuv ${x.qaytdi ? 'qaytdi' : ''}">
+      <span class="belgi">${x.id ? `<input type="checkbox" data-id="${x.id}" ${x.qaytdi ? 'checked' : ''} aria-label="Qaytardi">` : ''}</span>
+      <span class="sana">${kunMatn(x.date)}</span>
+      <span class="summa">${pul(x.debit)}</span>
+      <span class="izoh">${esc(x.izoh)}</span><span></span></div>`).join('');
+}
+
+async function yukla(dan, gacha) {
+  $('#joy').innerHTML = '<div class="bosh-holat">Yuklanmoqda…</div>';
+  try {
+    const r = await fetch(asos + '/akt' + (dan ? `?from=${dan}&to=${gacha}` : ''));
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Xato');
+    $('#nom').textContent = d.kontragent;
+    document.title = `${d.kontragent} — qarzlar`;
+    qarzlar = d.rows.filter(x => x.debit > 0);
+    if (!dan) { // tepadagi jami — butun tarix bo'yicha
+      const qaytgan = qarzlar.filter(x => x.qaytdi);
+      $('#qolgan').textContent = `${pul(d.qolgan)} so'm`;
+      $('#qaytgan').textContent = qaytgan.length ? `Qaytarilgan: ${qaytgan.length} ta, ${pul(qaytgan.reduce((t, x) => t + x.debit, 0))} so'm` : '';
+    }
+    chiz();
+  } catch (e) {
+    $('#joy').innerHTML = `<div class="bosh-holat xato">⚠️ ${esc(e.message)}</div>`;
+  }
+}
+
+$('#joy').onchange = async e => {
+  const c = e.target.closest('input[type=checkbox]');
+  if (!c) return;
+  const x = qarzlar.find(q => String(q.id) === c.dataset.id);
+  c.disabled = true;
+  try {
+    const r = await fetch(asos + '/belgi', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: x.id, qaytdi: c.checked, sana: x.yp || x.date})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Xato');
+    x.qaytdi = c.checked ? new Date().toISOString() : null;
+    const dan = $('#dan').value, gacha = $('#gacha').value;
+    dan && gacha ? (chiz(), yukla()) : yukla(); // tepadagi jamini ham yangilaymiz
+  } catch (err) {
+    c.checked = !c.checked; c.disabled = false; alert(err.message);
+  }
+};
+$('#qidir').oninput = chiz;
+document.querySelectorAll('#holat .chip').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#holat .chip').forEach(x => x.classList.toggle('faol', x === b));
+  holat = b.dataset.h; chiz();
+});
+document.querySelectorAll('#davr .chip').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#davr .chip').forEach(x => x.classList.toggle('faol', x === b));
+  const t = new Date(), y = t.getFullYear(), m = t.getMonth();
+  const d = {oy: [new Date(y, m, 1), t], otgan: [new Date(y, m - 1, 1), new Date(y, m, 0)], yil: [new Date(y, 0, 1), t]}[b.dataset.d];
+  $('#dan').value = d ? kun(d[0]) : ''; $('#gacha').value = d ? kun(d[1]) : '';
+  d ? yukla(kun(d[0]), kun(d[1])) : yukla();
+});
+['#dan', '#gacha'].forEach(s => $(s).onchange = () => {
+  if (!$('#dan').value || !$('#gacha').value) return;
+  document.querySelectorAll('#davr .chip').forEach(x => x.classList.remove('faol'));
+  yukla($('#dan').value, $('#gacha').value);
+});
+yukla();
+</script>
+</body>
+</html>

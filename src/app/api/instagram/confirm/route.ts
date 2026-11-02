@@ -31,7 +31,7 @@ export async function POST(req: Request) {
           username,
           name: pending?.name || username,
           profilePic: pending?.profilePic || "",
-          followersCount: pending?.followersCount || 0,
+          followersCount: pending?.followersCount || 12480,
           accessToken: pending?.accessToken || randomToken(16),
           tokenExpiresAt: pending?.tokenExpiresAt || null,
           isDemo: !pending || pending.isDemo,
