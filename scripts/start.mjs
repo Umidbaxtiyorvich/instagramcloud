@@ -61,3 +61,13 @@ next.on("exit", async (kod) => {
   process.exit(kod ?? 1);
 });
 for (const s of ["SIGTERM", "SIGINT"]) process.on(s, () => next.kill(s));
+
+// Render'ning bepul serveri 15 daqiqa tashqi so'rov kelmasa uxlaydi. Sayt o'zining ochiq manziliga
+// har 10 daqiqada murojaat qiladi — so'rov Render'ning chetidan o'tgani uchun «tashqi» hisoblanadi.
+// GitHub'dagi uygoq.yml zaxira bo'lib qoladi (u soatlab kechikadi).
+const ochiq = (process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/+$/, "");
+if (ochiq) {
+  setInterval(() => {
+    fetch(`${ochiq}/login`, { signal: AbortSignal.timeout(60_000) }).catch((e) => console.error("uygoq:", e.message));
+  }, 10 * 60_000);
+}

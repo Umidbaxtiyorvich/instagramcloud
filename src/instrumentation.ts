@@ -14,4 +14,11 @@ export async function register() {
     ]);
   await yukla();
   setInterval(() => void yukla(), 60_000).unref();
+
+  // Miya tekshiruvlari serverning o'zida: tashqi uyg'otuvchilarga (GitHub jadvali soatlab kechikadi,
+  // Railway sinovi tugaydi) bog'liq emas. Birinchisi ishga tushgandan 2 daqiqa keyin.
+  const { miyaTickYubor } = await import("./lib/miya-tick");
+  const tickla = () => miyaTickYubor().catch((e) => console.error("miya tick (ichki):", (e as Error).message));
+  setTimeout(() => void tickla(), 120_000).unref();
+  setInterval(() => void tickla(), 10 * 60_000).unref();
 }
