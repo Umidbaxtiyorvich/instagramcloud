@@ -3,17 +3,15 @@ import { getSessionUser } from "@/lib/auth";
 import { exchangeCode, subscribeWebhooks } from "@/lib/instagram";
 import { clearOauthState, readOauthState } from "@/lib/ig-pending";
 import { saveInstagramAccount } from "@/lib/ig-save";
-
-function appUrl() {
-  return process.env.APP_URL || "http://localhost:3000";
-}
+import { syncIfStale } from "@/lib/ig-data";
+import { baseUrl } from "@/lib/url";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
   const err = url.searchParams.get("error");
   const state = url.searchParams.get("state");
-  const app = appUrl();
+  const app = baseUrl(req);
   if (err || !code) return NextResponse.redirect(`${app}/connect/instagram?ig=denied`);
 
   const user = await getSessionUser();
@@ -32,7 +30,7 @@ export async function GET(req: Request) {
     } catch (e) {
       console.error("webhook subscribe", e);
     }
-    await saveInstagramAccount(user.id, {
+    const saved = await saveInstagramAccount(user.id, {
       igUserId: ig.igUserId,
       username: ig.username,
       name: ig.name,
@@ -42,6 +40,7 @@ export async function GET(req: Request) {
       tokenExpiresAt: ig.tokenExpiresAt ? ig.tokenExpiresAt.toISOString() : null,
       isDemo: false,
     });
+    await syncIfStale(saved);
     return NextResponse.redirect(`${app}/dashboard?ig=ok`);
   } catch (e) {
     console.error(e);

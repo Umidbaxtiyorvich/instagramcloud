@@ -1,5 +1,6 @@
 import { prisma } from "./db";
-import { hideComment, replyToComment, sendDm, sendPrivateReply, tokenOf } from "./instagram";
+import { replyToComment, sendDm, sendPrivateReply } from "./instagram";
+import { freshToken } from "./ig-data";
 
 type IncomingComment = {
   accountId: string;
@@ -58,6 +59,8 @@ async function optedOut(accountId: string, igUserId: string) {
 export async function handleComment(evt: IncomingComment) {
   const account = await prisma.instagramAccount.findUnique({ where: { id: evt.accountId } });
   if (!account || !account.commentRepliesOn) return;
+  // Our own public replies come back as comment webhooks; answering them would loop forever.
+  if (evt.fromId === account.igUserId || evt.username.toLowerCase() === account.username.toLowerCase()) return;
   if (await optedOut(account.id, evt.fromId)) return;
 
   const rules = await prisma.autoRule.findMany({
@@ -105,7 +108,7 @@ export async function handleComment(evt: IncomingComment) {
     return { demo: true, publicText, dm: hit.dmMessage };
   }
 
-  const token = tokenOf(account.accessTokenEnc);
+  const token = await freshToken(account);
   try {
     await sendPrivateReply(account.igUserId, token, evt.commentId, hit.dmMessage);
   } catch (e) {
@@ -198,7 +201,7 @@ export async function handleDm(evt: IncomingDm) {
     await prisma.activityLog.create({
       data: {
         accountId: account.id,
-        kind: "dm_reply",
+        kind: "dm_auto_reply",
         direction: "out",
         username: evt.username,
         igUserId: evt.fromId,
@@ -209,7 +212,7 @@ export async function handleDm(evt: IncomingDm) {
     return { demo: true, reply };
   }
 
-  const token = tokenOf(account.accessTokenEnc);
+  const token = await freshToken(account);
   try {
     await sendDm(account.igUserId, token, evt.fromId, reply);
   } catch (e) {
@@ -223,7 +226,7 @@ export async function handleDm(evt: IncomingDm) {
   await prisma.activityLog.create({
     data: {
       accountId: account.id,
-      kind: "dm_reply",
+      kind: "dm_auto_reply",
       direction: "out",
       username: evt.username,
       igUserId: evt.fromId,

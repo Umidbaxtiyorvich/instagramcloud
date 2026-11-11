@@ -2,6 +2,12 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { safeNext } from "@/lib/url";
+
+// where to go after signing in, e.g. back to the Claude consent screen
+function readNext() {
+  return safeNext(new URLSearchParams(window.location.search).get("next"));
+}
 
 export default function LoginPage() {
   const [error, setError] = useState("");
@@ -23,16 +29,16 @@ export default function LoginPage() {
       setError(json.error || "Xato");
       return;
     }
-    window.location.href = "/dashboard";
+    window.location.href = readNext();
   }
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
       <Link href="/" className="display mb-8 text-2xl">
-        instagram<span className="text-[var(--pink)]">cloud</span>
+        instagram<span className="gradient-text">cloud</span>
       </Link>
       <h1 className="display text-4xl">Kirish</h1>
-      <form onSubmit={onSubmit} className="mt-8 space-y-4">
+      <form onSubmit={onSubmit} className="glass rise mt-8 space-y-4 rounded-3xl p-7">
         <input name="email" type="email" required placeholder="Email" />
         <input name="password" type="password" required placeholder="Parol" />
         {error && <p className="text-sm text-[var(--pink)]">{error}</p>}
@@ -41,7 +47,15 @@ export default function LoginPage() {
         </button>
       </form>
       <p className="mt-4 text-sm text-[var(--muted)]">
-        Akkaunt yo&apos;qmi? <Link href="/register">Ro&apos;yxatdan o&apos;tish</Link>
+        Akkaunt yo&apos;qmi? <Link
+          href="/register"
+          onClick={(e) => {
+            const next = readNext();
+            if (next === "/dashboard") return;
+            e.preventDefault();
+            window.location.href = `/register?next=${encodeURIComponent(next)}`;
+          }}
+        >Ro&apos;yxatdan o&apos;tish</Link>
       </p>
     </main>
   );

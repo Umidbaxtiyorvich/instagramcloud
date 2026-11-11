@@ -1,0 +1,5 @@
+aiogram>=3.22
+python-dotenv>=1.0
+anthropic>=1.13
+google-genai>=1.30
+openpyxl>=3.1

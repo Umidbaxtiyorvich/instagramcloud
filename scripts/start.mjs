@@ -1,0 +1,103 @@
+// Saytni ishga tushiradi; yonida:
+// - TG_API_ID bo'lsa — Miya'ning Telegram qo'ng'iroq dasturi (miya-tg);
+// - YP_BOT_TOKEN bo'lsa — YesPOS boti va uning web sayti (/yespos), ma'lumotlari bazada saqlanadi;
+// - TOLOV_ENV yoki TL_BOT_TOKEN bo'lsa — to'lov boti (/tolov), cheklari bazada saqlanadi.
+// Yonidagi dastur tushib qolsa — qayta ishga tushadi; sayt ularga bog'liq emas.
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { kuzat, qaytar } from "./fayl-saqla.mjs";
+
+const YESPOS_PORT = "8791";
+const TOLOV_PORT = "8792";
+
+// nice > 0: past ustuvorlik — bepul serverning 0.1 CPU'sini sayt bilan talashmasin
+function yonida(nom, python, args, env, urinish = 0, nice = 0) {
+  const p = nice
+    ? spawn("nice", ["-n", String(nice), python, "-u", ...args], { stdio: "inherit", env })
+    : spawn(python, ["-u", ...args], { stdio: "inherit", env });
+  const boshlandi = Date.now();
+  p.on("exit", (kod) => {
+    // tez-tez yiqilsa — kutish uzayadi (5 daqiqagacha)
+    const keyingi = Date.now() - boshlandi > 120_000 ? 0 : urinish + 1;
+    const kut = Math.min(300_000, 5_000 * 2 ** keyingi);
+    console.error(`${nom}: to'xtadi (${kod}), ${Math.round(kut / 1000)} soniyadan keyin qayta`);
+    setTimeout(() => yonida(nom, python, args, env, keyingi, nice), kut);
+  });
+}
+
+if (process.env.TG_API_ID && process.env.TG_API_HASH) {
+  if (existsSync(".tgv/bin/python")) yonida("miya-tg", ".tgv/bin/python", ["miya-tg/miya_tg.py"], process.env);
+  else console.error("miya-tg: .tgv o'rnatilmagan — build loglarida «miya-tg» ni ko'ring");
+}
+
+// .env matni (Railway → Variables → Raw Editor'dan bir martada nusxalanadi) → { KALIT: qiymat }
+function envMatn(matn = "") {
+  const r = {};
+  for (const q of matn.split(/\r?\n/)) {
+    const m = q.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!m || m[1].startsWith("RAILWAY_") || m[1] === "PORT") continue;
+    r[m[1]] = m[2].trim().replace(/^(["'])(.*)\1$/, "$2");
+  }
+  return r;
+}
+
+// YesPOS boti: sozlamalari YESPOS_ENV da (.env matni) yoki YP_ prefiksli (YP_BOT_TOKEN → BOT_TOKEN)
+let ypSaqla = null;
+if (process.env.YESPOS_ENV || process.env.YP_BOT_TOKEN) {
+  if (existsSync(".ypv/bin/python")) {
+    const env = { RENDER: process.env.RENDER, PATH: process.env.PATH, TZ: "Asia/Tashkent", PYTHONUNBUFFERED: "1" };
+    Object.assign(env, envMatn(process.env.YESPOS_ENV));
+    for (const [k, v] of Object.entries(process.env)) if (k.startsWith("YP_")) env[k.slice(3)] = v;
+    const sayt = (process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/+$/, "");
+    Object.assign(env, { PORT: YESPOS_PORT, WEB_PREFIX: "/yespos", PUBLIC_URL: `${sayt}/yespos` });
+    try {
+      await qaytar("yespos", "yespos-bot/data");
+      ypSaqla = kuzat("yespos", "yespos-bot/data");
+      yonida("yespos-bot", ".ypv/bin/python", ["yespos-bot/bot.py"], env);
+    } catch (e) {
+      console.error("yespos-bot: ma'lumotlar bazadan olinmadi, bot ishga tushmadi —", e.message);
+    }
+  } else console.error("yespos-bot: .ypv o'rnatilmagan — build loglarida «yespos-bot» ni ko'ring");
+}
+
+// To'lov boti (@claudeadminbot_bot, avval Railway'da edi): sozlamalari TOLOV_ENV da (Railway → Variables →
+// Raw Editor matni) yoki TL_ prefiksli (TL_BOT_TOKEN → BOT_TOKEN). Cheklar va rasmlar bazada saqlanadi.
+let tlSaqla = null;
+if (process.env.TOLOV_ENV || process.env.TL_BOT_TOKEN) {
+  if (existsSync(".tlv/bin/python")) {
+    const env = { RENDER: process.env.RENDER, PATH: process.env.PATH, TZ: "Asia/Tashkent", PYTHONUNBUFFERED: "1" };
+    Object.assign(env, envMatn(process.env.TOLOV_ENV));
+    for (const [k, v] of Object.entries(process.env)) if (k.startsWith("TL_")) env[k.slice(3)] = v;
+    const sayt = (process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/+$/, "");
+    Object.assign(env, { PORT: TOLOV_PORT, WEB_PREFIX: "/tolov", PUBLIC_URL: `${sayt}/tolov`, DATA_DIR: "tolov-bot/data" });
+    try {
+      await qaytar("tolov", "tolov-bot/data");
+      tlSaqla = kuzat("tolov", "tolov-bot/data", 30_000, { ochir: true });
+      // sayt to'liq ishga tushib olsin: bir vaqtda uchta Python yuklanishi server qayta ishga tushishiga olib kelardi
+      setTimeout(() => yonida("tolov-bot", ".tlv/bin/python", ["tolov-bot/bot.py"], env, 0, 10), 90_000);
+      // Sayt (src/lib/tolov-bot.ts) cheklar tarixini endi shu serverning o'zidan oladi
+      process.env.TOLOV_BOT_URL = `http://127.0.0.1:${TOLOV_PORT}`;
+      if (env.API_KEY) process.env.TOLOV_BOT_API_KEY = env.API_KEY;
+    } catch (e) {
+      console.error("tolov-bot: ma'lumotlar bazadan olinmadi, bot ishga tushmadi —", e.message);
+    }
+  } else console.error("tolov-bot: .tlv o'rnatilmagan — build loglarida «tolov-bot» ni ko'ring");
+}
+
+const next = spawn("npx", ["next", "start"], { stdio: "inherit", env: process.env });
+next.on("exit", async (kod) => {
+  await ypSaqla?.(); // to'xtashdan oldin oxirgi o'zgarishlar bazaga
+  await tlSaqla?.();
+  process.exit(kod ?? 1);
+});
+for (const s of ["SIGTERM", "SIGINT"]) process.on(s, () => next.kill(s));
+
+// Render'ning bepul serveri 15 daqiqa tashqi so'rov kelmasa uxlaydi. Sayt o'zining ochiq manziliga
+// har 10 daqiqada murojaat qiladi — so'rov Render'ning chetidan o'tgani uchun «tashqi» hisoblanadi.
+// GitHub'dagi uygoq.yml zaxira bo'lib qoladi (u soatlab kechikadi).
+const ochiq = (process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/+$/, "");
+if (ochiq) {
+  setInterval(() => {
+    fetch(`${ochiq}/login`, { signal: AbortSignal.timeout(60_000) }).catch((e) => console.error("uygoq:", e.message));
+  }, 10 * 60_000);
+}

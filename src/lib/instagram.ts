@@ -1,4 +1,6 @@
+import { createHmac, timingSafeEqual } from "crypto";
 import { decryptSecret } from "./crypto";
+import { configuredUrl } from "./url";
 
 const VERSION = process.env.GRAPH_API_VERSION || "v23.0";
 
@@ -34,7 +36,7 @@ function oauthMode(): "facebook" | "instagram" {
 }
 
 function redirectUri() {
-  return process.env.INSTAGRAM_REDIRECT_URI || `${process.env.APP_URL}/api/instagram/callback`;
+  return process.env.INSTAGRAM_REDIRECT_URI?.trim() || `${configuredUrl() || "http://localhost:3000"}/api/instagram/callback`;
 }
 
 export function instagramAuthUrl(state: string) {
@@ -64,6 +66,25 @@ export function instagramAuthUrl(state: string) {
 
 export function instagramAppConfigured() {
   return Boolean(igAppId() && igAppSecret());
+}
+
+export function oauthModeIsInstagram() {
+  return oauthMode() === "instagram";
+}
+
+// Meta signs webhook bodies with the app secret (X-Hub-Signature-256: sha256=<hex>)
+export function webhookSignatureValid(rawBody: string, header: string | null) {
+  // Instagram-login webhooks may be signed with the Instagram app secret or the Meta app secret.
+  const secrets = [process.env.INSTAGRAM_APP_SECRET, process.env.META_APP_SECRET].filter(
+    (s): s is string => Boolean(s)
+  );
+  if (!secrets.length) return true;
+  if (!header?.startsWith("sha256=")) return false;
+  const got = Buffer.from(header.slice(7), "hex");
+  return secrets.some((secret) => {
+    const expected = createHmac("sha256", secret).update(rawBody).digest();
+    return got.length === expected.length && timingSafeEqual(got, expected);
+  });
 }
 
 export function metaConfigured() {
@@ -201,29 +222,134 @@ export async function hideComment(commentId: string, token: string, hide = true)
   return graph(`/${commentId}?hide=${hide}`, token, { method: "POST" });
 }
 
-export async function listMedia(igId: string, token: string) {
-  return graph(
-    `/${igId}/media?fields=id,caption,media_type,media_url,permalink,thumbnail_url,timestamp,like_count,comments_count&limit=25`,
-    token
-  );
+const MEDIA_FIELDS =
+  "id,caption,media_type,media_product_type,media_url,permalink,thumbnail_url,timestamp,like_count,comments_count";
+
+export type IgMedia = {
+  id: string;
+  caption?: string;
+  media_type: string;
+  media_product_type?: string;
+  media_url?: string;
+  permalink?: string;
+  thumbnail_url?: string;
+  timestamp?: string;
+  like_count?: number;
+  comments_count?: number;
+};
+
+export async function listMedia(igId: string, token: string, limit = 25, after?: string) {
+  const params = new URLSearchParams({ fields: MEDIA_FIELDS, limit: String(limit) });
+  if (after) params.set("after", after);
+  return graph(`/${igId}/media?${params}`, token) as Promise<{
+    data: IgMedia[];
+    paging?: { cursors?: { after?: string }; next?: string };
+  }>;
 }
 
-export async function listComments(mediaId: string, token: string) {
-  return graph(`/${mediaId}/comments?fields=id,text,username,timestamp,from&limit=50`, token);
+export async function getMedia(mediaId: string, token: string) {
+  return graph(`/${mediaId}?fields=${MEDIA_FIELDS}`, token) as Promise<IgMedia>;
 }
 
-export async function mediaInsights(mediaId: string, token: string) {
-  return graph(
-    `/${mediaId}/insights?metric=views,reach,saved,shares,total_interactions,ig_reels_avg_watch_time`,
-    token
-  );
+export type IgComment = {
+  id: string;
+  text: string;
+  username?: string;
+  timestamp?: string;
+  like_count?: number;
+  hidden?: boolean;
+  from?: { id: string; username?: string };
+  replies?: { data: IgComment[] };
+};
+
+export async function listComments(mediaId: string, token: string, limit = 50, after?: string) {
+  const params = new URLSearchParams({
+    fields: "id,text,username,timestamp,like_count,hidden,from,replies{id,text,username,timestamp,from}",
+    limit: String(limit),
+  });
+  if (after) params.set("after", after);
+  return graph(`/${mediaId}/comments?${params}`, token) as Promise<{
+    data: IgComment[];
+    paging?: { cursors?: { after?: string } };
+  }>;
 }
 
-export async function accountInsights(igId: string, token: string) {
+export async function deleteComment(commentId: string, token: string) {
+  return graph(`/${commentId}`, token, { method: "DELETE" });
+}
+
+function insightValues(json: { data?: { name: string; values?: { value: number }[]; total_value?: { value: number } }[] }) {
+  const out: Record<string, number> = {};
+  for (const m of json.data || []) {
+    out[m.name] = m.total_value?.value ?? m.values?.[0]?.value ?? 0;
+  }
+  return out;
+}
+
+// Reels have watch-time metrics that feed posts reject, so the metric list depends on the type.
+export async function mediaInsights(media: Pick<IgMedia, "id" | "media_type" | "media_product_type">, token: string) {
+  const isReel = media.media_product_type === "REELS";
+  const isStory = media.media_product_type === "STORY";
+  const metrics = isReel
+    ? "views,reach,saved,shares,likes,comments,total_interactions,ig_reels_avg_watch_time,ig_reels_video_view_total_time"
+    : isStory
+      ? "views,reach,shares,total_interactions,replies,navigation"
+      : "views,reach,saved,shares,likes,comments,total_interactions";
+  return insightValues(await graph(`/${media.id}/insights?metric=${metrics}`, token));
+}
+
+export async function profile(igId: string, token: string) {
   return graph(
-    `/${igId}/insights?metric=reach,follower_count,website_clicks&period=day&metric_type=total_value`,
+    `/${igId}?fields=id,username,name,biography,profile_picture_url,followers_count,follows_count,media_count`,
     token
+  ) as Promise<{
+    id: string;
+    username: string;
+    name?: string;
+    biography?: string;
+    profile_picture_url?: string;
+    followers_count?: number;
+    follows_count?: number;
+    media_count?: number;
+  }>;
+}
+
+// 30-day account totals. Reach is unique accounts over the whole period, not a sum of days.
+export async function accountTotals(igId: string, token: string, since: Date, until: Date) {
+  const params = new URLSearchParams({
+    metric: "reach,views,accounts_engaged,total_interactions,likes,comments,shares,saves,profile_links_taps,follows_and_unfollows",
+    period: "day",
+    metric_type: "total_value",
+    since: String(Math.floor(since.getTime() / 1000)),
+    until: String(Math.floor(until.getTime() / 1000)),
+  });
+  return insightValues(await graph(`/${igId}/insights?${params}`, token));
+}
+
+export async function followerDemographics(igId: string, token: string, breakdown: "age" | "gender" | "country" | "city") {
+  const params = new URLSearchParams({
+    metric: "follower_demographics",
+    period: "lifetime",
+    timeframe: "this_month",
+    metric_type: "total_value",
+    breakdown,
+  });
+  const json = await graph(`/${igId}/insights?${params}`, token);
+  const results =
+    json?.data?.[0]?.total_value?.breakdowns?.[0]?.results as { dimension_values: string[]; value: number }[] | undefined;
+  return (results || [])
+    .map((r) => ({ key: r.dimension_values.join(" "), value: r.value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10);
+}
+
+export async function refreshInstagramToken(token: string) {
+  const res = await fetch(
+    `https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(token)}`
   );
+  const json = await res.json();
+  if (!res.ok || !json.access_token) throw new Error(json?.error?.message || "token refresh failed");
+  return { accessToken: String(json.access_token), expiresIn: Number(json.expires_in || 0) };
 }
 
 export async function subscribeWebhooks(igId: string, token: string) {
@@ -234,14 +360,55 @@ export async function subscribeWebhooks(igId: string, token: string) {
   );
 }
 
-export async function createReelContainer(igId: string, token: string, videoUrl: string, caption: string) {
-  const params = new URLSearchParams({
-    media_type: "REELS",
-    video_url: videoUrl,
-    caption,
-    access_token: token,
-  });
+// location_id is a Facebook place Page id; collaborators are up to 3 usernames who get an invite.
+export type PostExtras = { locationId?: string; collaborators?: string[]; shareToFeed?: boolean };
+
+function extraParams(params: URLSearchParams, extras: PostExtras = {}) {
+  if (extras.locationId) params.set("location_id", extras.locationId);
+  const collaborators = (extras.collaborators || []).map((c) => c.replace(/^@/, "").trim()).filter(Boolean);
+  if (collaborators.length > 3) throw new Error("Hamkorlar (collaborators) 3 tadan ko'p bo'lmasin");
+  if (collaborators.length) params.set("collaborators", JSON.stringify(collaborators));
+  return params;
+}
+
+export async function createReelContainer(igId: string, token: string, videoUrl: string, caption: string, extras: PostExtras = {}) {
+  const params = extraParams(
+    new URLSearchParams({
+      media_type: "REELS",
+      video_url: videoUrl,
+      caption,
+      share_to_feed: String(extras.shareToFeed !== false),
+      access_token: token,
+    }),
+    extras
+  );
   return graph(`/${igId}/media?${params.toString()}`, token, { method: "POST" });
+}
+
+export async function createImageContainer(igId: string, token: string, imageUrl: string, caption: string, extras: PostExtras = {}) {
+  const params = extraParams(new URLSearchParams({ image_url: imageUrl, caption, access_token: token }), extras);
+  return graph(`/${igId}/media?${params.toString()}`, token, { method: "POST" });
+}
+
+// Stories take no caption, location or collaborators through the API.
+export async function createStoryContainer(igId: string, token: string, url: string, isPhoto: boolean) {
+  const params = new URLSearchParams({ media_type: "STORIES", access_token: token });
+  params.set(isPhoto ? "image_url" : "video_url", url);
+  return graph(`/${igId}/media?${params.toString()}`, token, { method: "POST" });
+}
+
+// Video containers are processed asynchronously; publishing before FINISHED fails.
+export async function waitForContainer(containerId: string, token: string, timeoutMs = 120_000) {
+  const until = Date.now() + timeoutMs;
+  while (Date.now() < until) {
+    const st = await graph(`/${containerId}?fields=status_code,status`, token);
+    if (st.status_code === "FINISHED") return;
+    if (st.status_code === "ERROR" || st.status_code === "EXPIRED") {
+      throw new Error(`Video qayta ishlanmadi: ${st.status || st.status_code}`);
+    }
+    await new Promise((r) => setTimeout(r, 4000));
+  }
+  throw new Error("Video hali qayta ishlanmoqda — bir necha daqiqadan keyin qayta urinib ko'ring.");
 }
 
 export async function publishMedia(igId: string, token: string, creationId: string) {

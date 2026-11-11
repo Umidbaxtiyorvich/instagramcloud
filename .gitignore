@@ -43,3 +43,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.tgv/
+__pycache__/
+/backups/
+/yespos-bot/data/
+/tolov-bot/data/
+.ypv/
