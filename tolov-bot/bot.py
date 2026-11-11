@@ -232,7 +232,7 @@ async def strict_check(meta: dict, photo: bytes | None, clients: list[dict]):
         return
     v_ts = parse_date(v.get("date") or "")
     if not v_ts or day_fmt(v_ts) != day_fmt(en["ts"]):
-        doubt(en, "date", f"ikkinchi o'qishda sana: {day_fmt(v_ts) if v_ts else 'o`qilmadi'}")
+        doubt(en, "date", f"ikkinchi o'qishda sana: {day_fmt(v_ts) if v_ts else 'topilmadi'}")
     elif v.get("date_conf", 0) < VERIFY_CONF:
         doubt(en, "date", f"sana ishonchi past ({v.get('date_conf')}%)")
     if v.get("amount") != en["amount"]:
@@ -382,7 +382,7 @@ HINTS = {"new": "yangi", "old": "CloudShop'da topilmadi — tekshiring", "future
 
 def card(meta: dict) -> tuple[str, InlineKeyboardMarkup | None]:
     a = meta.get("ai") or {}
-    e_ = html.escape
+    e_ = lambda s: html.escape(s, quote=False)
     lines = [f"👤 Yubordi: {e_(meta.get('full_name') or '')}"
              + (f" (@{e_(meta['username'])})" if meta.get("username") else "")
              + f" · {e_(meta.get('chat_title') or '')}"]
@@ -397,7 +397,8 @@ def card(meta: dict) -> tuple[str, InlineKeyboardMarkup | None]:
     sure_client = client_sure(meta)
     if cand:
         lines.append(f"\n🏪 Mijoz: <b>{e_(cand['name'])}</b> ({cand['confidence']}%)"
-                     + ("" if sure_client else " — ❓ <b>aniq emas, tasdiqlang</b>"))
+                     + ("" if sure_client else " — ❓ <b>aniq emas, tasdiqlang</b>"
+                        + (f" <i>({e_(meta['client_doubt'])})</i>" if meta.get("client_doubt") else "")))
         lines.append(f"💳 CloudShop'dagi oxirgi kirim: {e_(meta.get('last_cs') or '?')}")
     else:
         lines.append("\n❓ <b>Mijoz topilmadi</b> — javob qilib mijoz nomi yoki telefonini yozing.")
@@ -861,6 +862,7 @@ async def on_admin_reply(m: Message, bot: Bot):
                 return await m.reply("Bunday mijoz topilmadi. Boshqacha yozib ko'ring yoki telefonini yozing.")
             meta["candidates"] = [{"client_id": c["_id"], "name": c["name"], "confidence": min(100, int(s * 100))}
                                   for s, c in top]
+            meta.pop("client_doubt", None)
             meta["sel"] = 0
             # bitta aniq natija bo'lsa (yoki telefon mos kelsa) - tasdiqlangan
             meta["client_confirmed"] = top[0][0] >= 1 or len(top) == 1 or top[0][0] - top[1][0] > 0.3

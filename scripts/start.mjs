@@ -10,15 +10,18 @@ import { kuzat, qaytar } from "./fayl-saqla.mjs";
 const YESPOS_PORT = "8791";
 const TOLOV_PORT = "8792";
 
-function yonida(nom, python, args, env, urinish = 0) {
-  const p = spawn(python, ["-u", ...args], { stdio: "inherit", env });
+// nice > 0: past ustuvorlik — bepul serverning 0.1 CPU'sini sayt bilan talashmasin
+function yonida(nom, python, args, env, urinish = 0, nice = 0) {
+  const p = nice
+    ? spawn("nice", ["-n", String(nice), python, "-u", ...args], { stdio: "inherit", env })
+    : spawn(python, ["-u", ...args], { stdio: "inherit", env });
   const boshlandi = Date.now();
   p.on("exit", (kod) => {
     // tez-tez yiqilsa — kutish uzayadi (5 daqiqagacha)
     const keyingi = Date.now() - boshlandi > 120_000 ? 0 : urinish + 1;
     const kut = Math.min(300_000, 5_000 * 2 ** keyingi);
     console.error(`${nom}: to'xtadi (${kod}), ${Math.round(kut / 1000)} soniyadan keyin qayta`);
-    setTimeout(() => yonida(nom, python, args, env, keyingi), kut);
+    setTimeout(() => yonida(nom, python, args, env, keyingi, nice), kut);
   });
 }
 
@@ -70,7 +73,8 @@ if (process.env.TOLOV_ENV || process.env.TL_BOT_TOKEN) {
     try {
       await qaytar("tolov", "tolov-bot/data");
       tlSaqla = kuzat("tolov", "tolov-bot/data", 30_000, { ochir: true });
-      yonida("tolov-bot", ".tlv/bin/python", ["tolov-bot/bot.py"], env);
+      // sayt to'liq ishga tushib olsin: bir vaqtda uchta Python yuklanishi server qayta ishga tushishiga olib kelardi
+      setTimeout(() => yonida("tolov-bot", ".tlv/bin/python", ["tolov-bot/bot.py"], env, 0, 10), 90_000);
       // Sayt (src/lib/tolov-bot.ts) cheklar tarixini endi shu serverning o'zidan oladi
       process.env.TOLOV_BOT_URL = `http://127.0.0.1:${TOLOV_PORT}`;
       if (env.API_KEY) process.env.TOLOV_BOT_API_KEY = env.API_KEY;

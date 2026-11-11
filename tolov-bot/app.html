@@ -574,7 +574,6 @@
     const a = btn.dataset.a;
     const date = card.querySelector('[data-f="date"]')?.value, amount = num(card.querySelector('[data-f="amount"]')?.value || '');
     const what = {edit_money: `Bazadagi kirim #${it.ours?.number} → ${date}, ${fmt(amount)} so'm`,
-                  edit_doc_date: `Sotuv №${it.ours?.number} sanasi → ${date}`,
                   add_money: `Bazaga yangi kirim: ${date}, ${fmt(amount)} so'm (${rec.res.client})`,
                   delete_money: `Bazadan kirim #${it.ours?.number} (${fmt(it.ours?.amount || 0)} so'm) O'CHIRILSIN`}[a];
     if (!await confirmBox(what + '\n\nTasdiqlaysizmi?')) return;

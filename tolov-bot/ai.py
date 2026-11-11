@@ -5,11 +5,10 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 
-import anthropic
 
 MODEL = "claude-opus-5-5"
 # GEMINI_API_KEY berilsa bepul Gemini ishlatiladi, aks holda Claude
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 SYSTEM = """Sen ulgurji savdo firmasining buxgalteri yordamchisisan. Telegram guruhga mijozlardan (do'konlardan)
 olingan pullar haqida ma'lumot tashlanadi. Uch xil bo'ladi:
@@ -88,15 +87,17 @@ SCHEMA = {
     },
 }
 
-_client: anthropic.AsyncAnthropic | None = None
+_client = None  # anthropic.AsyncAnthropic — faqat kerak bo'lganda yuklanadi (~40 MB xotira)
 
 
-def get_client() -> anthropic.AsyncAnthropic:
+def get_client():
     global _client
     if _client is None:
         # ANTHROPIC_API_KEY muhitdan olinadi. Workspace'ga bog'lanmagan kalit (sk-ant-usr-...)
         # uchun ANTHROPIC_WORKSPACE_ID (wrkspc_...) ham kerak.
         ws = os.getenv("ANTHROPIC_WORKSPACE_ID")
+        import anthropic
+
         _client = anthropic.AsyncAnthropic(default_headers={"anthropic-workspace-id": ws} if ws else None)
     return _client
 
@@ -273,7 +274,7 @@ async def _claude(prompt: str, photo: bytes | None, clients: list[dict], system:
         fallbacks="default",
         output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema or SCHEMA}},
         system=[
-            {"type": "text", "text": SYSTEM},
+            {"type": "text", "text": system or SYSTEM},
             # mijozlar ro'yxati har chekda bir xil - keshlanadi (arzonroq va tezroq)
             {"type": "text", "text": clients_block(clients), "cache_control": {"type": "ephemeral", "ttl": "1h"}},
         ],

@@ -9,13 +9,13 @@
   :root {
     --bg: var(--tg-theme-bg-color, #ffffff);
     --fg: var(--tg-theme-text-color, #1a1a1a);
-    --hint: var(--tg-theme-hint-color, #8a8a8a);
+    --hint: var(--tg-theme-hint-color, #5f6368);
     --card: var(--tg-theme-secondary-bg-color, #f2f2f5);
-    --accent: var(--tg-theme-button-color, #2481cc);
+    --accent: var(--tg-theme-button-color, #1d6fb0);
     --accent-fg: var(--tg-theme-button-text-color, #ffffff);
-    --bad: #e5484d;
+    --bad: #c2292e;
     --bad-bg: rgba(229, 72, 77, .12);
-    --ok: #30a46c;
+    --ok: #1e7a4a;
   }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
@@ -47,7 +47,7 @@
 <body>
 <h1 id="title"></h1>
 <div class="sub" id="sub"></div>
-<img id="photo" alt="Rasm">
+<div id="photo-slot"></div>
 <table>
   <thead><tr><th>Maydon</th><th>Bot o'qigan</th><th>To'g'risi</th></tr></thead>
   <tbody>
@@ -83,7 +83,7 @@
 
   $('title').textContent = `${D.k + 1}-qatorni to'g'rilash`;
   $('sub').textContent = `${D.sender} · ${D.chat}`;
-  if (D.photo) $('photo').src = D.photo; else $('photo').remove();
+  if (D.photo) { const im = document.createElement('img'); im.alt = 'Rasm'; im.src = D.photo; $('photo-slot').appendChild(im); }
   $('line').textContent = D.line ? `Rasmdagi yozuv: «${D.line}»` : '';
 
   const byName = {};
