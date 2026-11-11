@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hisobotlar</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --fg: var(--tg-theme-text-color, #1a1a1a);
+    --hint: var(--tg-theme-hint-color, #5f6368);
+    --card: var(--tg-theme-secondary-bg-color, #f2f2f5);
+    --accent: var(--tg-theme-button-color, #1d6fb0);
+    --accent-fg: var(--tg-theme-button-text-color, #ffffff);
+    --bad: #c2292e;
+    --ok: #1e7a4a;
+    --line: rgba(128,128,128,.18);
+    --tint: rgba(29,111,176,.08);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .tabs { display: flex; position: sticky; top: 0; background: var(--bg); z-index: 2; border-bottom: 1px solid var(--line);
+          overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { flex: 1 0 auto; padding: 12px 10px; border: 0; background: none; color: var(--hint); font-size: 14px;
+                 font-weight: 600; border-bottom: 3px solid transparent; cursor: pointer; white-space: nowrap; }
+  .tabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
+  main { padding: 12px 16px 96px; }
+  .hide { display: none !important; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .stat { background: var(--card); border-radius: 12px; padding: 10px 12px; }
+  .stat b { display: block; font-size: 17px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--hint); font-size: 12px; }
+  input, select, textarea { width: 100%; padding: 10px 12px; font-size: 15px; border-radius: 10px; color: var(--fg);
+                  border: 1px solid rgba(128,128,128,.35); background: var(--bg); font-family: inherit; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .f { margin-top: 10px; }
+  label { font-size: 12px; color: var(--hint); display: block; margin: 0 0 3px 2px; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: var(--card); border-radius: 12px; }
+  .seg button { padding: 10px; border: 0; border-radius: 9px; background: none; color: var(--fg); font-size: 15px; font-weight: 600; cursor: pointer; }
+  .seg button.on.in { background: var(--ok); color: #fff; }
+  .seg button.on.out { background: var(--bad); color: #fff; }
+  .list { margin-top: 8px; background: var(--card); border-radius: 12px; overflow: hidden; }
+  .list:empty { display: none; }
+  .item { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .item:last-child { border-bottom: 0; }
+  .item .n, .mv .n { font-weight: 600; }
+  .item .p, .mv .p { color: var(--hint); font-size: 12px; }
+  .item .d { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .neg { color: var(--ok); }
+  .mv { display: flex; justify-content: space-between; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  .mv:last-child { border-bottom: 0; }
+  .mv .r { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .mv.tot { background: var(--tint); }
+  .plus { color: var(--bad); }
+  .minus { color: var(--ok); }
+  .sum { margin-top: 10px; padding: 12px; border-radius: 12px; background: var(--card); font-weight: 600; }
+  .btn { position: fixed; left: 16px; right: 16px; bottom: 14px; padding: 14px; border: 0; border-radius: 12px; font-size: 16px;
+         font-weight: 600; background: var(--accent); color: var(--accent-fg); cursor: pointer; }
+  .btn:disabled { opacity: .5; }
+  .msg { text-align: center; margin: 0; padding: 14px 16px; color: var(--hint); }
+  .err { color: var(--bad); }
+  .note { margin-top: 10px; padding: 10px 12px; border-radius: 10px; font-weight: 600; }
+  .note.good { background: rgba(30,122,74,.12); color: var(--ok); }
+  .note.bad { background: rgba(194,41,46,.1); color: var(--bad); }
+  .chosen { margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: var(--card); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .chosen button, .x { border: 0; background: none; color: var(--accent); font-size: 14px; cursor: pointer; padding: 4px 6px; }
+  .line { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .line:last-child { border-bottom: 0; }
+  .line .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .line .grid { display: grid; grid-template-columns: 1fr 1.3fr 1.3fr; gap: 6px; margin-top: 6px; align-items: center; }
+  .line .grid input { padding: 8px 10px; font-size: 15px; }
+  .line .tot { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .x { color: var(--bad); font-size: 18px; line-height: 1; }
+  .thumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+  .thumb { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: var(--card); }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb button { position: absolute; top: 3px; right: 3px; width: 24px; height: 24px; border-radius: 12px; border: 0;
+                  background: rgba(0,0,0,.6); color: #fff; font-size: 15px; line-height: 1; cursor: pointer; }
+  .addimg { display: flex; align-items: center; justify-content: center; aspect-ratio: 1; border-radius: 10px;
+            border: 2px dashed rgba(128,128,128,.4); color: var(--hint); font-size: 26px; cursor: pointer; }
+  .cmp { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px 10px; margin-top: 10px; padding: 12px;
+         border-radius: 12px; background: var(--card); font-variant-numeric: tabular-nums; align-items: baseline; }
+  .cmp .h { color: var(--hint); font-size: 12px; }
+  .cmp .v { text-align: right; font-weight: 600; }
+  .cmp .diff { color: var(--bad); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chip { padding: 5px 10px; border-radius: 20px; background: var(--card); font-size: 13px; font-weight: 600; }
+  .rc { margin-top: 10px; border-radius: 12px; background: var(--card); padding: 12px; border-left: 4px solid var(--hint); }
+  .rc.bad { border-left-color: var(--bad); }
+  .rc.warn { border-left-color: #b26a00; }
+  .rc.good { border-left-color: var(--ok); }
+  .rc .t { font-weight: 700; }
+  .rc .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .rc .side { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+  .rc .side .h { color: var(--hint); font-size: 11px; text-transform: uppercase; }
+  .rc .side b { display: block; font-variant-numeric: tabular-nums; }
+  .rc .side .p { color: var(--hint); font-size: 12px; word-break: break-word; }
+  .rc .fix { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+  .rc .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .act { padding: 9px 12px; border-radius: 9px; border: 0; background: var(--accent); color: var(--accent-fg);
+         font-size: 14px; font-weight: 600; cursor: pointer; }
+  .act.sec { background: var(--bg); color: var(--accent); border: 1px solid rgba(128,128,128,.35); }
+  .act.del { background: var(--bad); color: #fff; }
+  details summary { cursor: pointer; padding: 10px 2px; font-weight: 600; color: var(--hint); }
+  .total { display: flex; justify-content: space-between; margin-top: 10px; padding: 12px; border-radius: 12px; background: var(--tint); font-weight: 700; font-size: 16px; }
+</style>
+</head>
+<body>
+<div class="tabs">
+  <button id="t-debts" class="on">💰 Qarz</button>
+  <button id="t-akt">📄 Akt</button>
+  <button id="t-recon">🔍 Sverka</button>
+  <button id="t-cash">💵 Kassa</button>
+  <button id="t-goods">📦 Tovar</button>
+</div>
+
+<main>
+  <!-- QARZLAR -->
+  <section id="p-debts">
+    <div class="stats">
+      <div class="stat"><span>Jami qarz</span><b id="s-total">…</b></div>
+      <div class="stat"><span>Qarzdorlar</span><b id="s-count">…</b></div>
+    </div>
+    <input id="d-search" placeholder="🔍 Xaridor nomi yoki telefoni">
+    <div class="list" id="d-list"><div class="msg">Yuklanmoqda…</div></div>
+  </section>
+
+  <!-- AKT SVERKA -->
+  <section id="p-akt" class="hide">
+    <div id="a-pick">
+      <input id="a-search" placeholder="🔍 Xaridorni tanlang (nomi yoki telefoni)">
+      <div class="list" id="a-list"></div>
+    </div>
+    <div id="a-chosen" class="chosen hide"><b id="a-name"></b><button id="a-change">O'zgartirish</button></div>
+    <div class="row2 f">
+      <div><label for="a-start">Dan</label><input id="a-start" type="date"></div>
+      <div><label for="a-end">Gacha</label><input id="a-end" type="date"></div>
+    </div>
+    <div id="a-result"></div>
+  </section>
+
+  <!-- SVERKA: xaridor bergan sverka bilan bazani solishtirish -->
+  <section id="p-recon" class="hide">
+    <label>Kimning sverkasi</label>
+    <div id="r-pick"><input id="r-search" placeholder="🔍 Xaridor nomi yoki telefoni"><div class="list" id="r-list"></div></div>
+    <div id="r-chosen" class="chosen hide"><b id="r-name"></b><button id="r-change">O'zgartirish</button></div>
+    <div class="f"><label>Xaridor bergan sverka rasmlari (istalgancha)</label>
+      <div class="thumbs" id="r-thumbs"><label class="addimg" for="r-file" aria-label="Rasm qo'shish">＋</label></div>
+      <input id="r-file" type="file" accept="image/*" multiple class="hide">
+    </div>
+    <div class="f"><label for="r-text">yoki xaridor yozib bergan matn</label>
+      <textarea id="r-text" rows="4" placeholder="Masalan: 05.10 yuk 1 250 000; 08.10 to'ladim 640 000; ..."></textarea></div>
+    <div id="r-note"></div>
+    <div id="r-result"></div>
+  </section>
+
+  <!-- KASSA: qo'lda kirim / chiqim -->
+  <section id="p-cash" class="hide">
+    <div class="seg"><button id="c-in" class="on in">⬇️ Kirim</button><button id="c-out" class="out">⬆️ Chiqim</button></div>
+    <div class="row2 f">
+      <div><label for="c-account">Hisob</label><select id="c-account"></select></div>
+      <div><label for="c-source">Toifa</label><select id="c-source"></select></div>
+    </div>
+    <div class="f"><label>Kontragent</label>
+      <div class="seg" style="margin-bottom:6px"><button id="c-tcl" class="on in">Xaridor</button><button id="c-tsu">Yetkazib beruvchi</button></div>
+      <div id="c-cpick"><input id="c-csearch" placeholder="🔍 Nomi yoki telefoni"><div class="list" id="c-clist"></div></div>
+      <div id="c-cchosen" class="chosen hide"><b id="c-cname"></b><button id="c-cchange">O'zgartirish</button></div>
+    </div>
+    <div class="row2 f">
+      <div><label for="c-amount">Summa, so'm</label><input id="c-amount" inputmode="numeric" placeholder="0"></div>
+      <div><label for="c-date">Sana</label><input id="c-date" type="date"></div>
+    </div>
+    <div class="f"><label for="c-comment">Izoh</label><input id="c-comment" placeholder="ixtiyoriy"></div>
+    <div id="c-note"></div>
+  </section>
+
+  <!-- TOVAR: sotish / qabul -->
+  <section id="p-goods" class="hide">
+    <div class="seg"><button id="g-sale" class="on out">📤 Sotish</button><button id="g-buy" class="in">📥 Qabul qilish</button></div>
+    <div class="f"><label id="g-clabel">Xaridor</label>
+      <div id="g-cpick"><input id="g-csearch" placeholder="🔍 Nomi yoki telefoni"><div class="list" id="g-clist"></div></div>
+      <div id="g-cchosen" class="chosen hide"><b id="g-cname"></b><button id="g-cchange">O'zgartirish</button></div>
+    </div>
+    <div class="f"><label for="g-psearch">Tovar qo'shish</label>
+      <input id="g-psearch" placeholder="🔍 Tovar nomi, shtrix-kod">
+      <div class="list" id="g-plist"></div>
+    </div>
+    <div class="list" id="g-lines"></div>
+    <div class="total"><span>Jami</span><span id="g-total">0</span></div>
+    <div class="row2 f">
+      <div id="g-paidbox"><label for="g-paid">Olingan to'lov (ixtiyoriy)</label><input id="g-paid" inputmode="numeric" placeholder="0"></div>
+      <div><label for="g-date">Sana</label><input id="g-date" type="date"></div>
+    </div>
+    <div class="f"><label for="g-comment">Izoh</label><input id="g-comment" placeholder="ixtiyoriy"></div>
+    <div id="g-note"></div>
+  </section>
+</main>
+<button class="btn" id="send">📥 Excel'ni Telegram'ga yuborish</button>
+
+<script>
+  const tg = window.Telegram && Telegram.WebApp;
+  if (tg) { tg.ready(); tg.expand(); }
+  const $ = id => document.getElementById(id);
+  const fmt = n => (n < 0 ? '−' : '') + String(Math.abs(Math.round(n))).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const num = s => parseInt(String(s).replace(/\D/g, ''), 10) || 0;
+  const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, () => (Math.random() * 16 | 0).toString(16)));
+  const pad = n => String(n).padStart(2, '0');
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+  async function api(path, body = {}) {
+    const r = await fetch('app/api/' + path, {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({initData: tg ? tg.initData : '', ...body})});
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.message || 'Xato');
+    return j;
+  }
+  function confirmBox(text) {
+    // Telegram 6.2+ o'z tasdiqlash oynasi; eski versiyada yoki brauzerda - oddiy confirm
+    return new Promise(res => {
+      if (tg && tg.showConfirm && tg.isVersionAtLeast && tg.isVersionAtLeast('6.2')) {
+        try { return tg.showConfirm(text, ok => res(!!ok)); } catch (e) { /* pastga */ }
+      }
+      res(window.confirm(text));
+    });
+  }
+  function moneyInput(el) { el.addEventListener('input', () => { const v = num(el.value); el.value = v ? fmt(v) : ''; }); }
+  function note(id, text, good) { $(id).innerHTML = `<div class="note ${good ? 'good' : 'bad'}">${esc(text)}</div>`; }
+
+  // ---------- umumiy: tablar va pastki tugma ----------
+  let tab = 'debts', debts = [], client = null, R = null;
+  const TABS = ['debts', 'akt', 'recon', 'cash', 'goods'];
+  function show(t) {
+    tab = t;
+    for (const x of TABS) { $('t-' + x).classList.toggle('on', x === t); $('p-' + x).classList.toggle('hide', x !== t); }
+    if ((t === 'cash' || t === 'goods') && !R) loadRefs();
+    updateBtn();
+  }
+  function updateBtn() {
+    const b = $('send');
+    if (tab === 'debts') { b.textContent = "📥 Excel'ni Telegram'ga yuborish"; b.disabled = false; }
+    else if (tab === 'akt') { b.textContent = "📥 Excel'ni Telegram'ga yuborish"; b.disabled = !client; }
+    else if (tab === 'recon') { b.textContent = '🔍 Solishtirish'; b.disabled = !rec.client || (!rec.images.length && !$('r-text').value.trim()); }
+    else if (tab === 'cash') { b.textContent = cash.kind === 'debit' ? '✅ Kirim qilish' : '✅ Chiqim qilish'; b.disabled = !R; }
+    else { b.textContent = goods.kind === 'sales' ? '✅ Sotish (yuk berish)' : '✅ Qabul qilish'; b.disabled = !R; }
+  }
+  for (const x of TABS) $('t-' + x).onclick = () => show(x);
+
+  // ---------- QARZLAR ----------
+  function renderDebts() {
+    const q = $('d-search').value.trim().toLowerCase();
+    const rows = debts.filter(d => d.debt > 0 && (!q || (d.name + ' ' + d.phones).toLowerCase().includes(q)));
+    $('d-list').innerHTML = rows.length ? rows.slice(0, 300).map(d => `
+      <div class="item" data-id="${d.id}">
+        <div><div class="n">${esc(d.name)}</div><div class="p">${esc(d.phones) || '—'}</div></div>
+        <div class="d">${fmt(d.debt)}</div>
+      </div>`).join('') : '<div class="msg">Topilmadi</div>';
+  }
+  $('d-search').oninput = renderDebts;
+  $('d-list').onclick = e => { const it = e.target.closest('.item'); if (!it) return; pick(debts.find(d => d.id === it.dataset.id)); show('akt'); };
+
+  // ---------- AKT SVERKA ----------
+  function renderPick() {
+    const q = $('a-search').value.trim().toLowerCase();
+    const rows = q ? debts.filter(d => (d.name + ' ' + d.phones).toLowerCase().includes(q)).slice(0, 30) : [];
+    $('a-list').innerHTML = rows.map(d => `
+      <div class="item" data-id="${d.id}">
+        <div><div class="n">${esc(d.name)}</div><div class="p">${esc(d.phones) || '—'}</div></div>
+        <div class="d ${d.debt < 0 ? 'neg' : ''}">${fmt(d.debt)}</div>
+      </div>`).join('');
+  }
+  $('a-search').oninput = renderPick;
+  $('a-list').onclick = e => { const it = e.target.closest('.item'); if (it) pick(debts.find(d => d.id === it.dataset.id)); };
+  $('a-change').onclick = () => { client = null; $('a-pick').classList.remove('hide'); $('a-chosen').classList.add('hide');
+                                  $('a-result').innerHTML = ''; updateBtn(); };
+  function pick(c) {
+    client = c; $('a-name').textContent = c.name;
+    $('a-pick').classList.add('hide'); $('a-chosen').classList.remove('hide');
+    updateBtn(); loadAkt();
+  }
+  $('a-start').onchange = $('a-end').onchange = () => client && loadAkt();
+  async function loadAkt() {
+    $('a-result').innerHTML = '<div class="msg">Yuklanmoqda…</div>';
+    try {
+      const a = (await api('akt', {client_id: client.id, start: $('a-start').value, end: $('a-end').value})).akt;
+      $('a-result').innerHTML = `
+        <div class="stats" style="margin-top:10px">
+          <div class="stat"><span>Yuk berildi (+)</span><b class="plus">${fmt(a.total_plus)}</b></div>
+          <div class="stat"><span>Pul olindi (−)</span><b class="minus">${fmt(a.total_minus)}</b></div>
+        </div>
+        <div class="list">
+          <div class="mv tot"><div><div class="n">Boshlang'ich qoldiq</div><div class="p">${a.start}</div></div>
+            <div class="r"><b>${fmt(a.opening)}</b></div></div>
+          ${a.rows.map(r => `<div class="mv"><div><div class="n">${esc(r.what)}</div><div class="p">${r.date}${r.comment ? ' · ' + esc(r.comment) : ''}</div></div>
+            <div class="r">${r.plus ? `<b class="plus">+${fmt(r.plus)}</b>` : `<b class="minus">−${fmt(r.minus)}</b>`}
+            <div class="p">qoldiq ${fmt(r.balance)}</div></div></div>`).join('') || '<div class="msg">Bu davrda harakat yo\'q</div>'}
+          <div class="mv tot"><div><div class="n">Yakuniy qoldiq</div><div class="p">${a.end}</div></div>
+            <div class="r"><b>${fmt(a.closing)}</b></div></div>
+        </div>
+        <div class="sum">${a.end} holatiga ${a.closing >= 0 ? 'xaridor bizga' : 'biz xaridorga'} <span class="${a.closing >= 0 ? 'plus' : 'minus'}">${fmt(Math.abs(a.closing))} so'm</span> qarzdor.</div>`;
+    } catch (e) { $('a-result').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+  }
+
+  // ---------- kontragent tanlagich (Kassa va Tovar uchun) ----------
+  function contragentPicker(prefix, getType, onPick) {
+    const st = {chosen: null};
+    const source = () => getType() === 'clients' ? R.clients : R.suppliers;
+    function render() {
+      const q = $(prefix + '-csearch').value.trim().toLowerCase();
+      const rows = source().filter(c => !q || (c.name + ' ' + (c.phones || '')).toLowerCase().includes(q)).slice(0, q ? 30 : 8);
+      $(prefix + '-clist').innerHTML = rows.map(c => `<div class="item" data-id="${c.id}"><div><div class="n">${esc(c.name)}</div>
+        <div class="p">${esc(c.phones || '')}</div></div></div>`).join('');
+    }
+    $(prefix + '-csearch').oninput = render;
+    $(prefix + '-csearch').onfocus = render;
+    $(prefix + '-clist').onclick = e => {
+      const it = e.target.closest('.item'); if (!it) return;
+      st.chosen = source().find(c => c.id === it.dataset.id);
+      $(prefix + '-cname').textContent = st.chosen.name;
+      $(prefix + '-cpick').classList.add('hide'); $(prefix + '-cchosen').classList.remove('hide');
+      onPick && onPick();
+    };
+    st.reset = () => { st.chosen = null; $(prefix + '-csearch').value = ''; $(prefix + '-clist').innerHTML = '';
+                       $(prefix + '-cpick').classList.remove('hide'); $(prefix + '-cchosen').classList.add('hide'); };
+    $(prefix + '-cchange').onclick = st.reset;
+    return st;
+  }
+
+  async function loadRefs() {
+    try {
+      R = await api('refs');
+      fillAccounts(); fillSources(); updateBtn();
+    } catch (e) { note(tab === 'cash' ? 'c-note' : 'g-note', e.message, false); }
+  }
+
+  // ---------- KASSA ----------
+  const cash = {kind: 'debit', ctype: 'clients', uuid: uid()};
+  const cashC = contragentPicker('c', () => cash.ctype);
+  function fillAccounts() {
+    $('c-account').innerHTML = R.accounts.map(a => `<option value="${a.id}" ${a.default ? 'selected' : ''}>${esc(a.name)}</option>`).join('');
+  }
+  function fillSources() {
+    const list = R.sources.filter(s => s.type === cash.kind);
+    const pref = cash.kind === 'debit' ? 100 : 2001;
+    $('c-source').innerHTML = list.map(s => `<option value="${s.id}" ${s.id === pref ? 'selected' : ''}>${esc(s.title)}</option>`).join('');
+  }
+  function setCashKind(k) {
+    cash.kind = k;
+    $('c-in').className = k === 'debit' ? 'on in' : 'in';
+    $('c-out').className = k === 'credit' ? 'on out' : 'out';
+    if (R) fillSources();
+    setCType(k === 'debit' ? 'clients' : 'suppliers');
+    updateBtn();
+  }
+  function setCType(t) {
+    cash.ctype = t;
+    $('c-tcl').className = t === 'clients' ? 'on in' : '';
+    $('c-tsu').className = t === 'suppliers' ? 'on in' : '';
+    cashC.reset();
+  }
+  $('c-in').onclick = () => setCashKind('debit');
+  $('c-out').onclick = () => setCashKind('credit');
+  $('c-tcl').onclick = () => setCType('clients');
+  $('c-tsu').onclick = () => setCType('suppliers');
+  moneyInput($('c-amount'));
+  $('c-date').value = todayStr; $('c-date').max = todayStr;
+
+  async function submitCash() {
+    const amount = num($('c-amount').value);
+    if (!cashC.chosen) return note('c-note', 'Kontragentni tanlang', false);
+    if (!amount) return note('c-note', 'Summani kiriting', false);
+    const src = $('c-source').selectedOptions[0]?.textContent || '';
+    const word = cash.kind === 'debit' ? 'KIRIM' : 'CHIQIM';
+    if (!await confirmBox(`${word}: ${fmt(amount)} so'm\n${cashC.chosen.name}\n${src}\nSana: ${$('c-date').value}\n\nSaqlansinmi?`)) return;
+    const r = await api('money', {kind: cash.kind, account: $('c-account').value, source: +$('c-source').value,
+      contragent_type: cash.ctype, contragent_id: cashC.chosen.id, amount, date: $('c-date').value,
+      comment: $('c-comment').value, uuid: cash.uuid});
+    note('c-note', r.message, true);
+    cash.uuid = uid(); $('c-amount').value = ''; $('c-comment').value = ''; cashC.reset();
+  }
+
+  // ---------- TOVAR ----------
+  const goods = {kind: 'sales', lines: [], uuid: uid()};
+  const goodsC = contragentPicker('g', () => goods.kind === 'sales' ? 'clients' : 'suppliers');
+  function setGoodsKind(k) {
+    goods.kind = k;
+    $('g-sale').className = k === 'sales' ? 'on out' : 'out';
+    $('g-buy').className = k === 'purchases' ? 'on in' : 'in';
+    $('g-clabel').textContent = k === 'sales' ? 'Xaridor' : 'Yetkazib beruvchi';
+    $('g-paidbox').classList.toggle('hide', k !== 'sales');
+    goodsC.reset();
+    for (const l of goods.lines) l.price = k === 'sales' ? l.p.price : (l.p.purchase || l.p.cost);
+    renderLines(); updateBtn();
+  }
+  $('g-sale').onclick = () => setGoodsKind('sales');
+  $('g-buy').onclick = () => setGoodsKind('purchases');
+  const stockOf = p => Object.values(p.stock || {}).reduce((a, b) => a + (+b || 0), 0);
+  function renderProducts() {
+    const q = $('g-psearch').value.trim().toLowerCase();
+    if (!q || !R) { $('g-plist').innerHTML = ''; return; }
+    const rows = R.catalog.filter(p => (p.name + ' ' + p.sku + ' ' + p.barcode).toLowerCase().includes(q)).slice(0, 20);
+    $('g-plist').innerHTML = rows.map(p => `<div class="item" data-id="${p.id}"><div><div class="n">${esc(p.name)}</div>
+      <div class="p">qoldiq ${fmt(stockOf(p))} ${esc(p.unit)} · sotuv ${fmt(p.price)} · kelish ${fmt(p.purchase || p.cost)}</div></div>
+      <div class="d">＋</div></div>`).join('') || '<div class="msg">Tovar topilmadi</div>';
+  }
+  $('g-psearch').oninput = renderProducts;
+  $('g-plist').onclick = e => {
+    const it = e.target.closest('.item'); if (!it) return;
+    const p = R.catalog.find(x => x.id === it.dataset.id);
+    const ex = goods.lines.find(l => l.p.id === p.id);
+    if (ex) ex.qty += 1;
+    else goods.lines.push({p, qty: 1, price: goods.kind === 'sales' ? p.price : (p.purchase || p.cost)});
+    $('g-psearch').value = ''; $('g-plist').innerHTML = ''; renderLines();
+  };
+  function renderLines() {
+    $('g-lines').innerHTML = goods.lines.map((l, i) => {
+      const warn = goods.kind === 'sales' && l.qty > stockOf(l.p) ? ` <span class="err">(omborda ${fmt(stockOf(l.p))})</span>` : '';
+      return `<div class="line" data-i="${i}">
+        <div class="top"><div class="n" style="font-weight:600">${esc(l.p.name)}${warn}</div><button class="x" data-del="${i}" aria-label="O'chirish">×</button></div>
+        <div class="grid">
+          <input data-q="${i}" inputmode="decimal" value="${l.qty}" aria-label="Miqdor">
+          <input data-p="${i}" inputmode="numeric" value="${fmt(l.price)}" aria-label="Narx">
+          <div class="tot">${fmt(l.qty * l.price)}</div>
+        </div></div>`;
+    }).join('');
+    $('g-total').textContent = fmt(goods.lines.reduce((a, l) => a + l.qty * l.price, 0)) + " so'm";
+  }
+  $('g-lines').oninput = e => {
+    const t = e.target;
+    if (t.dataset.q !== undefined) goods.lines[+t.dataset.q].qty = parseFloat(t.value.replace(',', '.')) || 0;
+    if (t.dataset.p !== undefined) goods.lines[+t.dataset.p].price = num(t.value);
+    const i = +(t.dataset.q ?? t.dataset.p); const l = goods.lines[i];
+    t.closest('.line').querySelector('.tot').textContent = fmt(l.qty * l.price);
+    $('g-total').textContent = fmt(goods.lines.reduce((a, x) => a + x.qty * x.price, 0)) + " so'm";
+  };
+  $('g-lines').addEventListener('change', e => {  // kiritib bo'lgach: narxni formatlash, omborda yetmasa ogohlantirish
+    if (e.target.dataset.p !== undefined || e.target.dataset.q !== undefined) renderLines();
+  });
+  $('g-lines').onclick = e => { const d = e.target.dataset.del; if (d !== undefined) { goods.lines.splice(+d, 1); renderLines(); } };
+  moneyInput($('g-paid'));
+  $('g-date').value = todayStr; $('g-date').max = todayStr;
+
+  async function submitGoods() {
+    if (!goodsC.chosen) return note('g-note', goods.kind === 'sales' ? 'Xaridorni tanlang' : 'Yetkazib beruvchini tanlang', false);
+    const lines = goods.lines.filter(l => l.qty > 0);
+    if (!lines.length) return note('g-note', "Kamida bitta tovar qo'shing", false);
+    if (lines.some(l => l.price <= 0) && !await confirmBox("Ba'zi tovarlarning narxi 0. Davom etilsinmi?")) return;
+    const total = lines.reduce((a, l) => a + l.qty * l.price, 0);
+    const paid = goods.kind === 'sales' ? num($('g-paid').value) : 0;
+    const word = goods.kind === 'sales' ? 'SOTUV (yuk berish)' : 'TOVAR QABULI';
+    const list = lines.map(l => `• ${l.p.name}: ${l.qty} × ${fmt(l.price)}`).join('\n');
+    if (!await confirmBox(`${word}\n${goodsC.chosen.name}\n${list}\nJami: ${fmt(total)} so'm${paid ? `\nTo'lov olindi: ${fmt(paid)}` : ''}\n\nSaqlansinmi?`)) return;
+    const r = await api('doc', {kind: goods.kind, contragent_id: goodsC.chosen.id, date: $('g-date').value,
+      items: lines.map(l => ({id: l.p.id, qty: l.qty, price: l.price})), paid, comment: $('g-comment').value, uuid: goods.uuid});
+    note('g-note', r.message, true);
+    goods.uuid = uid(); goods.lines = []; renderLines(); $('g-paid').value = ''; $('g-comment').value = ''; goodsC.reset();
+    R = null; loadRefs();  // ombor qoldig'i yangilansin
+  }
+
+  // ---------- SVERKA ----------
+  const rec = {client: null, images: [], res: null};
+  const CS_WEB = 'https://web-beta.cloudshop.ru';
+  const KIND = {sale: '📦 Yuk berish', payment: '💵 To\'lov', return: '↩️ Qaytarish', given: '💸 Pul berish', other: '❔ Noma\'lum'};
+  const STATUS = {ok: ['good', '✅ Mos'], date: ['warn', '📅 Sana farq qiladi'], amount: ['bad', '❌ Summa farq qiladi'],
+                  theirs_only: ['bad', '⚠️ Bazada yo\'q (faqat xaridorda)'], ours_only: ['warn', '⚠️ Xaridor sverkasida yo\'q (faqat bazada)']};
+  function renderRPick() {
+    const q = $('r-search').value.trim().toLowerCase();
+    const rows = q ? debts.filter(d => (d.name + ' ' + d.phones).toLowerCase().includes(q)).slice(0, 30) : [];
+    $('r-list').innerHTML = rows.map(d => `<div class="item" data-id="${d.id}"><div><div class="n">${esc(d.name)}</div>
+      <div class="p">${esc(d.phones) || '—'}</div></div><div class="d">${fmt(d.debt)}</div></div>`).join('');
+  }
+  $('r-search').oninput = renderRPick;
+  $('r-list').onclick = e => {
+    const it = e.target.closest('.item'); if (!it) return;
+    rec.client = debts.find(d => d.id === it.dataset.id); $('r-name').textContent = rec.client.name;
+    $('r-pick').classList.add('hide'); $('r-chosen').classList.remove('hide'); updateBtn();
+  };
+  $('r-change').onclick = () => { rec.client = null; $('r-pick').classList.remove('hide'); $('r-chosen').classList.add('hide');
+                                  $('r-result').innerHTML = ''; updateBtn(); };
+  $('r-text').oninput = updateBtn;
+  function shrink(file) {  // rasmni 1600px gacha kichraytirib JPEG qilish (tez yuklash uchun)
+    return new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => { const im = new Image(); im.onload = () => {
+        const k = Math.min(1, 1600 / Math.max(im.width, im.height)); const cv = document.createElement('canvas');
+        cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
+        cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height); res(cv.toDataURL('image/jpeg', 0.82)); };
+        im.onerror = rej; im.src = fr.result; };
+      fr.onerror = rej; fr.readAsDataURL(file);
+    });
+  }
+  function renderThumbs() {
+    $('r-thumbs').innerHTML = rec.images.map((src, i) => `<div class="thumb"><img src="${src}" alt="${i + 1}-rasm">
+      <button data-rm="${i}" aria-label="Olib tashlash">×</button></div>`).join('')
+      + (rec.images.length < 15 ? '<label class="addimg" for="r-file" aria-label="Rasm qo\'shish">＋</label>' : '');
+    updateBtn();
+  }
+  $('r-file').onchange = async e => {
+    for (const f of [...e.target.files].slice(0, 15 - rec.images.length)) {
+      try { rec.images.push(await shrink(f)); } catch (err) { note('r-note', 'Rasmni o\'qib bo\'lmadi: ' + f.name, false); }
+    }
+    e.target.value = ''; renderThumbs();
+  };
+  $('r-thumbs').onclick = e => { const i = e.target.dataset.rm; if (i !== undefined) { rec.images.splice(+i, 1); renderThumbs(); } };
+
+  async function submitRecon() {
+    $('r-note').innerHTML = ''; $('r-result').innerHTML = '<div class="msg">AI sverkani o\'qiyapti va bazadagi bilan solishtiryapti… (1–2 daqiqa)</div>';
+    try {
+      rec.res = await api('recon', {client_id: rec.client.id, images: rec.images, text: $('r-text').value});
+      renderRecon();
+    } catch (e) { $('r-result').innerHTML = ''; throw e; }
+  }
+  function side(title, x, ours) {
+    if (!x) return `<div class="side"><div class="h">${title}</div><b>—</b><div class="p">yo'q</div></div>`;
+    const sub = ours ? x.what : (x.note || '') + (x.doc_no ? ' №' + x.doc_no : '') + (x.sure === false ? ' · ⚠️ noaniq o\'qildi' : '');
+    return `<div class="side"><div class="h">${title}</div><b>${fmt(x.amount)}</b><div>${x.date}</div><div class="p">${esc(sub)}</div></div>`;
+  }
+  function itemCard(it, k) {
+    const [cls, label] = STATUS[it.status]; const t = it.theirs, o = it.ours;
+    let fix = '', acts = '';
+    const dateIn = v => `<input type="date" data-f="date" value="${v}" max="${todayStr}" aria-label="Sana">`;
+    const amtIn = v => `<input inputmode="numeric" data-f="amount" value="${fmt(v)}" aria-label="Summa">`;
+    const link = o ? `${CS_WEB}/m/${o.src === 'doc' ? 'document' : 'order'}/${o.id}` : '';
+    if ((it.status === 'amount' || it.status === 'date') && o.src === 'money') {
+      fix = dateIn(t.iso) + amtIn(t.amount);
+      acts = `<button class="act" data-a="edit_money">✏️ Bazani xaridordagidek tuzatish</button>`;
+    } else if ((it.status === 'amount' || it.status === 'date') && o.src === 'doc') {  // sotuv hujjati - CloudShop'ning o'zida
+      acts = `<button class="act sec" data-link="${link}">✏️ Sotuvni CloudShop'da tahrirlash</button>`;
+    } else if (it.status === 'theirs_only' && t.kind !== 'sale' && t.kind !== 'return') {
+      fix = dateIn(t.iso) + amtIn(t.amount);
+      acts = `<button class="act" data-a="add_money">➕ Bazaga to'lov (kirim) qo'shish</button>`;
+    } else if (it.status === 'theirs_only') {
+      acts = `<button class="act sec" data-sale="1">📦 Sotuv yaratish (Tovar bo'limi)</button>`;
+    } else if (it.status === 'ours_only') {
+      acts = (o.src === 'money' ? `<button class="act del" data-a="delete_money">🗑 Bazadan o'chirish</button>` : '')
+           + `<button class="act sec" data-link="${link}">CloudShop'da ochish</button>`;
+    }
+    if (o && it.status !== 'ours_only' && !acts.includes('data-link')) acts += `<button class="act sec" data-link="${link}">CloudShop'da ochish</button>`;
+    return `<div class="rc ${cls}" data-k="${k}"><div class="t">${label} · ${KIND[it.kind] || ''}</div>
+      <div class="two">${side('Xaridorda', t, false)}${side('Bazada', o, true)}</div>
+      ${fix ? `<div class="fix">${fix}</div>` : ''}${acts ? `<div class="acts">${acts}</div>` : ''}</div>`;
+  }
+  function renderRecon() {
+    const r = rec.res;
+    if (!r.items.length) { $('r-result').innerHTML = `<div class="note bad">Sverkadan birorta ham qator o'qilmadi. ${esc(r.note)}</div>`; return; }
+    const s = r.summary, c = s.counts;
+    const row = (name, a, b) => `<div>${name}</div><div class="v">${a == null ? '—' : fmt(a)}</div><div class="v ${a != null && a !== b ? 'diff' : ''}">${b == null ? '—' : fmt(b)}</div>`;
+    const all = r.items.map((it, k) => [it, k]);
+    const bad = all.filter(([it]) => it.status !== 'ok' && it.status !== 'ours_only');
+    const ours = all.filter(([it]) => it.status === 'ours_only');
+    const ok = all.filter(([it]) => it.status === 'ok');
+    $('r-result').innerHTML = `
+      <div class="note ${bad.length ? 'bad' : 'good'}">${bad.length ? `${bad.length} ta farq topildi` : 'Xaridor yozgan hamma narsa bazada bor ✅'} · ${r.rows_read} qator o'qildi · ${s.from} — ${s.to}</div>
+      ${r.note ? `<div class="msg" style="text-align:left;padding:8px 2px">🤖 ${esc(r.note)}</div>` : ''}
+      <div class="cmp"><div class="h"></div><div class="h v">Xaridorda</div><div class="h v">Bazada</div>
+        ${row('Yuk berilgan', s.theirs.sales, s.ours.sales)}${row("To'langan", s.theirs.payments, s.ours.payments)}
+        ${row('Qoldiq (qarz)', s.theirs_balance, s.ours_balance)}</div>
+      <div class="chips"><span class="chip">✅ ${c.ok}</span><span class="chip">❌ summa ${c.amount}</span><span class="chip">📅 sana ${c.date}</span>
+        <span class="chip">⚠️ bazada yo'q ${c.theirs_only}</span><span class="chip">⚠️ xaridorda yo'q ${c.ours_only}</span></div>
+      ${bad.map(([it, k]) => itemCard(it, k)).join('')}
+      ${ours.length ? `<details ${ours.length <= 5 ? 'open' : ''}><summary>⚠️ Faqat bazada — xaridor sverkasida yo'q (${ours.length}).
+        Xaridor bularni yozmagan bo'lishi ham mumkin.</summary>${ours.map(([it, k]) => itemCard(it, k)).join('')}</details>` : ''}
+      ${ok.length ? `<details><summary>✅ Mos kelganlar (${ok.length})</summary>${ok.map(([it, k]) => itemCard(it, k)).join('')}</details>` : ''}`;
+  }
+  $('r-result').onclick = async e => {
+    const btn = e.target.closest('button'); if (!btn) return;
+    const card = btn.closest('.rc'); const it = rec.res.items[+card.dataset.k];
+    if (btn.dataset.link) { tg && tg.openLink ? tg.openLink(btn.dataset.link) : window.open(btn.dataset.link, '_blank'); return; }
+    if (btn.dataset.sale) { goodsC.reset(); show('goods'); setGoodsKind('sales');
+      note('g-note', `Sverka: ${it.theirs.date} kuni ${fmt(it.theirs.amount)} so'mlik yuk bazada yo'q. Xaridorni tanlab, tovarlarni qo'shing.`, false); return; }
+    const a = btn.dataset.a;
+    const date = card.querySelector('[data-f="date"]')?.value, amount = num(card.querySelector('[data-f="amount"]')?.value || '');
+    const what = {edit_money: `Bazadagi kirim #${it.ours?.number} → ${date}, ${fmt(amount)} so'm`,
+                  edit_doc_date: `Sotuv №${it.ours?.number} sanasi → ${date}`,
+                  add_money: `Bazaga yangi kirim: ${date}, ${fmt(amount)} so'm (${rec.res.client})`,
+                  delete_money: `Bazadan kirim #${it.ours?.number} (${fmt(it.ours?.amount || 0)} so'm) O'CHIRILSIN`}[a];
+    if (!await confirmBox(what + '\n\nTasdiqlaysizmi?')) return;
+    btn.disabled = true; btn.textContent = 'Bajarilmoqda…';
+    try {
+      const body = {recon_id: rec.res.recon_id, action: a, id: it.ours?.id, date, amount, key: `${it.theirs?.iso}-${it.theirs?.amount}`};
+      rec.res = await api('recon_fix', body);
+      renderRecon(); note('r-note', rec.res.message, true);
+      $('r-note').scrollIntoView({behavior: 'smooth'});
+    } catch (err) { btn.disabled = false; btn.textContent = 'Qayta urinish'; note('r-note', err.message, false); }
+  };
+  $('r-result').addEventListener('input', e => { if (e.target.dataset.f === 'amount') { const v = num(e.target.value); e.target.value = v ? fmt(v) : ''; } });
+
+  // ---------- pastki tugma ----------
+  $('send').onclick = async () => {
+    const b = $('send'); const old = b.textContent; b.disabled = true; b.textContent = 'Bajarilmoqda…';
+    try {
+      if (tab === 'recon') { await submitRecon(); }
+      else if (tab === 'cash') { await submitCash(); }
+      else if (tab === 'goods') { await submitGoods(); }
+      else {
+        const body = tab === 'debts' ? {kind: 'debts'} : {kind: 'akt', client_id: client.id, start: $('a-start').value, end: $('a-end').value};
+        const r = await api('send', body);
+        b.textContent = '✅ ' + r.message; await new Promise(r => setTimeout(r, 2000));
+      }
+    } catch (e) {
+      if (tab === 'cash' || tab === 'goods' || tab === 'recon') note({cash: 'c-note', goods: 'g-note', recon: 'r-note'}[tab], e.message, false);
+      else { b.textContent = '⚠️ ' + e.message; await new Promise(r => setTimeout(r, 2500)); }
+    }
+    b.textContent = old; updateBtn();
+  };
+
+  // ---------- boshlang'ich ----------
+  $('a-end').value = todayStr;
+  $('a-start').value = `${today.getFullYear()}-01-01`;
+  api('debts').then(j => {
+    debts = j.debts;
+    const dd = debts.filter(d => d.debt > 0);
+    $('s-total').textContent = fmt(dd.reduce((a, d) => a + d.debt, 0)) + " so'm";
+    $('s-count').textContent = dd.length + ' ta';
+    renderDebts();
+    const qs = new URLSearchParams(location.search);
+    const pre = qs.get('client');
+    if (pre) { const c = debts.find(d => d.id === pre); if (c) { pick(c); show('akt'); } }
+    if (qs.get('tab') && TABS.includes(qs.get('tab'))) show(qs.get('tab'));
+  }).catch(e => { $('d-list').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; });
+  show('debts');
+</script>
+</body>
+</html>

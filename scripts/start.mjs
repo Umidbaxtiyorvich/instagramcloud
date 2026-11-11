@@ -1,12 +1,14 @@
 // Saytni ishga tushiradi; yonida:
 // - TG_API_ID bo'lsa — Miya'ning Telegram qo'ng'iroq dasturi (miya-tg);
-// - YP_BOT_TOKEN bo'lsa — YesPOS boti va uning web sayti (/yespos), ma'lumotlari bazada saqlanadi.
+// - YP_BOT_TOKEN bo'lsa — YesPOS boti va uning web sayti (/yespos), ma'lumotlari bazada saqlanadi;
+// - TOLOV_ENV yoki TL_BOT_TOKEN bo'lsa — to'lov boti (/tolov), cheklari bazada saqlanadi.
 // Yonidagi dastur tushib qolsa — qayta ishga tushadi; sayt ularga bog'liq emas.
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { kuzat, qaytar } from "./fayl-saqla.mjs";
 
 const YESPOS_PORT = "8791";
+const TOLOV_PORT = "8792";
 
 function yonida(nom, python, args, env, urinish = 0) {
   const p = spawn(python, ["-u", ...args], { stdio: "inherit", env });
@@ -55,9 +57,33 @@ if (process.env.YESPOS_ENV || process.env.YP_BOT_TOKEN) {
   } else console.error("yespos-bot: .ypv o'rnatilmagan — build loglarida «yespos-bot» ni ko'ring");
 }
 
+// To'lov boti (@claudeadminbot_bot, avval Railway'da edi): sozlamalari TOLOV_ENV da (Railway → Variables →
+// Raw Editor matni) yoki TL_ prefiksli (TL_BOT_TOKEN → BOT_TOKEN). Cheklar va rasmlar bazada saqlanadi.
+let tlSaqla = null;
+if (process.env.TOLOV_ENV || process.env.TL_BOT_TOKEN) {
+  if (existsSync(".tlv/bin/python")) {
+    const env = { RENDER: process.env.RENDER, PATH: process.env.PATH, TZ: "Asia/Tashkent", PYTHONUNBUFFERED: "1" };
+    Object.assign(env, envMatn(process.env.TOLOV_ENV));
+    for (const [k, v] of Object.entries(process.env)) if (k.startsWith("TL_")) env[k.slice(3)] = v;
+    const sayt = (process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/+$/, "");
+    Object.assign(env, { PORT: TOLOV_PORT, WEB_PREFIX: "/tolov", PUBLIC_URL: `${sayt}/tolov`, DATA_DIR: "tolov-bot/data" });
+    try {
+      await qaytar("tolov", "tolov-bot/data");
+      tlSaqla = kuzat("tolov", "tolov-bot/data", 30_000, { ochir: true });
+      yonida("tolov-bot", ".tlv/bin/python", ["tolov-bot/bot.py"], env);
+      // Sayt (src/lib/tolov-bot.ts) cheklar tarixini endi shu serverning o'zidan oladi
+      process.env.TOLOV_BOT_URL = `http://127.0.0.1:${TOLOV_PORT}`;
+      if (env.API_KEY) process.env.TOLOV_BOT_API_KEY = env.API_KEY;
+    } catch (e) {
+      console.error("tolov-bot: ma'lumotlar bazadan olinmadi, bot ishga tushmadi —", e.message);
+    }
+  } else console.error("tolov-bot: .tlv o'rnatilmagan — build loglarida «tolov-bot» ni ko'ring");
+}
+
 const next = spawn("npx", ["next", "start"], { stdio: "inherit", env: process.env });
 next.on("exit", async (kod) => {
   await ypSaqla?.(); // to'xtashdan oldin oxirgi o'zgarishlar bazaga
+  await tlSaqla?.();
   process.exit(kod ?? 1);
 });
 for (const s of ["SIGTERM", "SIGINT"]) process.on(s, () => next.kill(s));

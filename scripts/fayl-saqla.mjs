@@ -31,19 +31,28 @@ export async function qaytar(nom, dir) {
   console.log(`fayl-saqla: ${nom} — ${qatorlar.length} ta fayl qaytarildi`);
 }
 
-export async function saqla(nom, dir) {
+// ochir: bot papkadan o'chirgan fayllar bazadan ham o'chiriladi (aks holda qayta ishga tushganda qaytib keladi)
+export async function saqla(nom, dir, { ochir = false } = {}) {
+  const bor = new Set();
   for (const p of fayllar(dir)) {
     const s = statSync(p);
-    if (s.size > KATTA || korilgan.get(p) === s.mtimeMs) continue;
     const yol = `${nom}/${path.relative(dir, p).split(path.sep).join("/")}`;
+    if (s.size > KATTA) continue;
+    bor.add(yol);
+    if (korilgan.get(p) === s.mtimeMs) continue;
     const data = readFileSync(p);
     await prisma.botFayl.upsert({ where: { yol }, create: { yol, data }, update: { data } });
     korilgan.set(p, s.mtimeMs);
   }
+  if (ochir) {
+    const bazada = await prisma.botFayl.findMany({ where: { yol: { startsWith: `${nom}/` } }, select: { yol: true } });
+    const eski = bazada.map((q) => q.yol).filter((yol) => !bor.has(yol));
+    if (eski.length) await prisma.botFayl.deleteMany({ where: { yol: { in: eski } } });
+  }
 }
 
-export function kuzat(nom, dir, ms = 30_000) {
-  const bir = () => saqla(nom, dir).catch((e) => console.error(`fayl-saqla: ${nom} —`, e.message));
+export function kuzat(nom, dir, ms = 30_000, opts = {}) {
+  const bir = () => saqla(nom, dir, opts).catch((e) => console.error(`fayl-saqla: ${nom} —`, e.message));
   setInterval(bir, ms).unref();
   return bir;
 }

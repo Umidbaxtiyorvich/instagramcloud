@@ -24,6 +24,9 @@ const nextConfig: NextConfig = {
       // YesPOS boti shu serverda yonma-yon ishlaydi (scripts/start.mjs): web sayt va MCP
       { source: "/yespos", destination: "http://127.0.0.1:8791/" },
       { source: "/yespos/:path*", destination: "http://127.0.0.1:8791/:path*" },
+      // To'lov boti (@claudeadminbot_bot): hisobotlar oynasi, to'g'rilash jadvali va API
+      { source: "/tolov", destination: "http://127.0.0.1:8792/" },
+      { source: "/tolov/:path*", destination: "http://127.0.0.1:8792/:path*" },
     ];
   },
   async headers() {

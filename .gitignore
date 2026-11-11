@@ -47,4 +47,5 @@ next-env.d.ts
 __pycache__/
 /backups/
 /yespos-bot/data/
+/tolov-bot/data/
 .ypv/
